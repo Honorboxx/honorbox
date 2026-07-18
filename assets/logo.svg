@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 88" role="img" aria-label="HonorBox">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 344 88" role="img" aria-label="HonorBox">
   <style>
     .ink { stroke: #23201b; }
     .fill-ink { fill: #23201b; }
@@ -7,13 +7,13 @@
       .fill-ink { fill: #ece5d8; }
     }
   </style>
-  <!-- mark: coin dropping into an honor box -->
-  <g transform="translate(8,6)">
-    <circle cx="36" cy="10.5" r="7" fill="none" class="ink" stroke-width="5"/>
+  <!-- mark: a coin half-sunk into the honor box slot (insert-coin gesture) -->
+  <g transform="translate(8,8)">
     <rect x="9" y="30" width="54" height="36" rx="8" fill="none" class="ink" stroke-width="5"/>
-    <rect x="22.5" y="27" width="27" height="6.4" rx="3.2" fill="#b5482a"/>
+    <rect x="22" y="26.4" width="28" height="6.6" rx="3.3" fill="#b5482a"/>
+    <rect x="-3.4" y="-8.2" width="6.8" height="16.4" rx="3.4" fill="#b5482a" transform="translate(38 12.5) rotate(-22)"/>
   </g>
   <!-- wordmark -->
-  <text x="94" y="61" font-family="Iowan Old Style, Palatino Nova, Palatino, Georgia, serif"
-        font-size="42" font-weight="700" letter-spacing="-0.5" class="fill-ink">HonorBox</text>
+  <text x="94" y="64" font-family="Iowan Old Style, Palatino Nova, Palatino, Georgia, serif"
+        font-size="42" font-weight="700" letter-spacing="-0.6" class="fill-ink">HonorBox</text>
 </svg>
