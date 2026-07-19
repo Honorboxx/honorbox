@@ -167,6 +167,19 @@ function decoratePage(html) {
   return out;
 }
 
+// Frontmatter mistakes surface as a per-file list naming the field, not a
+// TypeError from deep inside a template string (a missing "price" used to
+// die with "Cannot read properties of undefined (reading 'replace')").
+function productProblems(p) {
+  const out = [];
+  if (!p.id) out.push('missing "id" (the page slug, e.g. id: my-tool)');
+  else if (!/^[A-Za-z0-9_-]+$/.test(String(p.id))) out.push(`"id" must be a slug of [A-Za-z0-9_-], got ${JSON.stringify(p.id)}`);
+  if (!p.name) out.push('missing "name"');
+  if (p.price == null || p.price === '') out.push('missing "price" (e.g. price: $29)');
+  if (!Array.isArray(p.features)) out.push('"features" must be a list ("features:" then "  - item" lines)');
+  return out;
+}
+
 function buyButton(p, big = false) {
   if (!p.payment_link || typeof p.payment_link !== 'string') {
     return `<span class="btn btn-disabled" title="Checkout not configured yet">Checkout coming soon</span>`;
@@ -245,10 +258,21 @@ function main() {
   const themeDir = path.join(ROOT, 'themes', config.theme || 'stand');
   const layout = read(path.join(themeDir, 'layout.html'));
 
+  const problems = [];
   const products = listMd(path.join(ROOT, 'products')).map((f) => {
     const { data, body } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
+    for (const problem of productProblems(data)) problems.push(`products/${f}: ${problem}`);
     return { ...data, features: data.features || [], body, html: renderMarkdown(body) };
   }).sort((a, b) => (Number(a.order || 999) - Number(b.order || 999)) || String(a.name).localeCompare(b.name));
+  const ids = new Set();
+  for (const p of products) {
+    if (ids.has(p.id)) problems.push(`products: duplicate id "${p.id}" (pages would overwrite each other)`);
+    ids.add(p.id);
+  }
+  if (problems.length) {
+    console.error(`build: fix your product frontmatter first:\n  ${problems.join('\n  ')}`);
+    process.exit(2);
+  }
 
   const pages = listMd(path.join(ROOT, 'pages')).map((f) => {
     const { data, body } = parseFrontmatter(read(path.join(ROOT, 'pages', f)));
@@ -470,7 +494,7 @@ ${ledgerRows || '<tr><td colspan="5" class="muted">No sales yet. The box is open
 }
 
 module.exports = {
-  escapeHtml, buyButton, productCard, section,
+  escapeHtml, buyButton, productCard, productProblems, section,
   usdPrice, absUrl, injectHead, setMeta, jsonLdScript, guideSlugs,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
 };

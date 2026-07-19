@@ -12,7 +12,7 @@ const {
 const { parseFrontmatter } = require('../lib/fm.js');
 const { renderMarkdown, excerpt, firstRasterImage } = require('../lib/md.js');
 const {
-  section, buyButton, productCard,
+  section, buyButton, productCard, productProblems,
   usdPrice, absUrl, setMeta, jsonLdScript, guideSlugs,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
 } = require('../build.js');
@@ -288,6 +288,22 @@ test('build: showcase drops non-numeric dimensions, keeps rendering', () => {
   assert.ok(!html.includes('onmouseover'), html);
   assert.ok(!html.includes('width='), html);
   assert.ok(html.includes('src="./a.png"'), html);
+});
+
+test('build: product frontmatter mistakes get named, not a TypeError', () => {
+  // Before validation existed, a product page missing "price" crashed the
+  // build with "Cannot read properties of undefined (reading 'replace')"
+  // and a scalar "features:" with "p.features.map is not a function":
+  // zero pointer to the file or the field. The validator names both.
+  const ok = { id: 'my-tool', name: 'My Tool', price: '$29', features: ['a'] };
+  assert.deepEqual(productProblems(ok), []);
+  const problems = productProblems({ tagline: 'no id, name or price', features: 'one' });
+  assert.ok(problems.some((p) => p.includes('"id"')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('"name"')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('"price"')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('"features"') && p.includes('list')), problems.join('; '));
+  // id doubles as the output filename and URL slug: keep it a slug
+  assert.ok(productProblems({ ...ok, id: 'my tool!' }).some((p) => p.includes('"id"')));
 });
 
 test('build: product card variant is an additive class', () => {
