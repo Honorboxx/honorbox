@@ -116,6 +116,19 @@ test('happy path end to end: session fulfilled, ledger row, state advanced', asy
   assert.ok(fs.existsSync(path.join(dir, 'state', 'HAD_ACTIVITY')), 'activity flag set on a run with sales');
 });
 
+test('readJson: missing file falls back, corrupt file fails loud', () => {
+  // A missing state file is a fresh install; a CORRUPT one (truncated
+  // commit, bad merge) silently resetting cursor=0 and processed=[] is a
+  // silent-failure hazard on money-adjacent state. Parse errors must throw
+  // and name the file.
+  const dir = tmp();
+  const missing = path.join(dir, 'nope.json');
+  assert.deepEqual(driver.readJson(missing, { cursor: 0 }), { cursor: 0 });
+  const corrupt = path.join(dir, 'state.json');
+  fs.writeFileSync(corrupt, '{"cursor": 12, "processed": [truncated');
+  assert.throws(() => driver.readJson(corrupt, { cursor: 0 }), new RegExp('state\\.json'));
+});
+
 test('HAD_ACTIVITY is cleared again on a quiet run', async () => {
   // The workflows commit state/ wholesale and gate the ledger-publish step
   // on this file. If a run with no new sales leaves last run's flag on

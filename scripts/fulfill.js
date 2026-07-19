@@ -32,10 +32,17 @@ function arg(name, fallback) {
 }
 
 function readJson(file, fallback) {
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    raw = fs.readFileSync(file, 'utf8');
   } catch {
-    return fallback;
+    return fallback; // no file yet: fresh install
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    // corrupt state must stop the run, not silently reset cursor/processed
+    throw new Error(`${file}: ${e.message}`);
   }
 }
 
