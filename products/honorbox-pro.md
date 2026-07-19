@@ -85,7 +85,7 @@ deliberate.
 ## How delivery works
 
 Checkout asks for your GitHub username. The fulfillment bot invites that account
-to the private `Honorboxx/honorbox-pro` repository — usually within 30 minutes, always
+to the private `Honorboxx/honorbox-pro` repository — usually within a few minutes, always
 within a few hours. You keep access permanently; updates land in the same repo.
 
 ## The honest terms

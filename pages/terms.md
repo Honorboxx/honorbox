@@ -14,7 +14,7 @@ your card details. Contact: **honorbox@proton.me**.
 
 **HonorBox Pro** is access to a private GitHub repository containing themes,
 code modules, and written guides. Delivery is an invitation to that repository,
-sent to the GitHub username you provide at checkout — usually within 30 minutes,
+sent to the GitHub username you provide at checkout — usually within a few minutes,
 always within a few hours. Access is permanent and includes future updates to
 the repository.
 
