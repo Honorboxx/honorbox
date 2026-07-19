@@ -62,6 +62,21 @@ private repos, and a fulfillment config that routes each sale to the right grant
 that doesn't feel gross, and an honest EU VAT primer: what a self-serve seller
 actually owes, when registration thresholds bite, and when to turn on Stripe Tax.
 
+## Who should buy this — and who shouldn't
+
+**Buy Pro if** you sell software that needs license keys (the ed25519 module
+alone is days of correct-crypto work you skip), you run or plan multiple
+products, or you want a storefront that doesn't look like every other fork.
+
+**Skip Pro if** you're selling one PDF or template — the free core is already
+a complete store and Pro adds little you'd use. Skip it too if you're happy
+in CSS (the theme contract is simple; restyle the free theme yourself) or
+you're still experimenting — get a real sale through the free core first.
+Pro solves scaling problems you may not have yet.
+
+Either way the 30-day refund makes trying it nearly risk-free — that's
+deliberate.
+
 ## How delivery works
 
 Checkout asks for your GitHub username. The fulfillment bot invites that account
