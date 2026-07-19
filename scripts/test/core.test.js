@@ -12,7 +12,7 @@ const {
 const { parseFrontmatter } = require('../lib/fm.js');
 const { renderMarkdown, excerpt, firstRasterImage } = require('../lib/md.js');
 const {
-  section, buyButton, productCard,
+  section, buyButton, productCard, productProblems,
   usdPrice, absUrl, setMeta, jsonLdScript, guideSlugs,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
 } = require('../build.js');
@@ -51,6 +51,49 @@ test('extracts username, trims @ and whitespace', () => {
   assert.equal(extractGithubUsername(session({ custom_fields: [] })), null);
 });
 
+test('extracts username from a pasted GitHub profile URL', () => {
+  // Buyers paste their profile link into the username field often enough
+  // that rejecting it costs real sales attention. A bare profile URL
+  // yields the username; anything deeper is passed through untouched so
+  // validation can reject it loudly.
+  const withValue = (value) => session({ custom_fields: [{ key: 'github_username', text: { value } }] });
+  for (const [raw, want] of [
+    ['https://github.com/Octo-Cat', 'Octo-Cat'],
+    ['https://github.com/octocat/', 'octocat'],
+    ['http://www.github.com/octocat', 'octocat'],
+    ['github.com/octocat', 'octocat'],
+    [' @octocat ', 'octocat'],
+  ]) {
+    assert.equal(extractGithubUsername(withValue(raw)), want, raw);
+  }
+  const deep = extractGithubUsername(withValue('https://github.com/octocat/some-repo'));
+  assert.ok(!validUsername(deep), 'a non-profile URL must fail validation, not get guessed at');
+});
+
+test('invite failures classify as transient (retry) or permanent (attention)', () => {
+  const { isTransientInviteError, inviteAttempts, MAX_INVITE_ATTEMPTS } = require('../lib/fulfill-core.js');
+  const withStatus = (status, message = 'x') => Object.assign(new Error(message), { status });
+  // no HTTP verdict at all: DNS, timeout, connection reset
+  assert.ok(isTransientInviteError(new Error('fetch failed')));
+  assert.ok(isTransientInviteError(withStatus(429)));
+  assert.ok(isTransientInviteError(withStatus(502)));
+  assert.ok(isTransientInviteError(withStatus(403, 'You have exceeded a secondary rate limit')));
+  // permanent: bad token, no such user, our own validation
+  assert.ok(!isTransientInviteError(withStatus(404)));
+  assert.ok(!isTransientInviteError(withStatus(401)));
+  assert.ok(!isTransientInviteError(withStatus(403, 'Resource not accessible by personal access token')));
+  assert.ok(!isTransientInviteError(Object.assign(new Error('invalid github username'), { permanent: true })));
+  // attempt counting only sees this session's transient failures
+  const failures = [
+    { session: 'cs_a', transient: true },
+    { session: 'cs_a', transient: true },
+    { session: 'cs_a' }, // permanent entry, not an attempt
+    { session: 'cs_b', transient: true },
+  ];
+  assert.equal(inviteAttempts(failures, 'cs_a'), 2);
+  assert.ok(Number.isInteger(MAX_INVITE_ATTEMPTS) && MAX_INVITE_ATTEMPTS > 1);
+});
+
 test('picks only new, paid, complete, grant-matched sessions', () => {
   const paid = session();
   const unpaid = session({ id: 'cs_2', payment_status: 'unpaid' });
@@ -86,6 +129,24 @@ test('cursor advances to newest, never backwards', () => {
   assert.equal(nextCursor([session({ created: 100 }), session({ created: 300 })], 200), 300);
   assert.equal(nextCursor([session({ created: 100 })], 500), 500);
   assert.equal(nextCursor([], 42), 42);
+});
+
+test('re-scan overlap covers the full 24h checkout-session lifetime', () => {
+  // Stripe Checkout Sessions can complete up to 24h after creation (the
+  // expires_at ceiling). The poll query is created > cursor - OVERLAP, and
+  // the cursor advances on every run, so a session that is still open when
+  // a NEWER sale moves the cursor must remain inside the window until it
+  // expires. Otherwise: buyer opens checkout, pays 7h later, sale is
+  // permanently missed. Scenario:
+  const { OVERLAP_SECONDS } = require('../lib/fulfill-core.js');
+  const t0 = 1_700_000_000;
+  const straggler = session({ id: 'cs_slow', created: t0, status: 'open', payment_status: 'unpaid' });
+  const sale = session({ id: 'cs_fast', created: t0 + 23 * 3600 });
+  const cursor = nextCursor([straggler, sale], t0);
+  assert.ok(
+    typeof OVERLAP_SECONDS === 'number' && cursor - OVERLAP_SECONDS <= straggler.created,
+    `overlap ${OVERLAP_SECONDS}s leaves a still-completable session outside the scan window`
+  );
 });
 
 test('grant matching is by payment link', () => {
@@ -229,6 +290,22 @@ test('build: showcase drops non-numeric dimensions, keeps rendering', () => {
   assert.ok(html.includes('src="./a.png"'), html);
 });
 
+test('build: product frontmatter mistakes get named, not a TypeError', () => {
+  // Before validation existed, a product page missing "price" crashed the
+  // build with "Cannot read properties of undefined (reading 'replace')"
+  // and a scalar "features:" with "p.features.map is not a function":
+  // zero pointer to the file or the field. The validator names both.
+  const ok = { id: 'my-tool', name: 'My Tool', price: '$29', features: ['a'] };
+  assert.deepEqual(productProblems(ok), []);
+  const problems = productProblems({ tagline: 'no id, name or price', features: 'one' });
+  assert.ok(problems.some((p) => p.includes('"id"')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('"name"')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('"price"')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('"features"') && p.includes('list')), problems.join('; '));
+  // id doubles as the output filename and URL slug: keep it a slug
+  assert.ok(productProblems({ ...ok, id: 'my tool!' }).some((p) => p.includes('"id"')));
+});
+
 test('build: product card variant is an additive class', () => {
   const p = { id: 'x', name: 'X', price: '$1', features: [], payment_link: 'https://buy.stripe.com/x' };
   assert.ok(productCard(p).includes('class="product-card"'));
@@ -248,6 +325,16 @@ test('excerpt: first real paragraph, markdown stripped, structure skipped', () =
   assert.equal(excerpt(md), 'First real paragraph with a link and code spanning two lines.');
   assert.equal(excerpt(''), '');
   assert.equal(excerpt('# only a heading'), '');
+});
+
+test('excerpt: wrapped list continuations are not mistaken for the paragraph', () => {
+  // A list item wrapped onto an indented line (the same source shape the
+  // renderer already handles) must be skipped with its list, not returned
+  // as the page's meta description.
+  const md = '- item one\n  wrapped continuation\n- item two\n\nThe real first paragraph.';
+  assert.equal(excerpt(md), 'The real first paragraph.');
+  const ol = '1. step one\n   also wrapped\n2. step two\n\nActual prose.';
+  assert.equal(excerpt(ol), 'Actual prose.');
 });
 
 test('excerpt: truncates long text at a word boundary with ellipsis', () => {
@@ -377,6 +464,28 @@ test('ledger dedup: a session already in the ledger is not re-appended', () => {
   assert.ok(refs.has(ledgerRow(s, grants[0]).ref), 'ref is stable and dedupable');
 });
 
+test('workflow templates: deploy template runs the whole test suite, pins match live', () => {
+  // setup/workflows/ is what sellers copy; .github/workflows/deploy.yml is
+  // what this repo runs. The two drift silently otherwise (the template
+  // shipped running only core.test.js, so a seller's CI skipped the
+  // dispatch and driver suites).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(__dirname, '..', '..');
+  const readWf = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+  const tpl = readWf('setup/workflows/deploy.yml');
+  assert.ok(tpl.includes('node --test scripts/test/*.test.js'),
+    'template must run every test file, not a hand-picked subset');
+  // action pins: for every action used in both files, the SHA must match
+  const pins = (src) => Object.fromEntries(
+    [...src.matchAll(/uses:\s*([^@\s]+)@(\S+)/g)].map((m) => [m[1], m[2]])
+  );
+  const livePins = pins(readWf('.github/workflows/deploy.yml'));
+  for (const [action, sha] of Object.entries(pins(tpl))) {
+    if (livePins[action]) assert.equal(sha, livePins[action], `pin drift for ${action}`);
+  }
+});
+
 test('markdown: bold spanning two source lines renders (not literal **)', () => {
   const html = renderMarkdown('start of para\n**bold across\nthe line break** and more text');
   assert.ok(html.includes('<strong>bold across the line break</strong>'), html);
@@ -388,6 +497,26 @@ test('markdown: wrapped list items keep their continuation lines in the <li>', (
   assert.ok(html.includes('<li><strong>first.</strong> starts here and wraps onto this line</li>'), html);
   assert.ok(html.includes('<li>second item also wraps</li>'), html);
   assert.ok(!html.includes('<p>'), 'continuation must not escape into a paragraph');
+});
+
+test('markdown: image line directly after a paragraph is not swallowed', () => {
+  // No blank line between prose and a standalone image: the paragraph loop
+  // must stop so the image branch can render it, instead of inlining the
+  // raw markdown into the <p> as a stray "!" plus link.
+  const html = renderMarkdown('Some intro text\n![shot](./assets/x.png)');
+  assert.ok(html.includes('<p>Some intro text</p>'), html);
+  assert.ok(html.includes('<figure><img src="./assets/x.png"'), html);
+  assert.ok(!html.includes('!<a'), html);
+});
+
+test('markdown: fence info strings with non-word chars still open a fence', () => {
+  // "objective-c", "c++", "shell-session": real language tags that fail a \w*
+  // info-string match. The un-fenced opener then renders the code as a
+  // paragraph, and the CLOSING fence swallows the rest of the page into <pre>.
+  const html = renderMarkdown('Intro.\n\n```objective-c\ncode <tag>\n```\n\nAfter paragraph.');
+  assert.ok(html.includes('<pre><code>code &lt;tag&gt;</code></pre>'), html);
+  assert.ok(html.includes('<p>After paragraph.</p>'), html);
+  assert.ok(!html.includes('```'), 'no literal fence markers should survive');
 });
 
 test('markdown: wrapped ordered-list items join like unordered ones', () => {

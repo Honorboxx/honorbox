@@ -23,6 +23,12 @@ function inline(s) {
   return out;
 }
 
+// Lines that are markdown structure, not paragraph prose. One definition
+// shared by the renderer's paragraph terminator and excerpt(), so the two
+// can never drift apart again (an image line after a paragraph used to be
+// swallowed because a hand-copied variant here lacked `!\[`).
+const STRUCTURAL = /^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
+
 function renderMarkdown(src) {
   const lines = src.split(/\r?\n/);
   const out = [];
@@ -32,8 +38,9 @@ function renderMarkdown(src) {
 
     if (/^\s*$/.test(line)) { i++; continue; }
 
-    const fence = /^```(\w*)\s*$/.exec(line);
-    if (fence) {
+    // Any line starting ``` opens a fence; the info string ("js",
+    // "objective-c", "c++") is free-form and unused here.
+    if (/^```/.test(line)) {
       const buf = [];
       i++;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) buf.push(lines[i++]);
@@ -103,11 +110,7 @@ function renderMarkdown(src) {
     // paragraph: consume consecutive non-empty, non-structural lines
     const buf = [line];
     i++;
-    while (
-      i < lines.length &&
-      !/^\s*$/.test(lines[i]) &&
-      !/^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|(-{3,}|\*{3,})\s*$)/.test(lines[i])
-    ) {
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !STRUCTURAL.test(lines[i])) {
       buf.push(lines[i++]);
     }
     out.push(`<p>${inline(buf.join(' '))}</p>`);
@@ -115,19 +118,23 @@ function renderMarkdown(src) {
   return out.join('\n');
 }
 
-// Lines that are markdown structure, not paragraph prose. Mirrors the
-// renderer's dispatch above; keep the two in sync.
-const STRUCTURAL = /^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
-
 // Plain-text excerpt of the first real paragraph — for per-page meta
 // descriptions. Skips headings, images, fences, lists, and quotes; strips
 // inline markdown; truncates at a word boundary.
 function excerpt(src, max = 160) {
   const lines = String(src == null ? '' : src).split(/\r?\n/);
   let i = 0;
-  while (i < lines.length && (/^\s*$/.test(lines[i]) || STRUCTURAL.test(lines[i].trim()))) {
-    if (/^```/.test(lines[i].trim())) { i++; while (i < lines.length && !/^```\s*$/.test(lines[i])) i++; }
-    i++;
+  let inBlock = false; // inside a structural block whose wrapped lines are indented
+  while (i < lines.length) {
+    if (/^\s*$/.test(lines[i])) { inBlock = false; i++; continue; }
+    if (STRUCTURAL.test(lines[i].trim())) {
+      if (/^```/.test(lines[i].trim())) { i++; while (i < lines.length && !/^```\s*$/.test(lines[i])) i++; }
+      inBlock = true; i++; continue;
+    }
+    // an indented line continues the list item above (same rule the renderer
+    // applies), so it is part of the block, not the first paragraph
+    if (inBlock && /^\s+\S/.test(lines[i])) { i++; continue; }
+    break;
   }
   const buf = [];
   while (i < lines.length && !/^\s*$/.test(lines[i]) && !STRUCTURAL.test(lines[i].trim())) buf.push(lines[i++]);

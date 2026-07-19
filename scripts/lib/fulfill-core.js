@@ -4,6 +4,12 @@
 
 const crypto = require('crypto');
 
+// Poll re-scan window. Checkout Sessions can complete up to 24h after
+// creation (Stripe's expires_at ceiling), and the cursor tracks creation
+// time, so the window must outlive a session: 24h + 1h slack. Re-scans are
+// free (processed-id set), a missed sale is not.
+const OVERLAP_SECONDS = 25 * 3600;
+
 // GitHub username: 1-39 chars, alphanumeric + hyphen, no leading/trailing
 // hyphen, no consecutive hyphens.
 const USERNAME_RE = /^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$/;
@@ -17,7 +23,31 @@ function extractGithubUsername(session, fieldKey = 'github_username') {
   const f = fields.find((x) => x.key === fieldKey);
   const raw = f && f.text && f.text.value;
   if (!raw) return null;
-  return raw.trim().replace(/^@/, '');
+  let u = raw.trim().replace(/^@/, '');
+  // Buyers paste their profile URL often enough to accept it. Only a BARE
+  // profile link yields a username; anything deeper passes through so
+  // validation rejects it instead of guessing.
+  const m = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/\s]+)\/?$/i.exec(u);
+  if (m) u = m[1].replace(/^@/, '');
+  return u;
+}
+
+// Invite failures split two ways. Transient (no HTTP verdict at all, 429,
+// 5xx, or a rate-limited 403): worth retrying on the next poll, so the
+// session is NOT marked processed. Everything else (no such user, bad
+// token) is a permanent needs_attention row for a human. The attempt cap
+// keeps a stuck transient from retrying forever.
+const MAX_INVITE_ATTEMPTS = 5;
+
+function isTransientInviteError(err) {
+  if (!err || err.permanent) return false;
+  if (err.status == null) return true; // fetch threw: DNS, timeout, reset
+  if (err.status === 429 || err.status >= 500) return true;
+  return err.status === 403 && /rate limit|secondary/i.test(String(err.message));
+}
+
+function inviteAttempts(failures, sessionId) {
+  return failures.filter((f) => f.session === sessionId && f.transient).length;
 }
 
 function isPaidComplete(session) {
@@ -82,6 +112,10 @@ function isRepoOwner(repo, username) {
 }
 
 module.exports = {
+  OVERLAP_SECONDS,
+  MAX_INVITE_ATTEMPTS,
+  isTransientInviteError,
+  inviteAttempts,
   isRepoOwner,
   validUsername,
   extractGithubUsername,

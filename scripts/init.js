@@ -58,12 +58,24 @@ async function confirm(question) {
   return /^y(es)?$/i.test(answer.trim());
 }
 
+const created = []; // Stripe objects made so far, reported if a later step dies
+
 async function main() {
   if (!SK) die('set STRIPE_SECRET_KEY (a restricted key with write on Products, Prices, Payment Links works)');
   if (!name) die('--name is required');
   if (!Number.isInteger(priceCents) || priceCents < 100) die('--price is required, in cents (e.g. 2900 = $29.00)');
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) die('--repo owner/private-product-repo is required');
   if (!id) die('could not derive an id from --name; pass --id');
+
+  // Read the config BEFORE creating anything: it is written to at the end,
+  // and failing only then would leave a live payment link with no
+  // fulfillment grant wired (paid orders that never deliver).
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (e) {
+    die(`cannot read ${configPath} (${e.message}); run from your store repo or pass --config`);
+  }
 
   const priceHuman = `${currency === 'usd' ? '$' : ''}${(priceCents / 100).toFixed(priceCents % 100 ? 2 : 0)}${currency === 'usd' ? '' : ' ' + currency.toUpperCase()}`;
   console.log(`\nThis will create LIVE Stripe objects on your account:`);
@@ -75,9 +87,11 @@ async function main() {
   if (!(await confirm('Create them?'))) { console.log('aborted.'); return; }
 
   const product = await stripe('/v1/products', { name });
+  created.push(`product ${product.id}`);
   const price = await stripe('/v1/prices', {
     product: product.id, unit_amount: String(priceCents), currency,
   });
+  created.push(`price ${price.id}`);
   const link = await stripe('/v1/payment_links', {
     'line_items[0][price]': price.id,
     'line_items[0][quantity]': '1',
@@ -90,10 +104,10 @@ async function main() {
       `You're in. The fulfillment bot will invite your GitHub account to the private ${repo} repository — usually within 30 minutes, always within a few hours. No invite? Reply to your Stripe receipt and it will be fixed or refunded.`,
     allow_promotion_codes: 'true',
   });
+  created.push(`payment link ${link.id}`);
   console.log(`created: ${product.id} / ${price.id} / ${link.id}`);
 
-  // wire config
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  // wire config (parsed and validated up front)
   config.fulfillment = config.fulfillment || [];
   config.fulfillment.push({ payment_link: link.id, product: name, repo, price: price.id });
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
@@ -136,4 +150,9 @@ access permanently; updates land in the same repo.
 Checkout URL: ${link.url}`);
 }
 
-main().catch((e) => die(e.message));
+main().catch((e) => {
+  if (created.length) {
+    console.error(`init: FAILED PARTWAY. Already live on Stripe (archive in the Dashboard, or re-run and reuse): ${created.join(', ')}`);
+  }
+  die(e.message);
+});

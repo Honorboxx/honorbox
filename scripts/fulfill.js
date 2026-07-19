@@ -16,6 +16,10 @@
 const fs = require('fs');
 const path = require('path');
 const {
+  OVERLAP_SECONDS, // re-scan window: outlives a session's 24h lifetime
+  MAX_INVITE_ATTEMPTS,
+  isTransientInviteError,
+  inviteAttempts,
   pickNewPaidSessions,
   extractGithubUsername,
   validUsername,
@@ -25,19 +29,16 @@ const {
   isRepoOwner,
 } = require('./lib/fulfill-core.js');
 
-const OVERLAP_SECONDS = 6 * 3600; // re-scan window; idempotency via processed ids
-
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
 function readJson(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return fallback;
-  }
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8'); } catch { return fallback; } // no file yet: fresh install
+  // a corrupt file must stop the run, not silently reset cursor/processed
+  try { return JSON.parse(raw); } catch (e) { throw new Error(`${file}: ${e.message}`); }
 }
 
 function writeJson(file, obj) {
@@ -48,8 +49,9 @@ function writeJson(file, obj) {
 async function stripeGet(pathname, params, key) {
   const url = new URL(`https://api.stripe.com${pathname}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  // Stripe-Version pinned: the account default may be a broken preview
   const res = await fetch(url, {
-    headers: { Authorization: `Basic ${Buffer.from(key + ':').toString('base64')}` },
+    headers: { Authorization: `Basic ${Buffer.from(key + ':').toString('base64')}`, 'Stripe-Version': '2024-06-20' },
   });
   if (!res.ok) throw new Error(`Stripe ${pathname} -> ${res.status}: ${await res.text()}`);
   return res.json();
@@ -82,7 +84,9 @@ async function inviteCollaborator(repo, username, token) {
   });
   // 201 = invitation created, 204 = already a collaborator (or invite updated)
   if (res.status === 201 || res.status === 204) return res.status;
-  throw new Error(`GitHub invite ${repo} <- ${username} -> ${res.status}: ${await res.text()}`);
+  const hint = res.status === 404 ? ' (no such GitHub user, check for a typo in the checkout field)' : '';
+  const msg = `GitHub invite ${repo} <- ${username} -> ${res.status}${hint}: ${await res.text()}`;
+  throw Object.assign(new Error(msg), { status: res.status });
 }
 
 async function main() {
@@ -125,7 +129,7 @@ async function main() {
     if (ledgerRefs.has(row.ref)) { state.processed.push(s.id); continue; }
     try {
       if (!validUsername(username)) {
-        throw new Error(`invalid github username: ${JSON.stringify(username)}`);
+        throw Object.assign(new Error(`invalid github username: ${JSON.stringify(username)}`), { permanent: true });
       }
       if (isRepoOwner(grant.repo, username)) {
         console.log(`fulfilled ${s.id}: ${username} owns ${grant.repo}, no invite needed`);
@@ -137,8 +141,11 @@ async function main() {
       ledgerRefs.add(row.ref);
       newSales.push(username);
     } catch (err) {
-      console.error(`FAILED ${s.id}: ${err.message}`);
-      state.failures.push({ ...entry, error: String(err.message) });
+      const attempt = inviteAttempts(state.failures, s.id) + 1;
+      const retry = isTransientInviteError(err) && attempt < MAX_INVITE_ATTEMPTS;
+      console.error(`FAILED ${s.id} (attempt ${attempt}${retry ? ', will retry next poll' : ''}): ${err.message}`);
+      state.failures.push({ ...entry, error: String(err.message), ...(retry ? { transient: true } : {}) });
+      if (retry) continue; // NOT marked processed: the next poll retries it
       ledger.rows.push({ ...row, needs_attention: true });
       ledgerRefs.add(row.ref);
     }
@@ -156,11 +163,19 @@ async function main() {
   writeJson(ledgerPath, ledger);
   writeJson(path.join(path.dirname(statePath), 'new-sales.json'), newSales);
   console.log(`done. ledger_rows=${ledger.rows.length} failures_total=${state.failures.length}`);
-  // Signal "attention needed" to the workflow without failing the run.
-  if (fresh.length > 0) fs.writeFileSync(path.join(path.dirname(statePath), 'HAD_ACTIVITY'), '1');
+  // Signal "attention needed" to the workflow without failing the run. The
+  // flag reflects THIS run only: state/ gets committed, so a stale flag from
+  // the last sale would hold the publish gate open forever.
+  const flagPath = path.join(path.dirname(statePath), 'HAD_ACTIVITY');
+  if (fresh.length > 0) fs.writeFileSync(flagPath, '1');
+  else fs.rmSync(flagPath, { force: true });
 }
 
-main().catch((err) => {
-  console.error(err.stack || String(err));
-  process.exit(1);
-});
+module.exports = { readJson, stripeGet, listSessionsSince, inviteCollaborator, main };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.stack || String(err));
+    process.exit(1);
+  });
+}
