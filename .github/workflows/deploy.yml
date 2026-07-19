@@ -34,12 +34,22 @@ jobs:
           path: dist
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+      # Search-engine ping. Host and key location come from store.config.json
+      # and static/, never from a hardcoded name: this file ships in a public
+      # repo people fork, and a fork must ping for its own site or not at all.
+      # No key file in static/ means the store never enrolled, so skip.
       - name: Ping IndexNow
         run: |
-          KEYFILE=$(ls static | grep -m1 '\.txt$')
+          KEYFILE=$(ls static 2>/dev/null | grep -m1 '\.txt$' || true)
+          if [ -z "$KEYFILE" ]; then
+            echo "indexnow: no key file in static/, skipping"
+            exit 0
+          fi
+          SITE=$(node -p "require('./store.config.json').url.replace(/\/+$/, '')")
+          HOST=$(node -p "new URL(require('./store.config.json').url).host")
           KEY="${KEYFILE%.txt}"
           URLS=$(grep -o '<loc>[^<]*</loc>' dist/sitemap.xml | sed 's/<[^>]*>//g' | python3 -c "import sys,json; print(json.dumps([u.strip() for u in sys.stdin if u.strip()]))")
           curl -s -X POST "https://api.indexnow.org/indexnow" \
             -H "Content-Type: application/json; charset=utf-8" \
-            -d "{\"host\":\"honorboxx.github.io\",\"key\":\"$KEY\",\"keyLocation\":\"https://honorboxx.github.io/honorbox/$KEYFILE\",\"urlList\":$URLS}" \
+            -d "{\"host\":\"$HOST\",\"key\":\"$KEY\",\"keyLocation\":\"$SITE/$KEYFILE\",\"urlList\":$URLS}" \
             -o /dev/null -w "indexnow: HTTP %{http_code}\n" || true
