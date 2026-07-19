@@ -11,7 +11,9 @@ Three repos, no servers:
 | ops | private | fulfillment workflow, Stripe key, state, ledger source |
 
 **No webhooks.** Fulfillment is a poll: a scheduled Action lists Stripe Checkout
-Sessions created since the last cursor (with a 6-hour overlap window) and
+Sessions created since the last cursor (with a 25-hour overlap window, wider
+than Stripe's 24-hour default session expiry so a checkout completed a day
+after it was opened is never missed) and
 processes the ones that are `complete` and paid. Idempotency comes from a
 committed set of processed session ids, so re-runs and overlaps are safe.
 
