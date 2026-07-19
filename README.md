@@ -11,7 +11,8 @@ the internet:
   you directly. No middleman fee, ever.
 - **Fulfillment** — a scheduled GitHub Action polls Stripe, invites each buyer's
   GitHub account to your private product repo, and keeps your books. No
-  webhooks, no database, no server to babysit.
+  webhooks required, no database, no server to babysit (opt-in webhook mode
+  available when you want near-instant delivery).
 
 **Live demo: [the HonorBox store](https://honorboxx.github.io/honorbox/)** — this
 repo *is* a working store selling
@@ -39,7 +40,7 @@ buyer ──▶ storefront (GitHub Pages, static)
               ▼
         Stripe Checkout ──▶ money lands in YOUR Stripe balance
               ▲
-              │ polled every 15 min (no webhooks, no server)
+              │ polled on a schedule (no webhooks/server; opt-in webhook mode = instant)
         GitHub Action ──▶ invites buyer to your private product repo
                      ──▶ appends your (private) sales ledger
 ```

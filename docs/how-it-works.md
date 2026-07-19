@@ -29,9 +29,14 @@ product repo. That's deliberate:
 - It's durable — buyers keep access and get updates via `git pull`.
 - It's auditable — the invite log is the entitlement record.
 
-The cost: delivery is not instant (cron ≈ every 15 min, GitHub sometimes delays
-schedules). Set that expectation honestly at checkout. If you need instant
-delivery, HonorBox is not your tool — that's what the middlemen charge for.
+The cost: by default delivery is not instant (the poll runs on a schedule and
+GitHub sometimes delays it). Set that expectation honestly at checkout —
+"usually within minutes, always within a few hours." If you want near-instant
+delivery, opt into [webhook mode](instant-delivery.md): a signed Stripe webhook
+hits a tiny serverless relay you supply (free tier) which fires a GitHub
+`repository_dispatch`, and fulfillment runs in seconds. Polling stays the
+zero-infra default; webhook mode is the upgrade for when minutes aren't fast
+enough.
 
 ## Buyer-input safety
 
