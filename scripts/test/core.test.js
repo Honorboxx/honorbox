@@ -11,6 +11,7 @@ const {
 } = require('../lib/fulfill-core.js');
 const { parseFrontmatter } = require('../lib/fm.js');
 const { renderMarkdown } = require('../lib/md.js');
+const { section, buyButton } = require('../build.js');
 
 const GRANTS = [{ payment_link: 'plink_1', product: 'HonorBox Pro', repo: 'o/r' }];
 
@@ -158,4 +159,39 @@ test('markdown images: src is attribute-escaped (no injection via quote)', () =>
   assert.ok(out.includes('&quot;'), out);
   const amp = renderMarkdown('![c](/img.png?a=1&b=2)');
   assert.ok(amp.includes('src="/img.png?a=1&amp;b=2"'), amp);
+});
+
+test('build: steps-section item href is attribute-escaped (no breakout)', () => {
+  // config is in-repo today, but a step href is a free-form URL — the same
+  // attribute-injection shape reviewers already caught on img src / buy href.
+  // A relative URL passes the scheme gate, so the embedded quote must be
+  // attribute-escaped rather than closing the href and starting onmouseover.
+  const html = section({
+    type: 'steps',
+    title: 'Guides',
+    items: [{ title: 'g', text: 't', href: './guide"onmouseover="alert(1)' }],
+  });
+  assert.ok(!html.includes('"onmouseover="'), html);
+  assert.ok(html.includes('&quot;onmouseover=&quot;'), html);
+});
+
+test('build: steps-section item href neutralizes dangerous schemes', () => {
+  const html = section({
+    type: 'steps',
+    title: 'Guides',
+    items: [{ title: 'g', text: 't', href: 'javascript:alert(1)' }],
+  });
+  assert.ok(!html.includes('javascript:'), html);
+  // relative + http(s) hrefs must still pass through unharmed
+  const ok = section({
+    type: 'steps', title: 'G',
+    items: [{ title: 'g', text: 't', href: './guide.html' }],
+  });
+  assert.ok(ok.includes('href="./guide.html"'), ok);
+});
+
+test('build: buy button escapes payment_link and name (regression guard)', () => {
+  const html = buyButton({ payment_link: 'https://buy.stripe.com/x"><script>', name: 'P', price: '$1' });
+  assert.ok(!html.includes('"><script>'), html);
+  assert.ok(html.includes('&quot;&gt;&lt;script&gt;'), html);
 });
