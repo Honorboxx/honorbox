@@ -7,7 +7,7 @@ price_note: one-time · lifetime access & updates
 badge: Launch price
 payment_link: https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00
 features:
-  - 4 premium storefront themes (dark terminal, brutalist, editorial, midnight)
+  - 4 premium storefront themes; `terminal` is published in the free repo as a full code sample
   - Store doctor — preflight your config, payment links, and fulfillment permissions before launch
   - Ops bots — instant issue acknowledgment + a refund guard that auto-revokes access
   - Stats — tracker-free sales analytics rendered from your Stripe data, one command
@@ -67,6 +67,11 @@ actually owes, when registration thresholds bite, and when to turn on Stripe Tax
 **Buy Pro if** you sell software that needs license keys (the ed25519 module
 alone is days of correct-crypto work you skip), you run or plan multiple
 products, or you want a storefront that doesn't look like every other fork.
+
+Before buying you can audit: a full Pro theme
+([`terminal`, public in the free repo](https://github.com/Honorboxx/honorbox/tree/main/themes/terminal))
+and the [production evidence](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md)
+for every Pro module. The private repo is the delivery channel, not a blindfold.
 
 **Skip Pro if** you're selling one PDF or template — the free core is already
 a complete store and Pro adds little you'd use. Skip it too if you're happy
