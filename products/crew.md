@@ -2,6 +2,8 @@
 id: crew
 order: 2
 name: Crew
+meta_title: Crew ($19): 10 agents and 14 discipline skills for Claude Code
+description: 10 specialist agents and 14 discipline skills for Claude Code, designed as one system and installed in one command. Free tier on GitHub; $19 for the full pack.
 tagline: 10 specialist agents and 14 discipline skills for Claude Code, designed as one system and installed in one command.
 price: $19
 price_note: one-time · lifetime access & updates

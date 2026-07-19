@@ -1,9 +1,10 @@
 ---
-title: Gumroad alternatives (2026): fees, trade-offs, and when DIY wins
+title: Gumroad alternatives for developers (2026): fees and trade-offs
+description: Gumroad alternatives for developers selling code, templates, and tools: Lemon Squeezy, Payhip, Paddle, plain Stripe, and DIY, with real fee math and when each wins.
 ---
 
-Every serious Gumroad alternative in 2026 (Lemon Squeezy, Payhip, Paddle,
-plain Stripe, and full DIY), with the real fee math. Disclosure up front: we
+Every serious Gumroad alternative for developers in 2026 (Lemon Squeezy,
+Payhip, Paddle, plain Stripe, and full DIY), with the real fee math. Disclosure up front: we
 build one of the options. The numbers are real either way; check them against
 each platform's pricing page before deciding.
 
@@ -89,6 +90,7 @@ Per-sale math with every number sourced:
 ## Related
 
 - [Lemon Squeezy vs Gumroad vs DIY (2026): fees compared](./lemon-squeezy-vs-gumroad-vs-diy.html)
+- [Sell code without a marketplace: the direct Stripe + GitHub route](./sell-code-without-a-marketplace.html)
 - [Sell digital products with Stripe Payment Links: the complete guide](./sell-with-stripe-payment-links.html)
 - [Deliver digital products through GitHub: the practical guide](./deliver-digital-products-github.html)
 - What this store sells with its own engine: [HonorBox Pro ($29)](./honorbox-pro.html)

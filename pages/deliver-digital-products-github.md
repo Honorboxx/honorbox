@@ -1,5 +1,6 @@
 ---
 title: Deliver digital products through GitHub: the practical guide
+description: Sell access to a private GitHub repo: invite each buyer as a read-only collaborator, revoke on refund, ship updates with git push, and wire it all to Stripe checkout.
 ---
 
 If your buyers have GitHub accounts, a private repo is a delivery channel with
@@ -74,4 +75,5 @@ must keep product A. Automate it; refund-fraud babysitting doesn't scale.
   [Crew ($19)](./crew.html) exactly this way. Buy either and you're watching
   the pipeline run.
 - [Sell digital products with Stripe Payment Links: the complete guide](./sell-with-stripe-payment-links.html)
-- [Gumroad alternatives (2026): fees, trade-offs, and when DIY wins](./gumroad-alternatives.html)
+- [Sell code without a marketplace: the direct Stripe + GitHub route](./sell-code-without-a-marketplace.html)
+- [Gumroad alternatives for developers (2026): fees and trade-offs](./gumroad-alternatives.html)
