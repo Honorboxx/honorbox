@@ -17,6 +17,9 @@ const fs = require('fs');
 const path = require('path');
 const {
   OVERLAP_SECONDS, // re-scan window: outlives a session's 24h lifetime
+  MAX_INVITE_ATTEMPTS,
+  isTransientInviteError,
+  inviteAttempts,
   pickNewPaidSessions,
   extractGithubUsername,
   validUsername,
@@ -91,7 +94,11 @@ async function inviteCollaborator(repo, username, token) {
   });
   // 201 = invitation created, 204 = already a collaborator (or invite updated)
   if (res.status === 201 || res.status === 204) return res.status;
-  throw new Error(`GitHub invite ${repo} <- ${username} -> ${res.status}: ${await res.text()}`);
+  const hint = res.status === 404 ? ' (no such GitHub user, check for a typo in the checkout field)' : '';
+  throw Object.assign(
+    new Error(`GitHub invite ${repo} <- ${username} -> ${res.status}${hint}: ${await res.text()}`),
+    { status: res.status }
+  );
 }
 
 async function main() {
@@ -134,7 +141,7 @@ async function main() {
     if (ledgerRefs.has(row.ref)) { state.processed.push(s.id); continue; }
     try {
       if (!validUsername(username)) {
-        throw new Error(`invalid github username: ${JSON.stringify(username)}`);
+        throw Object.assign(new Error(`invalid github username: ${JSON.stringify(username)}`), { permanent: true });
       }
       if (isRepoOwner(grant.repo, username)) {
         console.log(`fulfilled ${s.id}: ${username} owns ${grant.repo}, no invite needed`);
@@ -146,8 +153,11 @@ async function main() {
       ledgerRefs.add(row.ref);
       newSales.push(username);
     } catch (err) {
-      console.error(`FAILED ${s.id}: ${err.message}`);
-      state.failures.push({ ...entry, error: String(err.message) });
+      const attempt = inviteAttempts(state.failures, s.id) + 1;
+      const retry = isTransientInviteError(err) && attempt < MAX_INVITE_ATTEMPTS;
+      console.error(`FAILED ${s.id} (attempt ${attempt}${retry ? ', will retry next poll' : ''}): ${err.message}`);
+      state.failures.push({ ...entry, error: String(err.message), ...(retry ? { transient: true } : {}) });
+      if (retry) continue; // NOT marked processed: the next poll retries it
       ledger.rows.push({ ...row, needs_attention: true });
       ledgerRefs.add(row.ref);
     }

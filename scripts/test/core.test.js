@@ -51,6 +51,49 @@ test('extracts username, trims @ and whitespace', () => {
   assert.equal(extractGithubUsername(session({ custom_fields: [] })), null);
 });
 
+test('extracts username from a pasted GitHub profile URL', () => {
+  // Buyers paste their profile link into the username field often enough
+  // that rejecting it costs real sales attention. A bare profile URL
+  // yields the username; anything deeper is passed through untouched so
+  // validation can reject it loudly.
+  const withValue = (value) => session({ custom_fields: [{ key: 'github_username', text: { value } }] });
+  for (const [raw, want] of [
+    ['https://github.com/Octo-Cat', 'Octo-Cat'],
+    ['https://github.com/octocat/', 'octocat'],
+    ['http://www.github.com/octocat', 'octocat'],
+    ['github.com/octocat', 'octocat'],
+    [' @octocat ', 'octocat'],
+  ]) {
+    assert.equal(extractGithubUsername(withValue(raw)), want, raw);
+  }
+  const deep = extractGithubUsername(withValue('https://github.com/octocat/some-repo'));
+  assert.ok(!validUsername(deep), 'a non-profile URL must fail validation, not get guessed at');
+});
+
+test('invite failures classify as transient (retry) or permanent (attention)', () => {
+  const { isTransientInviteError, inviteAttempts, MAX_INVITE_ATTEMPTS } = require('../lib/fulfill-core.js');
+  const withStatus = (status, message = 'x') => Object.assign(new Error(message), { status });
+  // no HTTP verdict at all: DNS, timeout, connection reset
+  assert.ok(isTransientInviteError(new Error('fetch failed')));
+  assert.ok(isTransientInviteError(withStatus(429)));
+  assert.ok(isTransientInviteError(withStatus(502)));
+  assert.ok(isTransientInviteError(withStatus(403, 'You have exceeded a secondary rate limit')));
+  // permanent: bad token, no such user, our own validation
+  assert.ok(!isTransientInviteError(withStatus(404)));
+  assert.ok(!isTransientInviteError(withStatus(401)));
+  assert.ok(!isTransientInviteError(withStatus(403, 'Resource not accessible by personal access token')));
+  assert.ok(!isTransientInviteError(Object.assign(new Error('invalid github username'), { permanent: true })));
+  // attempt counting only sees this session's transient failures
+  const failures = [
+    { session: 'cs_a', transient: true },
+    { session: 'cs_a', transient: true },
+    { session: 'cs_a' }, // permanent entry, not an attempt
+    { session: 'cs_b', transient: true },
+  ];
+  assert.equal(inviteAttempts(failures, 'cs_a'), 2);
+  assert.ok(Number.isInteger(MAX_INVITE_ATTEMPTS) && MAX_INVITE_ATTEMPTS > 1);
+});
+
 test('picks only new, paid, complete, grant-matched sessions', () => {
   const paid = session();
   const unpaid = session({ id: 'cs_2', payment_status: 'unpaid' });

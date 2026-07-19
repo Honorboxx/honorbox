@@ -23,7 +23,31 @@ function extractGithubUsername(session, fieldKey = 'github_username') {
   const f = fields.find((x) => x.key === fieldKey);
   const raw = f && f.text && f.text.value;
   if (!raw) return null;
-  return raw.trim().replace(/^@/, '');
+  let u = raw.trim().replace(/^@/, '');
+  // Buyers paste their profile URL often enough to accept it. Only a BARE
+  // profile link yields a username; anything deeper passes through so
+  // validation rejects it instead of guessing.
+  const m = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/\s]+)\/?$/i.exec(u);
+  if (m) u = m[1].replace(/^@/, '');
+  return u;
+}
+
+// Invite failures split two ways. Transient (no HTTP verdict at all, 429,
+// 5xx, or a rate-limited 403): worth retrying on the next poll, so the
+// session is NOT marked processed. Everything else (no such user, bad
+// token) is a permanent needs_attention row for a human. The attempt cap
+// keeps a stuck transient from retrying forever.
+const MAX_INVITE_ATTEMPTS = 5;
+
+function isTransientInviteError(err) {
+  if (!err || err.permanent) return false;
+  if (err.status == null) return true; // fetch threw: DNS, timeout, reset
+  if (err.status === 429 || err.status >= 500) return true;
+  return err.status === 403 && /rate limit|secondary/i.test(String(err.message));
+}
+
+function inviteAttempts(failures, sessionId) {
+  return failures.filter((f) => f.session === sessionId && f.transient).length;
 }
 
 function isPaidComplete(session) {
@@ -89,6 +113,9 @@ function isRepoOwner(repo, username) {
 
 module.exports = {
   OVERLAP_SECONDS,
+  MAX_INVITE_ATTEMPTS,
+  isTransientInviteError,
+  inviteAttempts,
   isRepoOwner,
   validUsername,
   extractGithubUsername,
