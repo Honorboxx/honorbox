@@ -1,42 +1,81 @@
-/* HonorBox theme: "stand" — a roadside honor-box stand for developers.
-   Warm paper, ink, one stamp-red accent. Serif display, mono numerals.
-   Signature: the insert-coin gesture, drawn large in the hero. */
+/* HonorBox theme: "stand" — the honesty box's cash ledger.
+   Bottle-green covers, a feint-ruled sheet between, the red margin rule,
+   amounts in ink, and one brass coin. Display face: Besley (Clarendon,
+   OFL, self-hosted in assets/fonts/) — the mercantile price-card slab.
+   Signature: the ledger sheet frame — a double red margin rule down the
+   page and the account heading ruled under the hero. */
+
+@font-face {
+  font-family: "Besley";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/besley-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Besley";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("./assets/fonts/besley-latin-800-normal.woff2") format("woff2");
+}
 
 :root {
   color-scheme: light dark;
-  --paper: #f6f1e7;
-  --paper-raise: #fdfaf3;
-  --ink: #23201b;
-  --ink-soft: #5c564c;
-  --line: #d8cfbe;
-  --line-soft: #e4dbc9;
-  --accent: #b5482a;
-  --accent-deep: #9c3a20;
-  --accent-ink: #f6f1e7;
-  --accent-soft: rgba(181, 72, 42, 0.07);
-  --accent-line: rgba(181, 72, 42, 0.45);
-  --ok: #4a6b3f;
-  --shadow-card: 0 1px 2px rgba(35, 32, 27, 0.05), 0 12px 28px -18px rgba(35, 32, 27, 0.18);
-  --serif: "Iowan Old Style", "Palatino Nova", Palatino, Charter, Georgia, serif;
+  /* the open ledger */
+  --paper: #f3f6ee;          /* feint ledger paper, cool green-white */
+  --paper-raise: #fbfcf7;    /* a fresh sheet */
+  --ink: #1a2620;            /* iron-gall green-black */
+  --ink-soft: #55635a;
+  --line: #ccd7c8;
+  --line-soft: #dde5d7;
+  --cover: #1d4a37;          /* bottle-green ledger cover */
+  --cover-deep: #143528;
+  --accent: #be3a28;         /* the red margin rule; annotations in red ink */
+  --accent-soft: rgba(190, 58, 40, 0.06);
+  --accent-line: rgba(190, 58, 40, 0.4);
+  --rule: rgba(190, 58, 40, 0.55);      /* drawn rules, thinner than text red */
+  --brass: #b08c31;          /* the coin — the only gold on the page */
+  --ours: rgba(29, 74, 55, 0.07);       /* our column on the price sheet */
+  --ours-head: #1d4a37;
+  --band-ink: #f3f6ee;       /* text on the covers */
+  --band-soft: #c9d8c4;
+  --buy: #1d4a37;
+  --buy-deep: #143528;
+  --buy-ink: #f3f6ee;
+  --ok: #2e6b45;
+  --shadow-card: 0 1px 2px rgba(26, 38, 32, 0.05), 0 10px 24px -18px rgba(26, 38, 32, 0.16);
+  --display: "Besley", "Rockwell", "Iowan Old Style", Georgia, serif;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%2323201b%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23b5482a%22%2F%3E%3C%2Fsvg%3E');
+  --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%231a2620%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23be3a28%22%2F%3E%3C%2Fsvg%3E');
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #191512;
-    --paper-raise: #221d18;
-    --ink: #ece5d8;
-    --ink-soft: #a89f8f;
-    --line: #3a332b;
-    --line-soft: #2e2822;
-    --accent: #d9603c;
-    --accent-deep: #e57450;
-    --accent-ink: #191512;
-    --accent-soft: rgba(217, 96, 60, 0.1);
-    --accent-line: rgba(217, 96, 60, 0.5);
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 28px -18px rgba(0, 0, 0, 0.55);
-    --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%23ece5d8%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23d9603c%22%2F%3E%3C%2Fsvg%3E');
+    /* the ledger by lamplight */
+    --paper: #101c16;
+    --paper-raise: #182620;
+    --ink: #e9ecdf;
+    --ink-soft: #a0af9d;
+    --line: #32443a;
+    --line-soft: #223129;
+    --cover: #0b1410;
+    --cover-deep: #08100c;
+    --accent: #e15b41;
+    --accent-soft: rgba(225, 91, 65, 0.09);
+    --accent-line: rgba(225, 91, 65, 0.45);
+    --rule: rgba(225, 91, 65, 0.5);
+    --brass: #c9a03b;
+    --ours: rgba(140, 199, 164, 0.09);
+    --ours-head: #8cc7a4;
+    --band-ink: #e9ecdf;
+    --band-soft: #a0af9d;
+    --buy: #c9a03b;          /* by lamplight the brass catches the light */
+    --buy-deep: #d8b155;
+    --buy-ink: #101c16;
+    --ok: #6fae87;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 24px -18px rgba(0, 0, 0, 0.55);
+    --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%23e9ecdf%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23e15b41%22%2F%3E%3C%2Fsvg%3E');
   }
 }
 
@@ -51,62 +90,102 @@ body {
   line-height: 1.65;
 }
 
-main { max-width: 62rem; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 2rem) 4rem; }
-h1, h2, h3 { font-family: var(--serif); line-height: 1.12; letter-spacing: -0.015em; }
-h1 { font-size: clamp(2.25rem, 1.4rem + 3.8vw, 4rem); line-height: 1.05; margin: 0.2em 0 0.3em; text-wrap: balance; }
-h2 { font-size: clamp(1.5rem, 1.2rem + 1.3vw, 2.15rem); margin: 2.2em 0 0.6em; text-wrap: balance; }
-h3 { font-size: clamp(1.1rem, 1rem + 0.5vw, 1.3rem); margin: 0.4em 0; }
+/* the sheet: content column with the red margin rule running its full height */
+main {
+  --gutter: clamp(1rem, 4vw, 2rem);
+  --marginband: clamp(1.1rem, 3vw, 1.7rem);
+  position: relative;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 var(--gutter) 4rem calc(var(--gutter) + var(--marginband));
+}
+main::before {
+  content: ""; position: absolute; z-index: -1;
+  top: 0; bottom: 0; left: var(--gutter);
+  width: 5px;
+  background:
+    linear-gradient(var(--rule), var(--rule)) left / 1px 100% no-repeat,
+    linear-gradient(var(--rule), var(--rule)) right / 1px 100% no-repeat;
+}
+
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.12; letter-spacing: -0.008em; }
+h1 {
+  font-size: clamp(2.1rem, 1.3rem + 3.4vw, 3.55rem); font-weight: 800;
+  line-height: 1.06; margin: 0.2em 0 0.45em; text-wrap: balance;
+  /* the account heading: ruled under with the double red line */
+  padding-bottom: 0.42em;
+  background:
+    linear-gradient(var(--rule), var(--rule)) left bottom / 100% 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) left calc(100% - 3px) / 100% 1px no-repeat;
+}
+h2 { font-size: clamp(1.45rem, 1.15rem + 1.3vw, 2.05rem); margin: 2.2em 0 0.6em; text-wrap: balance; }
+h3 { font-size: clamp(1.08rem, 1rem + 0.5vw, 1.28rem); margin: 0.4em 0; }
 a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
 a:focus-visible, summary:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
 }
-::selection { background: var(--accent); color: var(--accent-ink); }
+::selection { background: var(--cover); color: var(--band-ink); }
+@media (prefers-color-scheme: dark) {
+  ::selection { background: var(--brass); color: #101c16; }
+}
 .muted { color: var(--ink-soft); }
 
 .skip-link {
   position: absolute; left: 1rem; top: -3.5rem; z-index: 20;
-  background: var(--ink); color: var(--paper); font-weight: 600; font-size: 0.9rem;
-  padding: 0.55rem 1rem; border-radius: 8px; text-decoration: none;
+  background: var(--paper-raise); color: var(--ink); font-weight: 600; font-size: 0.9rem;
+  border: 1px solid var(--line);
+  padding: 0.55rem 1rem; border-radius: 6px; text-decoration: none;
   transition: top 0.15s ease;
 }
 .skip-link:focus { top: 1rem; }
 
-/* header / footer */
+/* header / footer — the covers. Full-bleed bottle green, sheet between. */
 .site-head {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   flex-wrap: wrap;
-  max-width: 62rem; margin: 0 auto; padding: 1.35rem clamp(1rem, 4vw, 2rem) 0.9rem;
+  background: var(--cover);
+  border-bottom: 1px solid rgba(176, 140, 49, 0.4);
+  padding: 1.05rem clamp(1rem, 4vw, 2rem) 1rem;
+  padding-left: max(clamp(1rem, 4vw, 2rem), calc(50% - 32rem + clamp(1rem, 4vw, 2rem)));
+  padding-right: max(clamp(1rem, 4vw, 2rem), calc(50% - 32rem + clamp(1rem, 4vw, 2rem)));
+  margin-bottom: clamp(0.8rem, 2.5vw, 1.6rem);
 }
 .brand {
   display: inline-flex; align-items: center; gap: 0.6rem;
-  font-family: var(--serif); font-weight: 700; font-size: 1.3rem; letter-spacing: -0.01em;
-  color: var(--ink); text-decoration: none;
+  font-family: var(--display); font-weight: 700; font-size: 1.28rem; letter-spacing: 0;
+  color: var(--band-ink); text-decoration: none;
+  --accent: var(--brass); /* on the cover, the mark's coin and slot go brass */
 }
-.brand-mark { color: var(--ink); width: 25px; height: 25px; }
+.brand-mark { color: var(--band-ink); width: 25px; height: 25px; }
 .site-nav { display: flex; gap: 0.4rem 1.35rem; flex-wrap: wrap; }
 .site-nav a {
-  color: var(--ink-soft); text-decoration: none; font-size: 0.95rem;
+  color: var(--band-soft); text-decoration: none; font-size: 0.95rem;
   padding: 0.25rem 0; transition: color 0.15s ease;
 }
-.site-nav a:hover { color: var(--accent); }
+.site-nav a:hover { color: var(--band-ink); }
+.site-nav a:focus-visible { outline-color: var(--brass); }
 .site-foot {
-  border-top: 1px solid var(--line);
-  max-width: 62rem; margin: clamp(2rem, 6vw, 4rem) auto 0;
-  padding: 1.8rem clamp(1rem, 4vw, 2rem) 3.5rem;
-  color: var(--ink-soft); font-size: 0.86rem;
+  background: var(--cover);
+  border-top: 1px solid rgba(176, 140, 49, 0.4);
+  color: var(--band-soft); font-size: 0.86rem;
+  margin: clamp(2rem, 6vw, 4rem) 0 0;
+  padding: 1.9rem clamp(1rem, 4vw, 2rem) 3.5rem;
+  padding-left: max(clamp(1rem, 4vw, 2rem), calc(50% - 32rem + clamp(1rem, 4vw, 2rem)));
+  padding-right: max(clamp(1rem, 4vw, 2rem), calc(50% - 32rem + clamp(1rem, 4vw, 2rem)));
 }
 .foot-links { line-height: 2.1; margin: 0 0 0.7rem; }
-.foot-links a { color: var(--ink-soft); }
-.foot-links a:hover { color: var(--accent); }
+.foot-links a { color: var(--band-soft); }
+.foot-links a:hover, .foot-legal a:hover { color: var(--band-ink); }
+.foot-links a:focus-visible, .foot-legal a:focus-visible { outline-color: var(--brass); }
 .foot-legal { margin: 0; }
-.foot-legal a { color: var(--ink-soft); }
+.foot-legal a { color: var(--band-soft); }
 
-/* hero — the insert-coin mark, then the pitch */
+/* hero — the account heading: the box mark, the name, ruled under in red */
 .hero {
-  --mark-top: clamp(2.8rem, 6vw, 4.2rem);
+  --mark-top: clamp(2.2rem, 5vw, 3.4rem);
   position: relative; text-align: center;
-  padding: calc(var(--mark-top) + 55px + clamp(1.5rem, 3.5vw, 2.1rem)) 0 1.5rem;
+  padding: calc(var(--mark-top) + 55px + clamp(1.4rem, 3vw, 1.9rem)) 0 1.5rem;
 }
 .hero::before {
   content: ""; position: absolute; top: var(--mark-top); left: 50%;
@@ -117,7 +196,7 @@ a:focus-visible, summary:focus-visible {
 .hero::after {
   content: ""; position: absolute; top: calc(var(--mark-top) - 24px); left: 50%;
   width: 9px; height: 21px; border-radius: 4.5px;
-  background: var(--accent);
+  background: var(--brass);
   transform: translateX(-50%) rotate(-22deg);
   animation: coin-drop 0.65s cubic-bezier(0.22, 1.35, 0.36, 1) 0.1s both;
 }
@@ -129,7 +208,7 @@ a:focus-visible, summary:focus-visible {
   .hero::after { animation: none; }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-delay: 0ms !important; }
 }
-/* sections settle into view like paper laid on the stand — scroll-driven,
+/* sections settle into view like entries written down the page — scroll-driven,
    CSS-only; browsers without animation-timeline (and reduced-motion users)
    simply get the static page. Transform-only on purpose: no opacity, so
    print, full-page captures, and non-scrolling contexts never hide content. */
@@ -162,7 +241,7 @@ a:focus-visible, summary:focus-visible {
 
 /* buttons */
 .btn {
-  display: inline-block; padding: 0.7rem 1.35rem; border-radius: 8px;
+  display: inline-block; padding: 0.7rem 1.35rem; border-radius: 5px;
   font-weight: 600; text-decoration: none; border: 1.5px solid var(--ink);
   color: var(--ink); background: transparent; font-size: 1rem; line-height: 1.35;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
@@ -171,19 +250,19 @@ a:focus-visible, summary:focus-visible {
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .btn:active { transform: translateY(1px); }
 .btn-buy {
-  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
-  box-shadow: 0 1px 2px rgba(35, 32, 27, 0.15);
+  background: var(--buy); border-color: var(--buy); color: var(--buy-ink);
+  box-shadow: 0 1px 2px rgba(26, 38, 32, 0.18);
 }
 .btn-buy:hover {
-  background: var(--accent-deep); border-color: var(--accent-deep); color: var(--accent-ink);
-  box-shadow: 0 3px 8px rgba(35, 32, 27, 0.2);
+  background: var(--buy-deep); border-color: var(--buy-deep); color: var(--buy-ink);
+  box-shadow: 0 3px 8px rgba(26, 38, 32, 0.22);
   transform: translateY(-1px);
 }
 .btn-big { padding: 0.9rem 1.8rem; font-size: 1.08rem; }
-.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn-ghost:hover { border-color: var(--ours-head); color: var(--ours-head); }
 .btn-disabled { opacity: 0.5; border-style: dashed; cursor: not-allowed; }
 
-/* product cards — tickets on the stand. One flagship ticket, full weight;
+/* product cards — slips filed on the sheet. One flagship slip, full weight;
    companions are slim stubs beneath it. */
 .products {
   display: grid; gap: clamp(1.1rem, 2.5vw, 1.5rem);
@@ -193,7 +272,7 @@ a:focus-visible, summary:focus-visible {
 .product-card {
   --card-pad: clamp(1.35rem, 3vw, 1.9rem);
   display: flex; flex-direction: column;
-  border: 1px solid var(--line); border-radius: 14px;
+  border: 1px solid var(--line); border-radius: 6px;
   background: var(--paper-raise);
   padding: var(--card-pad) var(--card-pad) 0;
   box-shadow: var(--shadow-card);
@@ -202,10 +281,11 @@ a:focus-visible, summary:focus-visible {
 .pc-head { margin-bottom: 0.2rem; }
 .badge {
   display: inline-block; font-family: var(--mono); font-size: 0.7rem;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--accent); border: 1px solid var(--accent-line);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); border: 1.5px solid var(--accent-line);
   background: var(--accent-soft);
-  border-radius: 999px; padding: 0.2rem 0.65rem; margin-bottom: 0.75rem;
+  border-radius: 3px; padding: 0.18rem 0.6rem; margin-bottom: 0.75rem;
+  transform: rotate(-2deg);
 }
 .product-card h3 { margin: 0; font-size: clamp(1.4rem, 1.2rem + 0.8vw, 1.7rem); }
 .product-card h3 a { color: var(--ink); text-decoration: none; }
@@ -213,7 +293,7 @@ a:focus-visible, summary:focus-visible {
 .pc-tagline { color: var(--ink-soft); margin: 0.45rem 0 0; text-wrap: pretty; }
 .pc-features { padding-left: 1.15rem; margin: 1.1rem 0 1.5rem; }
 .pc-features li { margin: 0.45rem 0; font-size: 0.95rem; }
-.pc-features li::marker { color: var(--accent); }
+.pc-features li::marker { color: var(--ok); }
 /* the tear line: perforation + punched notches, full card width */
 .pc-buy {
   display: flex; align-items: center; justify-content: space-between;
@@ -229,12 +309,12 @@ a:focus-visible, summary:focus-visible {
 }
 .pc-buy::before { left: -9px; }
 .pc-buy::after { right: -9px; }
-/* product-page buy box (not a ticket) */
+/* product-page buy box (not a slip) */
 .pc-buy.standalone {
   --card-pad: 0px;
   margin: 1.7rem 0 2.4rem; padding: 1.05rem 1.25rem;
   justify-content: space-between;
-  border: 1px solid var(--line); border-radius: 12px;
+  border: 1px solid var(--line); border-radius: 6px;
   background: var(--paper-raise); box-shadow: var(--shadow-card);
 }
 .pc-buy.standalone::before, .pc-buy.standalone::after { content: none; }
@@ -245,7 +325,7 @@ a:focus-visible, summary:focus-visible {
 .price { font-family: var(--mono); font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
 .price small { font-size: 0.72rem; font-weight: 400; color: var(--ink-soft); display: block; margin-top: 0.2rem; letter-spacing: 0.02em; }
 
-/* flagship — the one full ticket */
+/* flagship — the one full slip */
 .product-card.flagship { width: min(100%, 46rem); }
 .product-card.flagship h3 { font-size: clamp(1.5rem, 1.25rem + 1vw, 1.9rem); }
 .product-card.flagship .pc-tagline { max-width: 65ch; }
@@ -275,7 +355,7 @@ a:focus-visible, summary:focus-visible {
 .product-card.companion .price { font-size: 1.15rem; }
 .product-card.companion .btn { padding: 0.55rem 1.05rem; font-size: 0.92rem; }
 
-/* home sections — ruled like a price sheet */
+/* home sections — entries down the sheet, divided by feint rules */
 .steps, .compare, .faq {
   border-top: 1px solid var(--line-soft);
   margin-top: clamp(2.75rem, 7vw, 4.25rem);
@@ -284,7 +364,7 @@ a:focus-visible, summary:focus-visible {
 .steps h2, .compare h2, .faq h2 { margin-top: 0; margin-bottom: 0.9em; }
 .compare h2 { margin-bottom: 0.4em; }
 
-/* numbered steps: no boxes — mono counters and whitespace do the separating */
+/* numbered steps: no boxes — red entry numbers and whitespace do the separating */
 .steps-list {
   counter-reset: step; list-style: none; padding: 0; margin: 1.6rem 0 0;
   display: grid; gap: 1.9rem 2.6rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
@@ -317,7 +397,7 @@ a:focus-visible, summary:focus-visible {
 .steps-list li:has(h3 a):hover::after { color: var(--accent); transform: translate(3px, -50%); }
 .steps-list li:has(h3 a):hover h3 a { color: var(--accent); }
 
-/* tables — the compare table is the price sheet; HonorBox column gets the tint */
+/* tables — the price sheet; our column gets the green tint */
 .table-scroll { overflow-x: auto; margin-top: 1.2rem; }
 .table-scroll table { min-width: 38rem; }
 table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
@@ -331,8 +411,8 @@ td.rowhead { font-weight: 600; }
 td.num { font-family: var(--mono); }
 tr.attn td { color: var(--accent); }
 .compare .muted { max-width: 66ch; font-size: 0.92rem; margin-bottom: 0; }
-.compare th:last-child, .compare td:last-child { background: var(--accent-soft); }
-.compare th:last-child { color: var(--accent); border-radius: 10px 10px 0 0; }
+.compare th:last-child, .compare td:last-child { background: var(--ours); }
+.compare th:last-child { color: var(--ours-head); border-radius: 5px 5px 0 0; }
 .compare td:last-child { font-weight: 600; }
 
 /* faq */
@@ -353,11 +433,14 @@ tr.attn td { color: var(--accent); }
 .faq details[open] summary::after { transform: rotate(45deg); }
 .faq p { color: var(--ink-soft); margin: 0 0 1.2rem; max-width: 66ch; padding: 0 0.15rem; }
 
-/* notes: a quiet aside under a short printer's rule — no box */
+/* notes: a quiet aside under a short double red rule — no box */
 .note { margin: clamp(2.75rem, 7vw, 4.25rem) 0 0; }
 .note::before {
-  content: ""; display: block; width: 2.6rem;
-  border-top: 2px solid var(--accent); margin-bottom: 1.05rem;
+  content: ""; display: block; width: 2.8rem; height: 4px;
+  background:
+    linear-gradient(var(--rule), var(--rule)) left top / 100% 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) left bottom / 100% 1px no-repeat;
+  margin-bottom: 1.05rem;
 }
 .note p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; max-width: 66ch; }
 
@@ -377,7 +460,7 @@ tr.attn td { color: var(--accent); }
 .showcase figure { margin: 0; }
 .showcase img {
   display: block; width: 100%; height: auto;
-  border: 1px solid var(--line); border-radius: 10px;
+  border: 1px solid var(--line); border-radius: 6px;
   box-shadow: var(--shadow-card);
   transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
@@ -387,20 +470,20 @@ tr.attn td { color: var(--accent); }
 }
 .showcase-link { text-decoration: none; }
 .showcase-link:hover img, .showcase-link:focus-visible img {
-  transform: translateY(-3px); border-color: var(--accent-line);
-  box-shadow: 0 2px 4px rgba(35, 32, 27, 0.06), 0 18px 34px -18px rgba(35, 32, 27, 0.24);
+  transform: translateY(-3px); border-color: var(--ours-head);
+  box-shadow: 0 2px 4px rgba(26, 38, 32, 0.06), 0 18px 34px -18px rgba(26, 38, 32, 0.24);
 }
-.showcase-link:hover figcaption { color: var(--accent); }
-.showcase-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 10px; display: block; }
+.showcase-link:hover figcaption { color: var(--ours-head); }
+.showcase-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; display: block; }
 
 /* prose pages */
 .prose { max-width: 42rem; margin: clamp(1.8rem, 5vw, 3rem) auto 0; }
 /* long-form running text holds a ~60ch measure (≈68 characters in the system
    face); media (pre, tables, galleries) may use the full 42rem column */
 .prose p, .prose ul, .prose ol, .prose blockquote { max-width: 60ch; }
-.prose h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); }
+.prose h1 { font-size: clamp(1.9rem, 1.35rem + 2.2vw, 2.8rem); }
 .prose h1 + p { font-size: 1.05rem; color: var(--ink-soft); }
-.prose h2 { font-size: clamp(1.4rem, 1.2rem + 0.9vw, 1.8rem); margin: 2.4em 0 0.6em; }
+.prose h2 { font-size: clamp(1.35rem, 1.15rem + 0.9vw, 1.7rem); margin: 2.4em 0 0.6em; }
 .prose li { margin: 0.3rem 0; }
 .prose li::marker { color: var(--accent); }
 .product-page { max-width: 42rem; margin: clamp(1.8rem, 5vw, 3rem) auto 0; }
@@ -408,7 +491,7 @@ tr.attn td { color: var(--accent); }
 .product-page .lede { margin-left: 0; margin-right: 0; text-wrap: pretty; }
 .product-page .prose { margin-top: 0; }
 .prose pre {
-  background: var(--paper-raise); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--paper-raise); border: 1px solid var(--line); border-radius: 6px;
   padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.86rem; line-height: 1.55;
 }
 .prose code { font-family: var(--mono); font-size: 0.92em; }
@@ -417,16 +500,21 @@ tr.attn td { color: var(--accent); }
   border-radius: 4px; padding: 0.05em 0.3em;
 }
 .prose blockquote {
-  border-left: 3px solid var(--line); margin: 1.2rem 0; padding: 0.2rem 1.2rem;
+  /* a margin annotation: ruled in red like the ledger's own margin */
+  border-left: none; margin: 1.2rem 0; padding: 0.2rem 1.2rem;
   color: var(--ink-soft);
+  background:
+    linear-gradient(var(--rule), var(--rule)) left / 1px 100% no-repeat,
+    linear-gradient(var(--rule), var(--rule)) 3px 0 / 1px 100% no-repeat;
 }
 .ledger-total { font-size: 1.1rem; }
+.ledger-total strong { font-family: var(--mono); }
 .trust h1 + p { color: var(--ink-soft); }
 
 /* prose images & preview galleries */
 .prose figure { margin: 1.4rem 0; }
 .prose img, .gallery img {
-  max-width: 100%; border: 1px solid var(--line); border-radius: 10px; display: block;
+  max-width: 100%; border: 1px solid var(--line); border-radius: 6px; display: block;
   box-shadow: var(--shadow-card);
 }
 .gallery {
