@@ -133,6 +133,12 @@
       "product": "HonorBox Pro",
       "repo": "Honorboxx/honorbox-pro",
       "price": "price_1TudkyE9zX2nUu1OTQhtZq8Q"
+    },
+    {
+      "payment_link": "plink_1TupsnE9zX2nUu1OV1JOs3x3",
+      "product": "Crew",
+      "repo": "Honorboxx/crew-full",
+      "price": "price_1TupsmE9zX2nUu1O0MI3E8oR"
     }
   ]
 }

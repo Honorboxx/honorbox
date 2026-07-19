@@ -1,0 +1,65 @@
+---
+id: crew
+name: Crew
+tagline: An engineered agent team for Claude Code — drilled, tested as a system, installed in one command.
+price: $19
+price_note: one-time · lifetime access & updates
+badge: New
+payment_link: https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03
+features:
+  - 10 specialist agents — reviewer, debugger, planner, tester, security, perf, refactorer, docs, simplifier, captain
+  - 14 discipline skills — TDD, verification-before-done, PR authoring, changelog honesty, safe shipping
+  - Safety hooks — git guard, secret shield, post-edit format (commented, auditable shell)
+  - CLAUDE.md starter templates for solo and team repos
+  - One-command installer with dry-run, conflict detection, and clean uninstall
+  - Free tier on GitHub — 3 agents + 3 skills, MIT, try before buying
+---
+
+## Why a team, not a folder of prompts
+
+There are thousand-file prompt collections. Crew is the opposite bet: a small
+roster where every agent has one job, explicit boundaries, and named
+escalation paths to the others — designed together, so the reviewer knows what
+the debugger owns, and the verification skill knows what "done" means for both.
+
+The bar for every file: would a staff engineer who reads prompts for a living
+say *"this is engineered"*? No filler methodology, no repeated boilerplate,
+at least one non-obvious insight each. Read the
+[free tier](https://github.com/Honorboxx/crew) and judge the bar yourself —
+the three free agents are the full versions, not teasers.
+
+## What's inside
+
+**Ten agents.** A correctness reviewer that reads *outside* the diff (most
+review-detectable bugs live in unchanged code whose assumptions just broke), a
+systematic debugger that forms ranked hypotheses before touching anything, a
+planner that argues scope before code, plus tester, security, performance,
+refactoring, docs, simplifier, and a captain that coordinates multi-agent work.
+
+**Fourteen skills.** The disciplines that keep agent work honest: test-driven
+development, verification-before-claiming-done, PR authoring, changelog
+honesty, safe shipping checklists, structured handoffs between sessions.
+
+**Hooks and templates.** Auditable shell hooks (block force-pushes to main,
+stop secrets from entering files, format-on-edit) and CLAUDE.md starters for
+solo and team repositories.
+
+**The installer.** POSIX sh, zero dependencies: `--dry-run` narrates before
+touching anything, checksum-based conflict detection refuses to clobber your
+edited files, `--uninstall` removes exactly what it installed. Tested against
+fresh, upgraded, and conflicted setups.
+
+## How delivery works
+
+Checkout asks for your GitHub username. The fulfillment bot invites that
+account to the private `Honorboxx/crew-full` repository — usually within 30
+minutes, always within a few hours. Access is permanent; updates land in the
+same repo.
+
+## The honest terms
+
+- $19, one-time. No subscription.
+- Licensed per developer; use across all your projects.
+- Don't republish or resell the pack itself.
+- 30-day refunds, no questions asked, via Stripe.
+- Support: GitHub issues or honorbox@proton.me.
