@@ -505,6 +505,32 @@ test('decoratePage: additive a11y only — classes and DOM structure survive', (
   assert.ok(!noMain.includes('skip-link'), noMain);
 });
 
+test('grantProblems: a grant holding the checkout URL is called out, not silently dead', () => {
+  const { grantProblems } = require('../lib/fulfill-core.js');
+  // The real shipping shape must stay silent.
+  assert.deepEqual(
+    grantProblems([{ payment_link: 'plink_1', product: 'Crew', repo: 'o/r', price: 'price_1' }]),
+    []
+  );
+  // Sessions carry the plink_ id, never the buyer-facing URL: this grant can
+  // never match, so every paid order is skipped with a green run and exit 0.
+  const url = grantProblems([
+    { payment_link: 'https://buy.stripe.com/8x29AT8J9d7xdqc', product: 'Crew', repo: 'o/r' },
+  ]);
+  assert.equal(url.length, 2, JSON.stringify(url));
+  assert.ok(url[0].includes('checkout URL'), url[0]);
+  assert.ok(url[0].includes('plink_'), 'says what to use instead');
+  assert.ok(url[0].includes('Crew'), 'names the product');
+  assert.ok(url[1].includes('never match'), url[1]);
+
+  // price-only grants are valid (server-created sessions have no payment_link)
+  assert.deepEqual(grantProblems([{ price: 'price_1', product: 'P', repo: 'o/r' }]), []);
+  // a grant with nothing to match on, and one with nowhere to invite
+  assert.ok(grantProblems([{ product: 'P', repo: 'o/r' }])[0].includes('never match'));
+  assert.ok(grantProblems([{ price: 'price_1', product: 'P' }])[0].includes('repo'));
+  assert.deepEqual(grantProblems(undefined), []);
+});
+
 test('theme contract: every shipped theme has print styles', () => {
   // The terminal theme's fixed-position scanline overlay covered the sheet in
   // the browser's default print path: terms/refunds/license saved as a BLANK
