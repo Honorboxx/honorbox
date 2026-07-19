@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseFrontmatter } = require('./lib/fm.js');
-const { renderMarkdown, escapeHtml } = require('./lib/md.js');
+const { renderMarkdown, escapeHtml, excerpt, firstRasterImage } = require('./lib/md.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
@@ -24,6 +24,147 @@ function listMd(dir) {
 function safeHref(url) {
   const u = String(url == null ? '' : url);
   return escapeHtml(/^(https?:\/\/|\/|#|\.)/.test(u) ? u : '#');
+}
+
+// ---------- SEO / social plumbing (pure helpers, covered by core.test.js) ----------
+
+// "$29" / "$29.50" -> "29" / "29.50" for schema.org offers. Null when the
+// frontmatter price isn't a plain USD amount — then the offer is honestly
+// omitted rather than guessed.
+function usdPrice(price) {
+  const m = /^\$(\d+(?:\.\d{1,2})?)$/.exec(String(price == null ? '' : price).trim());
+  return m ? m[1] : null;
+}
+
+// Absolute site URL for a markdown/config-relative reference ("./assets/x.png").
+function absUrl(site, ref) {
+  const u = String(ref == null ? '' : ref);
+  return /^https?:\/\//.test(u) ? u : `${site}/${u.replace(/^\.?\//, '')}`;
+}
+
+function injectHead(html, block) {
+  return html.includes('</head>') ? html.replace('</head>', `${block}\n</head>`) : html;
+}
+
+// Set a <meta ... content="..."> value: replace in place when the theme layout
+// already emits the tag (both themes hardcode og:type="website"), else append
+// to <head>. Attribute-level only — themes own their markup.
+function setMeta(html, attr, name, content) {
+  const esc = escapeHtml(String(content));
+  const re = new RegExp(`(<meta\\s+${attr}="${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s+content=")[^"]*(")`);
+  if (re.test(html)) return html.replace(re, `$1${esc}$2`);
+  return injectHead(html, `<meta ${attr}="${name}" content="${esc}">`);
+}
+
+// JSON-LD <script> with `<` escaped so no config/frontmatter text can ever
+// close the tag (same discipline as attribute escaping elsewhere).
+function jsonLdScript(obj) {
+  return `<script type="application/ld+json">${JSON.stringify(obj).replace(/</g, '\\u003c')}</script>`;
+}
+
+// Pages promoted from home "steps" sections (config-authored ./slug.html
+// links) are guide articles; the rest of pages/ is store chrome (terms etc.).
+function guideSlugs(sections) {
+  const slugs = new Set();
+  for (const s of sections || []) {
+    if (s.type !== 'steps') continue;
+    for (const it of s.items || []) {
+      const m = /^\.\/([A-Za-z0-9_-]+)\.html$/.exec(it.href || '');
+      if (m) slugs.add(m[1]);
+    }
+  }
+  return slugs;
+}
+
+function productJsonLd(p, config, image) {
+  const site = config.url.replace(/\/$/, '');
+  const url = `${site}/${p.id}.html`;
+  const price = usdPrice(p.price);
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: p.name,
+    description: p.tagline || '',
+    url,
+    brand: { '@type': 'Brand', name: config.name },
+  };
+  if (image) ld.image = image;
+  if (price) {
+    ld.offers = {
+      '@type': 'Offer',
+      price,
+      priceCurrency: 'USD',
+      availability: 'https://schema.org/InStock',
+      url,
+    };
+  }
+  return ld;
+}
+
+function homeJsonLd(config, logo) {
+  const site = config.url.replace(/\/$/, '');
+  const org = { '@type': 'Organization', '@id': `${site}/#org`, name: config.name, url: `${site}/` };
+  if (logo) org.logo = logo;
+  if (config.support_email) org.email = config.support_email;
+  if (config.repo) org.sameAs = [`https://github.com/${config.repo}`];
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      org,
+      {
+        '@type': 'WebSite',
+        name: config.name,
+        url: `${site}/`,
+        description: config.tagline || '',
+        publisher: { '@id': `${site}/#org` },
+      },
+    ],
+  };
+}
+
+function articleJsonLd({ title, description, url, config, image, dateModified }) {
+  const site = config.url.replace(/\/$/, '');
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: title,
+    description: description || '',
+    url,
+    mainEntityOfPage: url,
+    author: { '@type': 'Organization', name: config.name, url: `${site}/` },
+    publisher: { '@type': 'Organization', name: config.name, url: `${site}/` },
+  };
+  if (image) ld.image = image;
+  if (dateModified) ld.dateModified = dateModified;
+  return ld;
+}
+
+// entries: [{ path, lastmod, priority }] — path relative to the site root.
+function sitemapXml(site, entries) {
+  const urls = entries.map(({ path: p, lastmod, priority }) => {
+    const parts = [`<loc>${escapeHtml(`${site}/${p}`)}</loc>`];
+    if (lastmod) parts.push(`<lastmod>${escapeHtml(lastmod)}</lastmod>`);
+    if (priority != null) parts.push(`<priority>${priority.toFixed(1)}</priority>`);
+    return `  <url>${parts.join('')}</url>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+}
+
+// Focus-only styling for the skip link, self-contained so no theme file has
+// to know about it; theme vars with fallbacks keep it on-palette.
+const SKIP_LINK_STYLE =
+  '<style>.skip-link{position:absolute;left:-999rem}.skip-link:focus{left:.5rem;top:.5rem;z-index:99;background:var(--paper,#fff);color:var(--ink,#000);outline:2px solid var(--accent,currentColor);padding:.4rem .8rem}</style>';
+
+// Attribute-level a11y pass on a rendered page. Strictly additive: themes own
+// the DOM and class names; we only add attributes and the skip link.
+function decoratePage(html) {
+  let out = html.replace('<main>', '<main id="main">');
+  out = out.replace('<nav class="site-nav">', '<nav class="site-nav" aria-label="Primary">');
+  if (out.includes('<main id="main">')) {
+    out = out.replace(/(<body[^>]*>)/, '$1\n<a class="skip-link" href="#main">Skip to content</a>');
+    out = injectHead(out, SKIP_LINK_STYLE);
+  }
+  return out;
 }
 
 function buyButton(p, big = false) {
@@ -60,7 +201,7 @@ function section(s) {
       .join('')}</ol></section>`;
   }
   if (s.type === 'compare') {
-    const head = `<tr>${s.columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
+    const head = `<tr>${s.columns.map((c) => `<th scope="col">${escapeHtml(c)}</th>`).join('')}</tr>`;
     const rows = s.rows
       .map((r) => `<tr>${r.map((c, i) => `<td${i === 0 ? ' class="rowhead"' : ''}>${escapeHtml(c)}</td>`).join('')}</tr>`)
       .join('');
@@ -86,13 +227,39 @@ function main() {
 
   const products = listMd(path.join(ROOT, 'products')).map((f) => {
     const { data, body } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
-    return { ...data, features: data.features || [], html: renderMarkdown(body) };
+    return { ...data, features: data.features || [], body, html: renderMarkdown(body) };
   });
 
   const pages = listMd(path.join(ROOT, 'pages')).map((f) => {
     const { data, body } = parseFrontmatter(read(path.join(ROOT, 'pages', f)));
-    return { slug: f.replace(/\.md$/, ''), title: data.title || f, html: renderMarkdown(body) };
+    return {
+      slug: f.replace(/\.md$/, ''),
+      title: data.title || f,
+      meta_title: data.meta_title,
+      description: data.description,
+      body,
+      html: renderMarkdown(body),
+    };
   });
+
+  const site = config.url.replace(/\/$/, '');
+  // Sitemap <lastmod> / Article dateModified: honor a pinned BUILD_DATE (CI
+  // can pass one for reproducible builds), else today — same determinism
+  // level as the {{year}} already in the footer.
+  const buildDate = /^\d{4}-\d{2}-\d{2}$/.test(process.env.BUILD_DATE || '')
+    ? process.env.BUILD_DATE
+    : new Date().toISOString().slice(0, 10);
+  // Default social card: config override > the configured theme's real
+  // storefront screenshot (raster — scrapers don't render SVG) > the logo.
+  const themePreview = `assets/previews/${config.theme || 'stand'}.png`;
+  const defaultOgImage = config.og_image
+    ? absUrl(site, config.og_image)
+    : fs.existsSync(path.join(ROOT, themePreview))
+      ? `${site}/${themePreview}`
+      : fs.existsSync(path.join(ROOT, 'assets', 'logo.svg'))
+        ? `${site}/assets/logo.svg`
+        : null;
+  const guides = guideSlugs(config.sections);
 
   function tpl(vars) {
     let out = layout;
@@ -103,7 +270,7 @@ function main() {
   const ledgerFile = path.join(ROOT, 'ledger', 'ledger.json');
   const hasLedger = fs.existsSync(ledgerFile);
 
-  function page({ title, description, slug, content, bodyClass = '' }) {
+  function page({ title, description, slug, content, bodyClass = '', ogTitle, ogType = 'website', ogImage = defaultOgImage, jsonLd, noindex = false }) {
     const nav = [
       `<a href="./">Store</a>`,
       ...(hasLedger ? [`<a href="./trust.html">Ledger</a>`] : []),
@@ -112,11 +279,13 @@ function main() {
     const footer = pages
       .map((p) => `<a href="./${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>`)
       .join(' · ');
-    return tpl({
+    const canonical = `${site}/${slug === 'index' ? '' : slug + '.html'}`;
+    const desc = description || config.tagline || '';
+    let out = tpl({
       lang: 'en',
       title: escapeHtml(title),
-      description: escapeHtml(description || config.tagline || ''),
-      canonical: escapeHtml(`${config.url.replace(/\/$/, '')}/${slug === 'index' ? '' : slug + '.html'}`),
+      description: escapeHtml(desc),
+      canonical: escapeHtml(canonical),
       store_name: escapeHtml(config.name),
       nav,
       content,
@@ -125,6 +294,24 @@ function main() {
       year: String(new Date().getFullYear()),
       body_class: bodyClass,
     });
+    // Social cards: the layouts hardcode og:title/og:description/og:type, so
+    // set them in place (og:title without the " — Store" suffix; the site
+    // name lives in og:site_name) and append what they lack.
+    const shareTitle = ogTitle || title;
+    out = setMeta(out, 'property', 'og:type', ogType);
+    out = setMeta(out, 'property', 'og:title', shareTitle);
+    out = injectHead(out, [
+      `<meta property="og:url" content="${escapeHtml(canonical)}">`,
+      `<meta property="og:site_name" content="${escapeHtml(config.name)}">`,
+      ...(ogImage ? [`<meta property="og:image" content="${escapeHtml(ogImage)}">`] : []),
+      `<meta name="twitter:card" content="${ogImage ? 'summary_large_image' : 'summary'}">`,
+      `<meta name="twitter:title" content="${escapeHtml(shareTitle)}">`,
+      `<meta name="twitter:description" content="${escapeHtml(desc)}">`,
+      ...(ogImage ? [`<meta name="twitter:image" content="${escapeHtml(ogImage)}">`] : []),
+      ...(noindex ? ['<meta name="robots" content="noindex">'] : []),
+      ...(jsonLd ? [jsonLdScript(jsonLd)] : []),
+    ].join('\n'));
+    return decoratePage(out);
   }
 
   // ---------- home ----------
@@ -144,7 +331,16 @@ function main() {
     `<section class="products">${products.map(productCard).join('')}</section>` +
     (config.sections || []).map(section).join('\n');
 
-  write(path.join(DIST, 'index.html'), page({ title: `${config.name} — ${config.tagline}`, slug: 'index', content: home, bodyClass: 'home' }));
+  write(path.join(DIST, 'index.html'), page({
+    // meta_title (config-optional) wins verbatim: Google shows ~60 chars and
+    // the name+tagline default blows well past it.
+    title: config.meta_title || `${config.name} — ${config.tagline}`,
+    ogTitle: config.headline || config.name,
+    slug: 'index',
+    content: home,
+    bodyClass: 'home',
+    jsonLd: homeJsonLd(config, fs.existsSync(path.join(ROOT, 'assets', 'logo.svg')) ? `${site}/assets/logo.svg` : null),
+  }));
 
   // ---------- product pages ----------
   for (const p of products) {
@@ -156,14 +352,42 @@ function main() {
   <div class="prose">${p.html}</div>
   <div class="pc-buy standalone">${buyButton(p, true)}</div>
 </article>`;
-    write(path.join(DIST, `${p.id}.html`), page({ title: `${p.name} — ${config.name}`, description: p.tagline, slug: p.id, content }));
+    const bodyImage = firstRasterImage(p.body);
+    const ogImage = bodyImage ? absUrl(site, bodyImage) : defaultOgImage;
+    write(path.join(DIST, `${p.id}.html`), page({
+      title: p.meta_title || `${p.name} — ${config.name}`,
+      ogTitle: p.name,
+      // frontmatter description > tagline > first paragraph (page() falls
+      // back to config.tagline last)
+      description: p.description || p.tagline || excerpt(p.body),
+      slug: p.id,
+      content,
+      ogType: 'product',
+      ogImage,
+      jsonLd: productJsonLd(p, config, ogImage),
+    }));
   }
 
   // ---------- markdown pages ----------
   for (const p of pages) {
+    const isGuide = guides.has(p.slug);
+    const url = `${site}/${p.slug}.html`;
+    // frontmatter description > first paragraph (page() falls back to
+    // config.tagline last)
+    const desc = p.description || excerpt(p.body);
     write(
       path.join(DIST, `${p.slug}.html`),
-      page({ title: `${p.title} — ${config.name}`, slug: p.slug, content: `<article class="prose"><h1>${escapeHtml(p.title)}</h1>${p.html}</article>` })
+      page({
+        title: p.meta_title || `${p.title} — ${config.name}`,
+        ogTitle: p.title,
+        description: desc,
+        slug: p.slug,
+        content: `<article class="prose"><h1>${escapeHtml(p.title)}</h1>${p.html}</article>`,
+        ogType: isGuide ? 'article' : 'website',
+        jsonLd: isGuide
+          ? articleJsonLd({ title: p.title, description: desc, url, config, image: defaultOgImage, dateModified: buildDate })
+          : undefined,
+      })
     );
   }
 
@@ -184,12 +408,18 @@ function main() {
 buyer country, and an anonymous reference. No names, no emails.</p>
 <p class="ledger-total"><strong>${ledger.total_sales || 0}</strong> sales recorded · last updated ${escapeHtml((ledger.updated || 'never').slice(0, 16).replace('T', ' '))} UTC</p>
 <div class="table-scroll"><table class="ledger">
-<tr><th>Date</th><th>Product</th><th>Amount</th><th>Country</th><th>Ref</th></tr>
+<tr><th scope="col">Date</th><th scope="col">Product</th><th scope="col">Amount</th><th scope="col">Country</th><th scope="col">Ref</th></tr>
 ${ledgerRows || '<tr><td colspan="5" class="muted">No sales yet. The box is open.</td></tr>'}
 </table></div>
 <p class="muted">Raw data: <a href="./ledger/ledger.json">ledger.json</a> · Updated on every fulfillment run.</p>
 </article>`;
-    write(path.join(DIST, 'trust.html'), page({ title: `Public ledger — ${config.name}`, slug: 'trust', content: trust }));
+    write(path.join(DIST, 'trust.html'), page({
+      title: `Public ledger — ${config.name}`,
+      ogTitle: 'Public ledger',
+      description: 'Every sale this store makes — date, product, amount, and buyer country — committed publicly by the fulfillment bot. No names, no emails.',
+      slug: 'trust',
+      content: trust,
+    }));
     write(path.join(DIST, 'ledger', 'ledger.json'), JSON.stringify(ledger, null, 2));
   }
 
@@ -205,20 +435,24 @@ ${ledgerRows || '<tr><td colspan="5" class="muted">No sales yet. The box is open
   fs.copyFileSync(path.join(themeDir, 'style.css'), path.join(DIST, 'style.css'));
   const favicon = path.join(themeDir, 'favicon.svg');
   if (fs.existsSync(favicon)) fs.copyFileSync(favicon, path.join(DIST, 'favicon.svg'));
-  write(path.join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${config.url.replace(/\/$/, '')}/sitemap.xml\n`);
-  const urls = ['', ...(hasLedger ? ['trust.html'] : []), ...products.map((p) => `${p.id}.html`), ...pages.map((p) => `${p.slug}.html`)];
-  write(
-    path.join(DIST, 'sitemap.xml'),
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls
-      .map((u) => `  <url><loc>${config.url.replace(/\/$/, '')}/${u}</loc></url>`)
-      .join('\n')}\n</urlset>\n`
-  );
-  write(path.join(DIST, '404.html'), page({ title: `Not found — ${config.name}`, slug: '404', content: `<article class="prose"><h1>Nothing at this stand</h1><p>That page doesn't exist. <a href="./">Back to the store.</a></p></article>` }));
+  write(path.join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${site}/sitemap.xml\n`);
+  const sitemapEntries = [
+    { path: '', lastmod: buildDate, priority: 1.0 },
+    ...(hasLedger ? [{ path: 'trust.html', lastmod: buildDate, priority: 0.5 }] : []),
+    ...products.map((p) => ({ path: `${p.id}.html`, lastmod: buildDate, priority: 0.9 })),
+    ...pages.map((p) => ({ path: `${p.slug}.html`, lastmod: buildDate, priority: guides.has(p.slug) ? 0.7 : 0.3 })),
+  ];
+  write(path.join(DIST, 'sitemap.xml'), sitemapXml(site, sitemapEntries));
+  write(path.join(DIST, '404.html'), page({ title: `Not found — ${config.name}`, slug: '404', content: `<article class="prose"><h1>Nothing at this stand</h1><p>That page doesn't exist. <a href="./">Back to the store.</a></p></article>`, noindex: true }));
   write(path.join(DIST, '.nojekyll'), '');
 
   console.log(`built dist/: ${products.length} product(s), ${pages.length} page(s), ledger page: ${hasLedger ? 'on' : 'off'}`);
 }
 
-module.exports = { escapeHtml, buyButton, productCard, section };
+module.exports = {
+  escapeHtml, buyButton, productCard, section,
+  usdPrice, absUrl, injectHead, setMeta, jsonLdScript, guideSlugs,
+  productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
+};
 
 if (require.main === module) main();
