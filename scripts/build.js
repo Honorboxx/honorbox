@@ -184,6 +184,38 @@ function productProblems(p) {
   return out;
 }
 
+// The same courtesy for store.config.json. Without it a missing key dies deep
+// in a template string ("Cannot read properties of undefined") naming neither
+// the file nor the field.
+const SECTION_TYPES = ['steps', 'compare', 'faq', 'note', 'showcase'];
+
+function configProblems(c) {
+  const out = [];
+  for (const key of ['name', 'tagline', 'url']) {
+    if (typeof c[key] !== 'string' || !c[key].trim()) out.push(`missing "${key}" (a non-empty string)`);
+  }
+  if (c.sections != null && !Array.isArray(c.sections)) out.push('"sections" must be a list');
+  (Array.isArray(c.sections) ? c.sections : []).forEach((s, i) => {
+    // An unrecognized type used to render as '', so a seller's typo
+    // silently deleted a whole band of the storefront with a green build.
+    if (!s || typeof s !== 'object') out.push(`sections[${i}] must be an object`);
+    else if (!SECTION_TYPES.includes(s.type)) {
+      out.push(`sections[${i}] has unknown type ${JSON.stringify(s.type)} (expected one of: ${SECTION_TYPES.join(', ')})`);
+    }
+  });
+  return out;
+}
+
+// Products and pages share one output namespace and pages are written second,
+// so a colliding slug silently replaces a product page (and its Buy button)
+// with prose. Pure so the collision rule is testable without a real tree.
+function slugProblems(productIds, pageSlugs) {
+  const ids = new Set(productIds);
+  return pageSlugs
+    .filter((slug) => ids.has(slug))
+    .map((slug) => `pages/${slug}.md: slug "${slug}" collides with product id "${slug}" (the page would overwrite the product's checkout)`);
+}
+
 function buyButton(p, big = false) {
   if (!p.payment_link || typeof p.payment_link !== 'string') {
     return `<span class="btn btn-disabled" title="Checkout not configured yet">Checkout coming soon</span>`;
@@ -263,25 +295,25 @@ function main() {
   const layout = read(path.join(themeDir, 'layout.html'));
 
   const problems = [];
+  for (const problem of configProblems(config)) problems.push(`store.config.json: ${problem}`);
   const products = listMd(path.join(ROOT, 'products')).map((f) => {
-    const { data, body } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
+    const { data, body, error } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
+    if (error) problems.push(`products/${f}: ${error}`);
     for (const problem of productProblems(data)) problems.push(`products/${f}: ${problem}`);
     return { ...data, features: data.features || [], body, html: renderMarkdown(body) };
-  }).sort((a, b) => (Number(a.order || 999) - Number(b.order || 999)) || String(a.name).localeCompare(b.name));
+  }).sort((a, b) => (Number(a.order || 999) - Number(b.order || 999)) || String(a.name).localeCompare(b.name, 'en'));
   const ids = new Set();
   for (const p of products) {
     if (ids.has(p.id)) problems.push(`products: duplicate id "${p.id}" (pages would overwrite each other)`);
     ids.add(p.id);
   }
-  if (problems.length) {
-    console.error(`build: fix your product frontmatter first:\n  ${problems.join('\n  ')}`);
-    process.exit(2);
-  }
 
   const pages = listMd(path.join(ROOT, 'pages')).map((f) => {
-    const { data, body } = parseFrontmatter(read(path.join(ROOT, 'pages', f)));
+    const { data, body, error } = parseFrontmatter(read(path.join(ROOT, 'pages', f)));
+    if (error) problems.push(`pages/${f}: ${error}`);
+    const slug = f.replace(/\.md$/, '');
     return {
-      slug: f.replace(/\.md$/, ''),
+      slug,
       title: data.title || f,
       meta_title: data.meta_title,
       description: data.description,
@@ -289,6 +321,12 @@ function main() {
       html: renderMarkdown(body),
     };
   });
+
+  problems.push(...slugProblems(ids, pages.map((p) => p.slug)));
+  if (problems.length) {
+    console.error(`build: fix your store config and frontmatter first:\n  ${problems.join('\n  ')}`);
+    process.exit(2);
+  }
 
   const site = config.url.replace(/\/$/, '');
   // Sitemap <lastmod> / Article dateModified: honor a pinned BUILD_DATE (CI
@@ -498,7 +536,7 @@ ${ledgerRows || '<tr><td colspan="5" class="muted">No sales yet. The box is open
 }
 
 module.exports = {
-  escapeHtml, buyButton, productCard, productProblems, section,
+  escapeHtml, buyButton, productCard, productProblems, configProblems, slugProblems, section,
   usdPrice, absUrl, injectHead, setMeta, jsonLdScript, guideSlugs,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
 };

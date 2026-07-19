@@ -12,7 +12,7 @@ const {
 const { parseFrontmatter } = require('../lib/fm.js');
 const { renderMarkdown, excerpt, firstRasterImage } = require('../lib/md.js');
 const {
-  section, buyButton, productCard, productProblems,
+  section, buyButton, productCard, productProblems, configProblems, slugProblems,
   usdPrice, absUrl, setMeta, jsonLdScript, guideSlugs,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
 } = require('../build.js');
@@ -203,6 +203,38 @@ test('frontmatter: scalars, lists, quoted strings', () => {
   assert.equal(data.price, '$29');
   assert.deepEqual(data.features, ['one', 'two']);
   assert.equal(body.trim(), 'Body here.');
+});
+
+test('frontmatter: a flush-left block sequence is still a list', () => {
+  // YAML allows a sequence at the parent's indentation. It used to match
+  // nothing and fall through, leaving features: [], so the product card
+  // shipped with no selling points at all, and the build stayed green.
+  const { data } = parseFrontmatter(
+    '---\nname: Flush\nfeatures:\n- Lifetime updates\n- Private repo access\n---\nBody.'
+  );
+  assert.deepEqual(data.features, ['Lifetime updates', 'Private repo access']);
+  // indented forms still work, and a list is only consumed while one is open
+  assert.deepEqual(
+    parseFrontmatter('---\nfeatures:\n  - a\n\t- b\n---\n').data.features,
+    ['a', 'b']
+  );
+});
+
+test('frontmatter: an unclosed block is reported, not published as body text', () => {
+  // Without a closing ---, every key rendered as a visible paragraph (leaking
+  // internal notes) and the page title fell back to the filename.
+  const bad = parseFrontmatter('---\ntitle: Refunds\ninternal_note: DRAFT\n\nRefunds within 30 days.\n');
+  assert.ok(bad.error, 'unclosed frontmatter reports an error');
+  assert.match(bad.error, /never closed/);
+  // a plain markdown file with no frontmatter at all is NOT an error
+  const plain = parseFrontmatter('# Just a heading\n\ntext\n');
+  assert.equal(plain.error, undefined);
+  assert.deepEqual(plain.data, {});
+  // a BOM must not defeat the anchor and silently publish the block
+  const bom = parseFrontmatter('﻿---\ntitle: T\n---\nBody.');
+  assert.equal(bom.error, undefined);
+  assert.equal(bom.data.title, 'T');
+  assert.equal(bom.body.trim(), 'Body.');
 });
 
 test('markdown: structure and escaping', () => {
@@ -471,6 +503,47 @@ test('decoratePage: additive a11y only — classes and DOM structure survive', (
   // a theme without a bare <main> gets no dangling skip link
   const noMain = decoratePage('<head></head><body><main class="x"></main></body>');
   assert.ok(!noMain.includes('skip-link'), noMain);
+});
+
+test('configProblems: missing store keys are named, not a TypeError deep in a template', () => {
+  const ok = { name: 'S', tagline: 'T', url: 'https://s.io' };
+  assert.deepEqual(configProblems(ok), []);
+  // each of these used to die as "Cannot read properties of undefined"
+  for (const key of ['name', 'tagline', 'url']) {
+    const bad = { ...ok };
+    delete bad[key];
+    const out = configProblems(bad);
+    assert.equal(out.length, 1, `${key}: ${JSON.stringify(out)}`);
+    assert.ok(out[0].includes(`"${key}"`), out[0]);
+  }
+  assert.ok(configProblems({ ...ok, name: '   ' })[0].includes('"name"'), 'blank is missing');
+});
+
+test('configProblems: a typo in a section type is an error, not a silently deleted band', () => {
+  const base = { name: 'S', tagline: 'T', url: 'https://s.io' };
+  // "stpes" used to fall through section() to '', so the seller's whole
+  // how-it-works band vanished from the storefront with a green build.
+  const typo = configProblems({ ...base, sections: [{ type: 'stpes', title: 'X' }] });
+  assert.equal(typo.length, 1, JSON.stringify(typo));
+  assert.ok(typo[0].includes('unknown type "stpes"'), typo[0]);
+  assert.ok(typo[0].includes('steps'), 'lists the valid types');
+  for (const t of ['steps', 'compare', 'faq', 'note', 'showcase']) {
+    assert.deepEqual(configProblems({ ...base, sections: [{ type: t }] }), [], t);
+  }
+  assert.equal(configProblems({ ...base, sections: ['oops'] }).length, 1, 'non-object entry');
+  assert.equal(configProblems({ ...base, sections: 'nope' }).length, 1, 'sections not a list');
+  // sections is genuinely optional
+  assert.deepEqual(configProblems(base), []);
+});
+
+test('slugProblems: a page may not overwrite a product page', () => {
+  // products are written first, pages second, into one namespace: a
+  // pages/honorbox-pro.md replaced the product page and its Buy button.
+  const out = slugProblems(['honorbox-pro', 'crew'], ['terms', 'honorbox-pro']);
+  assert.equal(out.length, 1, JSON.stringify(out));
+  assert.ok(out[0].includes('honorbox-pro'), out[0]);
+  assert.ok(/checkout/i.test(out[0]), 'says what is lost');
+  assert.deepEqual(slugProblems(['crew'], ['terms', 'privacy']), []);
 });
 
 test('decoratePage: a theme that ships its own skip link does not get a second one', () => {
