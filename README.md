@@ -68,10 +68,11 @@ minutes: [`scripts/fulfill.js`](scripts/fulfill.js).
    manual dashboard steps are in [docs/setup.md](docs/setup.md).)
 3. **Pages**: copy `setup/workflows/deploy.yml` into `.github/workflows/`, enable
    GitHub Pages (Actions source), push. The store deploys.
-4. **Fulfillment**: create a *private* ops repo, copy
+4. **Fulfillment**: create a *private* ops repo. Copy in `scripts/` and your
+   `store.config.json` (the engine reads its grants from it), and
    [`setup/workflows/fulfill.yml.example`](setup/workflows/fulfill.yml.example)
-   plus `scripts/`, add `STRIPE_SECRET_KEY` (restricted key recommended) and a
-   `GH_FULFILL_TOKEN` PAT as secrets.
+   renamed to `.github/workflows/fulfill.yml`. Add `STRIPE_SECRET_KEY`
+   (restricted key recommended) and a `GH_FULFILL_TOKEN` PAT as secrets.
 5. Sell things.
 
 Full walkthrough: [docs/setup.md](docs/setup.md) ·
@@ -120,7 +121,8 @@ the format holds still.
 ## Development
 
 ```
-node --test scripts/test/core.test.js   # unit tests
+npm test                                # the whole suite (what CI runs)
+node --test scripts/test/core.test.js   # one file, while iterating
 node scripts/build.js                   # build storefront -> dist/
 ```
 
