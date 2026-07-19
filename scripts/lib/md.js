@@ -23,6 +23,12 @@ function inline(s) {
   return out;
 }
 
+// Lines that are markdown structure, not paragraph prose. One definition
+// shared by the renderer's paragraph terminator and excerpt(), so the two
+// can never drift apart again (an image line after a paragraph used to be
+// swallowed because a hand-copied variant here lacked `!\[`).
+const STRUCTURAL = /^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
+
 function renderMarkdown(src) {
   const lines = src.split(/\r?\n/);
   const out = [];
@@ -104,21 +110,13 @@ function renderMarkdown(src) {
     // paragraph: consume consecutive non-empty, non-structural lines
     const buf = [line];
     i++;
-    while (
-      i < lines.length &&
-      !/^\s*$/.test(lines[i]) &&
-      !/^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|(-{3,}|\*{3,})\s*$)/.test(lines[i])
-    ) {
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !STRUCTURAL.test(lines[i])) {
       buf.push(lines[i++]);
     }
     out.push(`<p>${inline(buf.join(' '))}</p>`);
   }
   return out.join('\n');
 }
-
-// Lines that are markdown structure, not paragraph prose. Mirrors the
-// renderer's dispatch above; keep the two in sync.
-const STRUCTURAL = /^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
 
 // Plain-text excerpt of the first real paragraph — for per-page meta
 // descriptions. Skips headings, images, fences, lists, and quotes; strips

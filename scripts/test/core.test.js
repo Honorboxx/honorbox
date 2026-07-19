@@ -390,6 +390,16 @@ test('markdown: wrapped list items keep their continuation lines in the <li>', (
   assert.ok(!html.includes('<p>'), 'continuation must not escape into a paragraph');
 });
 
+test('markdown: image line directly after a paragraph is not swallowed', () => {
+  // No blank line between prose and a standalone image: the paragraph loop
+  // must stop so the image branch can render it, instead of inlining the
+  // raw markdown into the <p> as a stray "!" plus link.
+  const html = renderMarkdown('Some intro text\n![shot](./assets/x.png)');
+  assert.ok(html.includes('<p>Some intro text</p>'), html);
+  assert.ok(html.includes('<figure><img src="./assets/x.png"'), html);
+  assert.ok(!html.includes('!<a'), html);
+});
+
 test('markdown: fence info strings with non-word chars still open a fence', () => {
   // "objective-c", "c++", "shell-session": real language tags that fail a \w*
   // info-string match. The un-fenced opener then renders the code as a
