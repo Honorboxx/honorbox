@@ -505,6 +505,22 @@ test('decoratePage: additive a11y only — classes and DOM structure survive', (
   assert.ok(!noMain.includes('skip-link'), noMain);
 });
 
+test('theme contract: every shipped theme has print styles', () => {
+  // The terminal theme's fixed-position scanline overlay covered the sheet in
+  // the browser's default print path: terms/refunds/license saved as a BLANK
+  // PDF. Those are the pages a buyer files and a processor asks for, so a
+  // theme without an @media print block is a shipping defect, not a nicety.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const themes = path.join(__dirname, '..', '..', 'themes');
+  const names = fs.readdirSync(themes).filter((d) => fs.statSync(path.join(themes, d)).isDirectory());
+  assert.ok(names.length >= 2, `expected the shipped themes, got ${names}`);
+  for (const name of names) {
+    const css = fs.readFileSync(path.join(themes, name, 'style.css'), 'utf8');
+    assert.match(css, /@media\s+print/, `theme "${name}" ships no print styles`);
+  }
+});
+
 test('configProblems: missing store keys are named, not a TypeError deep in a template', () => {
   const ok = { name: 'S', tagline: 'T', url: 'https://s.io' };
   assert.deepEqual(configProblems(ok), []);
