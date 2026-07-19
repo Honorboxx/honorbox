@@ -108,4 +108,46 @@ function renderMarkdown(src) {
   return out.join('\n');
 }
 
-module.exports = { renderMarkdown, escapeHtml, inline };
+// Lines that are markdown structure, not paragraph prose. Mirrors the
+// renderer's dispatch above; keep the two in sync.
+const STRUCTURAL = /^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
+
+// Plain-text excerpt of the first real paragraph — for per-page meta
+// descriptions. Skips headings, images, fences, lists, and quotes; strips
+// inline markdown; truncates at a word boundary.
+function excerpt(src, max = 160) {
+  const lines = String(src == null ? '' : src).split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length && (/^\s*$/.test(lines[i]) || STRUCTURAL.test(lines[i].trim()))) {
+    if (/^```/.test(lines[i].trim())) { i++; while (i < lines.length && !/^```\s*$/.test(lines[i])) i++; }
+    i++;
+  }
+  const buf = [];
+  while (i < lines.length && !/^\s*$/.test(lines[i]) && !STRUCTURAL.test(lines[i].trim())) buf.push(lines[i++]);
+  const text = buf.join(' ')
+    .replace(/!\[([^\]]*)\]\([^)\s]+\)/g, '$1') // images before links: same prefix
+    .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return cut.slice(0, space > max * 0.6 ? space : max).replace(/[\s,;:.]+$/, '') + '…';
+}
+
+// First raster image referenced in a markdown body — social-card material.
+// SVG is skipped (link-preview scrapers don't render it); same scheme gate
+// as the renderer.
+function firstRasterImage(src) {
+  const re = /!\[[^\]]*\]\(([^)\s]+)\)/g;
+  let m;
+  while ((m = re.exec(String(src == null ? '' : src)))) {
+    if (/^(https?:\/\/|\/|\.)/.test(m[1]) && /\.(png|jpe?g|webp|gif)$/i.test(m[1])) return m[1];
+  }
+  return null;
+}
+
+module.exports = { renderMarkdown, escapeHtml, inline, excerpt, firstRasterImage };

@@ -10,8 +10,12 @@ const {
   matchGrant,
 } = require('../lib/fulfill-core.js');
 const { parseFrontmatter } = require('../lib/fm.js');
-const { renderMarkdown } = require('../lib/md.js');
-const { section, buyButton } = require('../build.js');
+const { renderMarkdown, excerpt, firstRasterImage } = require('../lib/md.js');
+const {
+  section, buyButton,
+  usdPrice, absUrl, setMeta, jsonLdScript, guideSlugs,
+  productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
+} = require('../build.js');
 
 const GRANTS = [{ payment_link: 'plink_1', product: 'HonorBox Pro', repo: 'o/r' }];
 
@@ -194,6 +198,125 @@ test('build: buy button escapes payment_link and name (regression guard)', () =>
   const html = buyButton({ payment_link: 'https://buy.stripe.com/x"><script>', name: 'P', price: '$1' });
   assert.ok(!html.includes('"><script>'), html);
   assert.ok(html.includes('&quot;&gt;&lt;script&gt;'), html);
+});
+
+test('excerpt: first real paragraph, markdown stripped, structure skipped', () => {
+  // excerpt() takes the markdown body, post-frontmatter (as build.js feeds it)
+  const md = '# Heading\n\n![img](./x.png)\n\n```\ncode\n```\n\nFirst **real** paragraph with a [link](./a.html) and `code`\nspanning two lines.\n\nSecond paragraph.';
+  assert.equal(excerpt(md), 'First real paragraph with a link and code spanning two lines.');
+  assert.equal(excerpt(''), '');
+  assert.equal(excerpt('# only a heading'), '');
+});
+
+test('excerpt: truncates long text at a word boundary with ellipsis', () => {
+  const out = excerpt('word '.repeat(80).trim(), 160);
+  assert.ok(out.length <= 161, String(out.length));
+  assert.ok(out.endsWith('…'), out);
+  assert.ok(!out.includes('  '), out);
+});
+
+test('firstRasterImage: first raster wins, svg and unsafe schemes skipped', () => {
+  const md = '![v](./logo.svg)\n![t](./assets/previews/terminal.png)\n![b](./b.png)';
+  assert.equal(firstRasterImage(md), './assets/previews/terminal.png');
+  assert.equal(firstRasterImage('![x](javascript:alert.png)'), null);
+  assert.equal(firstRasterImage('no images here'), null);
+});
+
+test('usdPrice: frontmatter price strings parse or honestly fail', () => {
+  assert.equal(usdPrice('$29'), '29');
+  assert.equal(usdPrice(' $29.50 '), '29.50');
+  for (const bad of ['29', '$29/mo', 'free', '', null, undefined]) {
+    assert.equal(usdPrice(bad), null, String(bad));
+  }
+});
+
+test('absUrl: resolves relative refs against the site, passes absolutes', () => {
+  assert.equal(absUrl('https://s.io/x', './assets/a.png'), 'https://s.io/x/assets/a.png');
+  assert.equal(absUrl('https://s.io/x', '/assets/a.png'), 'https://s.io/x/assets/a.png');
+  assert.equal(absUrl('https://s.io/x', 'https://cdn.io/a.png'), 'https://cdn.io/a.png');
+});
+
+test('setMeta: replaces the layout-hardcoded og:type in place, else appends', () => {
+  const html = '<head>\n<meta property="og:type" content="website">\n</head>';
+  const replaced = setMeta(html, 'property', 'og:type', 'product');
+  assert.ok(replaced.includes('<meta property="og:type" content="product">'), replaced);
+  assert.ok(!replaced.includes('content="website"'), 'old value must be gone');
+  const appended = setMeta(html, 'property', 'og:url', 'https://s.io/?a=1&b=2');
+  assert.ok(appended.includes('<meta property="og:url" content="https://s.io/?a=1&amp;b=2">'), appended);
+  // attribute breakout via content is escaped
+  const esc = setMeta(html, 'property', 'og:type', '"><script>');
+  assert.ok(!esc.includes('"><script>'), esc);
+});
+
+test('jsonLdScript: </script> in data cannot close the tag', () => {
+  const out = jsonLdScript({ name: 'x</script><script>alert(1)' });
+  assert.ok(!out.includes('</script><script>alert'), out);
+  assert.ok(out.includes('\\u003c/script'), out);
+  assert.ok(out.startsWith('<script type="application/ld+json">'), out);
+});
+
+test('productJsonLd: real price flows from frontmatter into the offer', () => {
+  const config = { name: 'HonorBox', url: 'https://honorboxx.github.io/honorbox/' };
+  const p = { id: 'honorbox-pro', name: 'HonorBox Pro', tagline: 'Premium themes.', price: '$29' };
+  const ld = productJsonLd(p, config, 'https://honorboxx.github.io/honorbox/assets/previews/terminal.png');
+  assert.equal(ld['@type'], 'Product');
+  assert.equal(ld.offers.price, '29');
+  assert.equal(ld.offers.priceCurrency, 'USD');
+  assert.equal(ld.offers.availability, 'https://schema.org/InStock');
+  assert.equal(ld.offers.url, 'https://honorboxx.github.io/honorbox/honorbox-pro.html');
+  assert.equal(ld.url, ld.offers.url);
+  // unparseable price -> no offer, never a guessed number
+  const noPrice = productJsonLd({ ...p, price: 'TBD' }, config, null);
+  assert.equal(noPrice.offers, undefined);
+  assert.equal(noPrice.image, undefined);
+});
+
+test('home/article JSON-LD: config-driven, no fabricated fields', () => {
+  const config = { name: 'HonorBox', url: 'https://s.io/hb', tagline: 'T', repo: 'O/r', support_email: 'x@y.z' };
+  const home = homeJsonLd(config, 'https://s.io/hb/assets/logo.svg');
+  const [org, site] = home['@graph'];
+  assert.equal(org['@type'], 'Organization');
+  assert.deepEqual(org.sameAs, ['https://github.com/O/r']);
+  assert.equal(site['@type'], 'WebSite');
+  assert.equal(site.publisher['@id'], org['@id']);
+  const bare = homeJsonLd({ name: 'X', url: 'https://s.io' }, null)['@graph'][0];
+  assert.ok(!('logo' in bare) && !('sameAs' in bare) && !('email' in bare));
+  const art = articleJsonLd({ title: 'G', description: 'd', url: 'https://s.io/g.html', config, dateModified: '2026-07-19' });
+  assert.equal(art['@type'], 'Article');
+  assert.equal(art.headline, 'G');
+  assert.equal(art.dateModified, '2026-07-19');
+});
+
+test('guideSlugs: internal steps links only', () => {
+  const slugs = guideSlugs([
+    { type: 'steps', items: [{ href: './gumroad-alternatives.html' }, { href: 'https://ext.io/x.html' }, { title: 'no href' }] },
+    { type: 'faq', items: [{ q: 'q', a: 'a' }] },
+  ]);
+  assert.deepEqual([...slugs], ['gumroad-alternatives']);
+});
+
+test('sitemapXml: lastmod + priority per url, loc xml-escaped', () => {
+  const xml = sitemapXml('https://s.io/hb', [
+    { path: '', lastmod: '2026-07-19', priority: 1.0 },
+    { path: 'p.html?a=1&b=2', priority: 0.9 },
+  ]);
+  assert.ok(xml.includes('<loc>https://s.io/hb/</loc><lastmod>2026-07-19</lastmod><priority>1.0</priority>'), xml);
+  assert.ok(xml.includes('a=1&amp;b=2'), xml);
+  assert.ok(!/<lastmod>[^<]*<\/lastmod><\/url>.*p\.html/.test(xml), 'no lastmod invented for entry without one');
+});
+
+test('decoratePage: additive a11y only — classes and DOM structure survive', () => {
+  const pageHtml = '<head></head>\n<body class="home">\n<header class="site-head"><nav class="site-nav"><a href="./">Store</a></nav></header>\n<main>\n<p>x</p>\n</main>\n</body>';
+  const out = decoratePage(pageHtml);
+  assert.ok(out.includes('<main id="main">'), out);
+  assert.ok(out.includes('<nav class="site-nav" aria-label="Primary">'), out);
+  assert.ok(out.includes('<a class="skip-link" href="#main">'), out);
+  // class contract: every original class token still present, DOM order intact
+  for (const cls of ['site-head', 'site-nav', 'home']) assert.ok(out.includes(`class="${cls}"`) || out.includes(`${cls}"`), cls);
+  assert.ok(out.indexOf('skip-link') < out.indexOf('site-head'), 'skip link is first in body');
+  // a theme without a bare <main> gets no dangling skip link
+  const noMain = decoratePage('<head></head><body><main class="x"></main></body>');
+  assert.ok(!noMain.includes('skip-link'), noMain);
 });
 
 test('ledger dedup: a session already in the ledger is not re-appended', () => {
