@@ -2,16 +2,18 @@
   <style>
     .ink { stroke: #0d0d0f; }
     .fill-ink { fill: #0d0d0f; }
+    .coin { fill: #a8862c; }
     @media (prefers-color-scheme: dark) {
       .ink { stroke: #f2f2f4; }
       .fill-ink { fill: #f2f2f4; }
+      .coin { fill: #e8b054; }
     }
   </style>
-  <!-- mark: the insert-coin gesture. The coin, the slot, and the box all print in the same ink. -->
+  <!-- mark: the insert-coin gesture. The box and the slot print in ink; the coin alone is gold. -->
   <g transform="translate(8,8)">
     <rect x="9" y="31" width="54" height="33" rx="8" fill="none" class="ink" stroke-width="5"/>
     <rect x="22" y="27" width="28" height="7" rx="3.5" class="fill-ink"/>
-    <rect x="-3.5" y="-8" width="7" height="16" rx="3.5" class="fill-ink" transform="translate(36 12) rotate(-22)"/>
+    <rect x="-3.5" y="-8" width="7" height="16" rx="3.5" class="coin" transform="translate(36 12) rotate(-22)"/>
   </g>
   <!-- wordmark -->
   <text x="94" y="64" font-family="'Schibsted Grotesk', 'Avenir Next', 'Segoe UI', system-ui, sans-serif"

@@ -1,14 +1,17 @@
 /* HonorBox theme: "stand", the type studio's monochrome.
-   Strict black and white. No color anywhere: the page is carried by type
-   weight, size contrast, spacing, and two chunky devices, a solid ink buy
-   block and one inverted plate. Palette: ink #0d0d0f, white #ffffff, and
-   three functional grays (wash, line, soft text) that are neutral, not
-   tinted. Display face: Schibsted Grotesk (OFL, self-hosted in
-   assets/fonts/). The scheme mirrors perfectly in dark mode: white-on-ink.
-   Signature: the coin, the slot, and the box all print in the same ink;
-   weight is the only hierarchy, and the one thing you can buy is the
-   blackest object on the page. The showcase band's theme screenshots are
-   deliberately the only color on the page: the product supplies it. */
+   Strict black and white, with one struck exception: the coin in the mark
+   is metal. The page is carried by type weight, size contrast, spacing,
+   and two chunky devices, a solid ink buy block and one inverted plate.
+   Palette: ink #0d0d0f, white #ffffff, and three functional grays (wash,
+   line, soft text) that are neutral, not tinted. Display face: Schibsted
+   Grotesk (OFL, self-hosted in assets/fonts/). The scheme mirrors
+   perfectly in dark mode: white-on-ink.
+   Signature: the slot and the box print in ink; the coin alone is gold,
+   the same coin under two lights, deep brass #a8862c on white paper
+   (3.4:1 non-text) and gleam #e8b054 on ink (10:1). Weight is the only
+   hierarchy, and the one thing you can buy is the blackest object on the
+   page. The showcase band's theme screenshots supply the rest of the
+   page's color: the product does. */
 
 @font-face {
   font-family: "Schibsted Grotesk";
@@ -36,7 +39,8 @@
   --plate: #0d0d0f;       /* the inverted device */
   --plate-ink: #f2f2f4;
   --plate-soft: #c9c9cf;
-  --accent: #0d0d0f;      /* the mark and skip link stay ink */
+  --accent: #0d0d0f;      /* the mark's box and slot, and the skip link, stay ink */
+  --coin: #a8862c;        /* the coin alone is metal: deep brass on white paper */
   --display: "Schibsted Grotesk", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -54,6 +58,7 @@
     --plate-ink: #131316;
     --plate-soft: #3f3f46;
     --accent: #f2f2f4;
+    --coin: #e8b054;      /* the same coin under lamplight: gold gleams on ink */
     --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%227%22%20fill%3D%22none%22%20stroke%3D%22%23f2f2f4%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23f2f2f4%22%2F%3E%3C%2Fsvg%3E');
   }
 }
@@ -141,7 +146,7 @@ a:focus-visible, summary:focus-visible {
   content: ""; position: absolute;
   top: calc(clamp(2.6rem, 6vw, 4.4rem) - 22px); left: 43px;
   width: 9px; height: 21px; border-radius: 4.5px;
-  background: var(--ink);
+  background: var(--coin);
   transform: rotate(-22deg);
   animation: coin-drop 0.65s cubic-bezier(0.22, 1.35, 0.36, 1) 0.1s both;
 }
