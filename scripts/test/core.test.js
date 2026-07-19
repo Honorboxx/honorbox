@@ -473,6 +473,27 @@ test('decoratePage: additive a11y only — classes and DOM structure survive', (
   assert.ok(!noMain.includes('skip-link'), noMain);
 });
 
+test('decoratePage: a theme that ships its own skip link does not get a second one', () => {
+  // The stand theme (the shipping default) already has a skip link AND
+  // <main id="main">, so the injection guard passed and every page went out
+  // with the link duplicated. Keyboard users tabbed twice through the same
+  // control, and the injected <style> came after the theme stylesheet, so it
+  // also overrode the theme's designed focus state.
+  const themeOwned =
+    '<head><link rel="stylesheet" href="./style.css"></head>\n<body>\n' +
+    '<a class="skip-link" href="#main">Skip to content</a>\n' +
+    '<header class="site-head"></header>\n<main id="main">\n<p>x</p>\n</main>\n</body>';
+  const out = decoratePage(themeOwned);
+  assert.equal(out.match(/class="skip-link"/g).length, 1, 'exactly one skip link');
+  // the theme styles its own link; injecting ours would win on source order
+  assert.ok(!out.includes('<style>.skip-link'), 'no competing injected style');
+
+  // a theme WITHOUT one still gets both the link and the style it needs
+  const bare = decoratePage('<head></head>\n<body>\n<main>\n<p>x</p>\n</main>\n</body>');
+  assert.equal(bare.match(/class="skip-link"/g).length, 1, 'bare theme gets a link');
+  assert.ok(bare.includes('<style>.skip-link'), 'bare theme gets the style');
+});
+
 test('ledger dedup: a session already in the ledger is not re-appended', () => {
   // simulates the local-runner + Actions safety-net overlap window
   const { pickNewPaidSessions, ledgerRow } = require('../lib/fulfill-core.js');

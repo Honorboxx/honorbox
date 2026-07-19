@@ -160,7 +160,11 @@ const SKIP_LINK_STYLE =
 function decoratePage(html) {
   let out = html.replace('<main>', '<main id="main">');
   out = out.replace('<nav class="site-nav">', '<nav class="site-nav" aria-label="Primary">');
-  if (out.includes('<main id="main">')) {
+  // A theme may ship its own skip link (stand does) and style it itself.
+  // Injecting a second one duplicates the control for keyboard users, and
+  // our <style> lands after the theme stylesheet, so it would also override
+  // the theme's designed focus state. Only fill the gap when there is one.
+  if (out.includes('<main id="main">') && !out.includes('class="skip-link"')) {
     out = out.replace(/(<body[^>]*>)/, '$1\n<a class="skip-link" href="#main">Skip to content</a>');
     out = injectHead(out, SKIP_LINK_STYLE);
   }
