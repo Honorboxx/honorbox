@@ -14,8 +14,12 @@ Stripe account (charges enabled).
      trust and it's the law in most places.
    - `sections`: keep, edit, or delete the marketing sections. They're plain
      JSON; the `compare` and `faq` types cover most needs.
-3. Replace `products/honorbox-pro.md` with your own product file (same
-   frontmatter shape; see comments there). One `.md` per product.
+3. Delete the shipped product files (`products/honorbox-pro.md` and
+   `products/crew.md`) and write your own. One `.md` per product, same
+   frontmatter shape. Both ship with HonorBox's real `payment_link`, so a
+   store that keeps them sends its buyers to HonorBox's checkout and the
+   money lands in HonorBox's Stripe account. The build refuses to produce
+   that store once `repo` is yours, and names the files to fix.
 4. `node scripts/build.js` locally and open `dist/index.html` to preview.
 
 ## 2. Stripe
@@ -35,14 +39,20 @@ correctly-configured Payment Link, and wires `store.config.json` +
      always within a few hours. Trouble? Reply to your receipt."*
    - (Recommended) In Payment Link settings, allow promotion codes; you'll
      want launch coupons.
-3. Paste the Payment Link URL into your product's `payment_link` frontmatter
-   **and** into `store.config.json` → `fulfillment[].payment_link`, with
-   the target private repo in `repo` (e.g. `you/yourproduct-access`).
+3. The link gives you two different values, and they go in two different
+   places:
+   - the **URL** goes in your product's `payment_link` frontmatter; that is
+     what the Buy button opens.
+   - the **id** (starts with `plink_`, visible in the link's URL in the
+     dashboard or via the API) goes in `store.config.json` →
+     `fulfillment[].payment_link`, with the target private repo in `repo`
+     (e.g. `you/yourproduct-access`).
 
-Note the **Payment Link id** (starts with `plink_`, visible in the link's URL
-in the dashboard or via the API). The fulfillment matcher uses the id from the
-session, which Stripe reports as `payment_link`. Put the id, not the URL, in
-`fulfillment[].payment_link`.
+Stripe reports the id, not the URL, on the checkout session, so a URL in
+`fulfillment[].payment_link` matches nothing: the sale is skipped, the run
+still exits green, and the buyer is never invited. `fulfill.js` prints a
+`CONFIG` warning for that shape on every poll, but the grant is easier to
+get right the first time.
 
 ## 3. The product repo
 
@@ -54,8 +64,22 @@ Buyers are invited with read (`pull`) permission. Updates = you push, they pull.
 Copy `setup/workflows/deploy.yml` to `.github/workflows/deploy.yml` in your
 fork (it lives in `setup/` so the template pushes cleanly with minimal token
 scopes). Then: repo → Settings → Pages → Source: **GitHub Actions**. Push to
-`main`; the workflow builds and publishes. Prefer no CI? `node scripts/build.js`
-and push `dist/` to a `gh-pages` branch instead; Pages serves either way.
+`main`; the workflow builds and publishes.
+
+`static/` ships HonorBox's IndexNow key file. Replace it with your own key
+file or delete it: the deploy workflow reads the host and key from
+`store.config.json` and `static/`, and skips the ping when there is no key.
+
+Prefer no CI? Build and publish `dist/` to a `gh-pages` branch yourself.
+`dist/` is in `.gitignore`, so it needs a force-add:
+
+```bash
+node scripts/build.js
+git add -f dist && git commit -m "build"
+git subtree push --prefix dist origin gh-pages
+```
+
+Pages serves either way.
 
 ## 5. Fulfillment (the ops repo)
 
