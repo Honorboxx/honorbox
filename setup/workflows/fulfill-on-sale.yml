@@ -1,0 +1,79 @@
+# HonorBox instant-delivery workflow — TEMPLATE (optional).
+#
+# Companion to fulfill.yml.example: the SAME job, a different trigger. A tiny
+# webhook relay (webhook-mode/ in the HonorBox repo) turns each paid Stripe
+# checkout into a repository_dispatch, so this runs seconds after payment
+# instead of on the next poll.
+#
+# KEEP the scheduled fulfill.yml — it stays as the safety net for when the
+# relay, Stripe webhooks, or Actions hiccup. Both workflows run the same
+# fulfill.js against the same committed state: the processed-session set and
+# the ledger-ref guard make whichever fires second a clean no-op, and the
+# shared `fulfill` concurrency group stops the two from racing the state
+# commit. A sale is delivered exactly once, by whichever runs first.
+#
+# Setup: copy to .github/workflows/fulfill-on-sale.yml in your PRIVATE ops
+# repo. No new secrets here — it uses the same two as fulfill.yml. The new
+# pieces (relay + webhook secret + dispatch token) live on the relay side:
+# see docs/instant-delivery.md.
+
+name: Fulfill on sale
+
+on:
+  repository_dispatch:
+    types: [honorbox_sale]
+
+permissions:
+  contents: write
+
+concurrency:
+  # Shared with the scheduled fulfill.yml on purpose — concurrency groups are
+  # repo-scoped, so a sale-triggered run and a poll run queue behind each
+  # other instead of double-committing state.
+  group: fulfill
+  cancel-in-progress: false
+
+jobs:
+  fulfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Fulfill the sale (same poller logic — truth comes from Stripe, not the webhook)
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          GH_FULFILL_TOKEN: ${{ secrets.GH_FULFILL_TOKEN }}
+          # client_payload is external input: reach it only via env indirection,
+          # never ${{ }} inside `run:` (script-injection surface).
+          DISPATCH_REF: ${{ github.event.client_payload.ref }}
+          DISPATCH_EVENT: ${{ github.event.client_payload.event }}
+        run: |
+          echo "dispatch ref=${DISPATCH_REF} event=${DISPATCH_EVENT}"
+          node scripts/fulfill.js \
+            --config store.config.json \
+            --state state/fulfill-state.json \
+            --ledger ledger/ledger.json
+      - name: Commit state and ledger
+        run: |
+          git config user.name "honorbox-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/ ledger/
+          git diff --cached --quiet || git commit -m "fulfill: $(date -u +%FT%TZ)"
+          git push
+      - name: Publish ledger to storefront
+        if: ${{ vars.PUBLIC_STORE_REPO != '' }}
+        env:
+          GH_FULFILL_TOKEN: ${{ secrets.GH_FULFILL_TOKEN }}
+          PUBLIC_STORE_REPO: ${{ vars.PUBLIC_STORE_REPO }}
+        run: |
+          if [ -f state/HAD_ACTIVITY ]; then
+            git clone --depth 1 "https://x-access-token:${GH_FULFILL_TOKEN}@github.com/${PUBLIC_STORE_REPO}.git" store
+            cp ledger/ledger.json store/ledger/ledger.json
+            cd store
+            git config user.name "honorbox-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add ledger/ledger.json
+            git diff --cached --quiet || { git commit -m "ledger: update"; git push; }
+          fi
