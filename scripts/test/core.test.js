@@ -340,3 +340,16 @@ test('markdown: bold spanning two source lines renders (not literal **)', () => 
   assert.ok(html.includes('<strong>bold across the line break</strong>'), html);
   assert.ok(!html.includes('**'), 'no literal asterisks should survive');
 });
+
+test('markdown: wrapped list items keep their continuation lines in the <li>', () => {
+  const html = renderMarkdown('- **first.** starts here\n  and wraps onto this line\n- second item\n  also wraps');
+  assert.ok(html.includes('<li><strong>first.</strong> starts here and wraps onto this line</li>'), html);
+  assert.ok(html.includes('<li>second item also wraps</li>'), html);
+  assert.ok(!html.includes('<p>'), 'continuation must not escape into a paragraph');
+});
+
+test('markdown: wrapped ordered-list items join like unordered ones', () => {
+  const html = renderMarkdown('1. step one\n   continued\n2. step two');
+  assert.ok(html.includes('<li>step one continued</li>'), html);
+  assert.ok(html.includes('<li>step two</li>'), html);
+});

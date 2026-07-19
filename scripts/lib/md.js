@@ -81,14 +81,21 @@ function renderMarkdown(src) {
 
     if (/^[-*]\s+/.test(line)) {
       const buf = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) buf.push(lines[i++].replace(/^[-*]\s+/, ''));
+      // an indented non-empty line continues the item above (wrapped source)
+      while (i < lines.length && (/^[-*]\s+/.test(lines[i]) || (buf.length && /^\s+\S/.test(lines[i])))) {
+        if (/^[-*]\s+/.test(lines[i])) buf.push(lines[i++].replace(/^[-*]\s+/, ''));
+        else buf[buf.length - 1] += ' ' + lines[i++].trim();
+      }
       out.push(`<ul>${buf.map((li) => `<li>${inline(li)}</li>`).join('')}</ul>`);
       continue;
     }
 
     if (/^\d+\.\s+/.test(line)) {
       const buf = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) buf.push(lines[i++].replace(/^\d+\.\s+/, ''));
+      while (i < lines.length && (/^\d+\.\s+/.test(lines[i]) || (buf.length && /^\s+\S/.test(lines[i])))) {
+        if (/^\d+\.\s+/.test(lines[i])) buf.push(lines[i++].replace(/^\d+\.\s+/, ''));
+        else buf[buf.length - 1] += ' ' + lines[i++].trim();
+      }
       out.push(`<ol>${buf.map((li) => `<li>${inline(li)}</li>`).join('')}</ol>`);
       continue;
     }
