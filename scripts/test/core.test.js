@@ -71,7 +71,7 @@ test('extracts username from a pasted GitHub profile URL', () => {
 });
 
 test('invite failures classify as transient (retry) or permanent (attention)', () => {
-  const { isTransientInviteError, inviteAttempts, MAX_INVITE_ATTEMPTS } = require('../lib/fulfill-core.js');
+  const { isTransientInviteError, inviteAttempts } = require('../lib/fulfill-core.js');
   const withStatus = (status, message = 'x') => Object.assign(new Error(message), { status });
   // no HTTP verdict at all: DNS, timeout, connection reset
   assert.ok(isTransientInviteError(new Error('fetch failed')));
@@ -91,7 +91,32 @@ test('invite failures classify as transient (retry) or permanent (attention)', (
     { session: 'cs_b', transient: true },
   ];
   assert.equal(inviteAttempts(failures, 'cs_a'), 2);
-  assert.ok(Number.isInteger(MAX_INVITE_ATTEMPTS) && MAX_INVITE_ATTEMPTS > 1);
+});
+
+test('transient retries are time-boxed to the delivery promise, not attempt-counted', () => {
+  // An attempt cap of 5 burns out in ~10 minutes on the 2-minute local
+  // runner, which a routine GitHub incident outlasts. The retry budget is
+  // therefore TIME from the first transient failure: 6h, the "always
+  // within a few hours" delivery promise. Attempts are still logged.
+  const { shouldRetryInvite, INVITE_RETRY_WINDOW_SECONDS } = require('../lib/fulfill-core.js');
+  assert.equal(INVITE_RETRY_WINDOW_SECONDS, 6 * 3600);
+  const transient = Object.assign(new Error('bad gateway'), { status: 502 });
+  const permanent = Object.assign(new Error('Not Found'), { status: 404 });
+  const now = Date.parse('2026-07-19T12:00:00Z');
+  const at = (iso, over = {}) => ({ session: 'cs_a', ts: iso, transient: true, ...over });
+  // first failure ever: retry
+  assert.ok(shouldRetryInvite(transient, [], 'cs_a', now));
+  // still inside the window: retry, however many attempts are logged
+  const young = [at('2026-07-19T07:00:01Z'), at('2026-07-19T09:00:00Z'), at('2026-07-19T11:00:00Z')];
+  assert.ok(shouldRetryInvite(transient, young, 'cs_a', now));
+  // first transient failure older than the window: give up, surface it
+  const old = [at('2026-07-19T05:59:59Z'), at('2026-07-19T11:58:00Z')];
+  assert.ok(!shouldRetryInvite(transient, old, 'cs_a', now));
+  // a permanent error never retries, window or not
+  assert.ok(!shouldRetryInvite(permanent, [], 'cs_a', now));
+  // another session's failures and non-transient entries do not start the clock
+  const noise = [at('2026-07-19T01:00:00Z', { session: 'cs_b' }), { session: 'cs_a', ts: '2026-07-19T01:00:00Z' }];
+  assert.ok(shouldRetryInvite(transient, noise, 'cs_a', now));
 });
 
 test('picks only new, paid, complete, grant-matched sessions', () => {

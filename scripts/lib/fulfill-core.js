@@ -35,15 +35,24 @@ function extractGithubUsername(session, fieldKey = 'github_username') {
 // Invite failures split two ways. Transient (no HTTP verdict at all, 429,
 // 5xx, or a rate-limited 403): worth retrying on the next poll, so the
 // session is NOT marked processed. Everything else (no such user, bad
-// token) is a permanent needs_attention row for a human. The attempt cap
-// keeps a stuck transient from retrying forever.
-const MAX_INVITE_ATTEMPTS = 5;
-
+// token) is a permanent needs_attention row for a human.
 function isTransientInviteError(err) {
   if (!err || err.permanent) return false;
   if (err.status == null) return true; // fetch threw: DNS, timeout, reset
   if (err.status === 429 || err.status >= 500) return true;
   return err.status === 403 && /rate limit|secondary/i.test(String(err.message));
+}
+
+// The retry budget is TIME, not attempts: an attempt cap burns out in
+// minutes on a fast poll cadence, which a routine GitHub incident
+// outlasts. Retries run for 6h from the FIRST transient failure (the
+// "always within a few hours" delivery promise), then surface to a human.
+const INVITE_RETRY_WINDOW_SECONDS = 6 * 3600;
+
+function shouldRetryInvite(err, failures, sessionId, now = Date.now()) {
+  if (!isTransientInviteError(err)) return false;
+  const first = failures.find((f) => f.session === sessionId && f.transient);
+  return !first || now - Date.parse(first.ts) < INVITE_RETRY_WINDOW_SECONDS * 1000;
 }
 
 function inviteAttempts(failures, sessionId) {
@@ -113,8 +122,9 @@ function isRepoOwner(repo, username) {
 
 module.exports = {
   OVERLAP_SECONDS,
-  MAX_INVITE_ATTEMPTS,
+  INVITE_RETRY_WINDOW_SECONDS,
   isTransientInviteError,
+  shouldRetryInvite,
   inviteAttempts,
   isRepoOwner,
   validUsername,

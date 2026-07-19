@@ -17,8 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   OVERLAP_SECONDS, // re-scan window: outlives a session's 24h lifetime
-  MAX_INVITE_ATTEMPTS,
-  isTransientInviteError,
+  shouldRetryInvite,
   inviteAttempts,
   pickNewPaidSessions,
   extractGithubUsername,
@@ -142,7 +141,8 @@ async function main() {
       newSales.push(username);
     } catch (err) {
       const attempt = inviteAttempts(state.failures, s.id) + 1;
-      const retry = isTransientInviteError(err) && attempt < MAX_INVITE_ATTEMPTS;
+      // retry budget is 6h from the first transient failure, then a human
+      const retry = shouldRetryInvite(err, state.failures, s.id);
       console.error(`FAILED ${s.id} (attempt ${attempt}${retry ? ', will retry next poll' : ''}): ${err.message}`);
       state.failures.push({ ...entry, error: String(err.message), ...(retry ? { transient: true } : {}) });
       if (retry) continue; // NOT marked processed: the next poll retries it

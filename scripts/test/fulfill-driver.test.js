@@ -153,15 +153,23 @@ test('permanent invite failure (404 user) goes straight to needs_attention with 
   assert.equal(ledger.rows[0].needs_attention, true);
 });
 
-test('transient retries are bounded: attempt cap converts to needs_attention', async () => {
+test('transient retries are time-boxed: past the 6h window they convert to needs_attention', async () => {
   const dir = tmp();
   const s = paidSession('cs_cap_1', 1_700_000_000);
   const stripe = { match: 'api.stripe.com', res: () => jsonRes({ data: [s], has_more: false }) };
   const flaky = { match: 'api.github.com', res: () => jsonRes({ message: 'bad gateway' }, 502) };
-  const { MAX_INVITE_ATTEMPTS } = require('../lib/fulfill-core.js');
-  for (let i = 0; i < MAX_INVITE_ATTEMPTS; i++) await runMain(dir, [stripe, flaky]);
-  const state = JSON.parse(fs.readFileSync(path.join(dir, 'state', 'fulfill-state.json'), 'utf8'));
-  assert.deepEqual(state.processed, ['cs_cap_1'], 'cap reached: stop retrying, surface it');
+  // failures 1..3 inside the window: still retrying, attempts logged
+  for (let i = 0; i < 3; i++) await runMain(dir, [stripe, flaky]);
+  const statePath = path.join(dir, 'state', 'fulfill-state.json');
+  let state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  assert.deepEqual(state.processed, [], 'still inside the retry window');
+  assert.equal(state.failures.length, 3, 'every attempt is logged');
+  // age the FIRST transient failure past the window and fail once more
+  state.failures[0].ts = new Date(Date.now() - 7 * 3600 * 1000).toISOString();
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+  await runMain(dir, [stripe, flaky]);
+  state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  assert.deepEqual(state.processed, ['cs_cap_1'], 'window exhausted: stop retrying, surface it');
   const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
   assert.equal(ledger.rows.filter((r) => r.needs_attention).length, 1);
 });
