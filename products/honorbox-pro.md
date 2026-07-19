@@ -2,6 +2,8 @@
 id: honorbox-pro
 order: 1
 name: HonorBox Pro
+meta_title: HonorBox Pro ($29): license keys, 4 themes, ops bots for your Stripe + GitHub store
+description: An offline license-key module, four premium themes, ops bots, and tracker-free sales stats for your Stripe + GitHub store. $29 one-time, lifetime updates.
 tagline: An offline license-key module, four premium themes, ops bots, tracker-free sales stats, and multi-product patterns for your HonorBox store.
 price: $29
 price_note: one-time · lifetime access & updates

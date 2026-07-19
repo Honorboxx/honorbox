@@ -1,5 +1,6 @@
 ---
 title: Lemon Squeezy vs Gumroad vs DIY (2026): fees compared
+description: Lemon Squeezy vs Gumroad fees in 2026, from their live pricing pages: 5% + 50¢ vs 10% + 50¢ plus processing, the per-sale math, and when DIY on Stripe beats both.
 ---
 
 Lemon Squeezy, Gumroad, or doing it yourself on your own Stripe account: the
@@ -96,7 +97,8 @@ need GitHub accounts, delivery is an invite that usually lands in minutes
 
 ## Related
 
-- [Gumroad alternatives (2026): the wider field](./gumroad-alternatives.html)
+- [Gumroad alternatives for developers (2026): the wider field](./gumroad-alternatives.html)
+- [Sell code without a marketplace: the direct Stripe + GitHub route](./sell-code-without-a-marketplace.html)
 - [Sell digital products with Stripe Payment Links: the complete guide](./sell-with-stripe-payment-links.html)
 - [Deliver digital products through GitHub: the practical guide](./deliver-digital-products-github.html)
 - What this store sells with its own engine: [HonorBox Pro ($29)](./honorbox-pro.html)

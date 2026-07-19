@@ -1,5 +1,6 @@
 ---
 title: Sell digital products with Stripe Payment Links: the complete guide
+description: How to sell digital products with Stripe Payment Links: checkout in minutes, then the delivery Stripe leaves to you. Four delivery options, refunds, and tax.
 ---
 
 Stripe Payment Links are the fastest way to charge money on the internet: no
@@ -85,6 +86,7 @@ goes one level deeper without the hand-waving. Not tax advice.
 
 ## Related
 
-- [Gumroad alternatives (2026): fees, trade-offs, and when DIY wins](./gumroad-alternatives.html)
+- [Gumroad alternatives for developers (2026): fees and trade-offs](./gumroad-alternatives.html)
 - [Lemon Squeezy vs Gumroad vs DIY (2026): fees compared](./lemon-squeezy-vs-gumroad-vs-diy.html)
+- [Sell code without a marketplace: the direct Stripe + GitHub route](./sell-code-without-a-marketplace.html)
 - [Deliver digital products through GitHub: the practical guide](./deliver-digital-products-github.html)
