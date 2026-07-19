@@ -300,7 +300,7 @@ function main() {
       .map((p) => `<a href="./${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>`)
       .join(' · ');
     const canonical = `${site}/${slug === 'index' ? '' : slug + '.html'}`;
-    const desc = description || config.tagline || '';
+    const desc = description || config.meta_description || config.tagline || '';
     let out = tpl({
       lang: 'en',
       title: escapeHtml(title),

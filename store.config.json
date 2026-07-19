@@ -3,6 +3,8 @@
   "kicker": "For everyone whose buyers live on GitHub",
   "headline": "Sell digital products with just Stripe + GitHub.",
   "tagline": "0% platform fee, $0/month, no server. A static storefront on GitHub Pages, checkout through your own Stripe account, and a GitHub Action that delivers every sale while you sleep.",
+  "meta_title": "Sell digital products with Stripe + GitHub, 0% fee · HonorBox",
+  "meta_description": "Sell digital products with just Stripe and GitHub Pages. 0% platform fee, $0/month, no server to run. MIT engine; buyers pay you directly on your own Stripe account.",
   "subline": "This store runs on the engine it sells. Fork the free core and open your own stand.",
   "url": "https://honorboxx.github.io/honorbox",
   "theme": "stand",
@@ -162,7 +164,7 @@
       "title": "Guides",
       "items": [
         {
-          "title": "Gumroad alternatives (2026)",
+          "title": "Gumroad alternatives for developers (2026)",
           "text": "Gumroad, Lemon Squeezy, Payhip, Paddle, plain Stripe, DIY: the real fees and when each one wins.",
           "href": "./gumroad-alternatives.html"
         },
@@ -180,6 +182,11 @@
           "title": "Deliver digital products through GitHub",
           "text": "Private-repo delivery done right: access control, revocation, invite limits, and token discipline.",
           "href": "./deliver-digital-products-github.html"
+        },
+        {
+          "title": "Sell code without a marketplace",
+          "text": "The direct route: Stripe checkout, GitHub delivery, the running costs added up, and when a marketplace earns its cut.",
+          "href": "./sell-code-without-a-marketplace.html"
         }
       ]
     },
