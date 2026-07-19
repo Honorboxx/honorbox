@@ -45,13 +45,20 @@ function renderMarkdown(src) {
     // standalone image lines; consecutive ones group into a gallery grid
     if (/^!\[[^\]]*\]\([^)\s]+\)\s*$/.test(line)) {
       const imgs = [];
+      const rejected = [];
       while (i < lines.length && /^!\[[^\]]*\]\([^)\s]+\)\s*$/.test(lines[i])) {
         const m = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(lines[i++]);
-        const src = /^(https?:\/\/|\/|\.)/.test(m[2]) ? m[2] : '';
-        if (src) imgs.push(`<img src="${src}" alt="${escapeHtml(m[1])}" loading="lazy">`);
+        if (/^(https?:\/\/|\/|\.)/.test(m[2])) {
+          // escape the URL for the attribute — same discipline as link hrefs
+          imgs.push(`<img src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy">`);
+        } else {
+          // rejected scheme: keep the line visible instead of vanishing silently
+          rejected.push(`<p>${inline(m[0])}</p>`);
+        }
       }
       if (imgs.length > 1) out.push(`<div class="gallery">${imgs.join('')}</div>`);
       else if (imgs.length === 1) out.push(`<figure>${imgs[0]}</figure>`);
+      out.push(...rejected);
       continue;
     }
 

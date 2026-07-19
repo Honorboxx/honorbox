@@ -136,11 +136,26 @@ test('repo owner is recognized as already-has-access', () => {
   assert.ok(!isRepoOwner('o/r', null));
 });
 
-test('markdown: standalone images render, group into gallery, unsafe src dropped', () => {
+test('markdown: standalone images render, group into gallery', () => {
   const one = renderMarkdown('![terminal theme](./assets/previews/terminal.png)');
   assert.ok(one.includes('<figure><img src="./assets/previews/terminal.png" alt="terminal theme"'));
   const gal = renderMarkdown('![a](./x.png)\n![b](./y.png)');
   assert.ok(gal.includes('class="gallery"') && gal.includes('x.png') && gal.includes('y.png'));
-  const bad = renderMarkdown('![x](javascript:alert(1))');
+});
+
+test('markdown images: unsafe scheme actually hits the filter and emits no img', () => {
+  // paren-free payload so it MATCHES the image-line regex (a parenthesized one
+  // never reaches the new code path — that was a decoration test)
+  const bad = renderMarkdown('![x](javascript:alert)');
+  assert.ok(!bad.includes('<img'), bad);
   assert.ok(!bad.includes('javascript:'), bad);
+  assert.ok(bad.includes('x'), 'rejected line stays visible, not silently dropped');
+});
+
+test('markdown images: src is attribute-escaped (no injection via quote)', () => {
+  const out = renderMarkdown('![x](/a.png"onerror="alert1)');
+  assert.ok(!out.includes('"onerror="'), out);
+  assert.ok(out.includes('&quot;'), out);
+  const amp = renderMarkdown('![c](/img.png?a=1&b=2)');
+  assert.ok(amp.includes('src="/img.png?a=1&amp;b=2"'), amp);
 });
