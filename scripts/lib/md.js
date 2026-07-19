@@ -124,9 +124,17 @@ function renderMarkdown(src) {
 function excerpt(src, max = 160) {
   const lines = String(src == null ? '' : src).split(/\r?\n/);
   let i = 0;
-  while (i < lines.length && (/^\s*$/.test(lines[i]) || STRUCTURAL.test(lines[i].trim()))) {
-    if (/^```/.test(lines[i].trim())) { i++; while (i < lines.length && !/^```\s*$/.test(lines[i])) i++; }
-    i++;
+  let inBlock = false; // inside a structural block whose wrapped lines are indented
+  while (i < lines.length) {
+    if (/^\s*$/.test(lines[i])) { inBlock = false; i++; continue; }
+    if (STRUCTURAL.test(lines[i].trim())) {
+      if (/^```/.test(lines[i].trim())) { i++; while (i < lines.length && !/^```\s*$/.test(lines[i])) i++; }
+      inBlock = true; i++; continue;
+    }
+    // an indented line continues the list item above (same rule the renderer
+    // applies), so it is part of the block, not the first paragraph
+    if (inBlock && /^\s+\S/.test(lines[i])) { i++; continue; }
+    break;
   }
   const buf = [];
   while (i < lines.length && !/^\s*$/.test(lines[i]) && !STRUCTURAL.test(lines[i].trim())) buf.push(lines[i++]);

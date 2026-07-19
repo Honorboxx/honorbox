@@ -250,6 +250,16 @@ test('excerpt: first real paragraph, markdown stripped, structure skipped', () =
   assert.equal(excerpt('# only a heading'), '');
 });
 
+test('excerpt: wrapped list continuations are not mistaken for the paragraph', () => {
+  // A list item wrapped onto an indented line (the same source shape the
+  // renderer already handles) must be skipped with its list, not returned
+  // as the page's meta description.
+  const md = '- item one\n  wrapped continuation\n- item two\n\nThe real first paragraph.';
+  assert.equal(excerpt(md), 'The real first paragraph.');
+  const ol = '1. step one\n   also wrapped\n2. step two\n\nActual prose.';
+  assert.equal(excerpt(ol), 'Actual prose.');
+});
+
 test('excerpt: truncates long text at a word boundary with ellipsis', () => {
   const out = excerpt('word '.repeat(80).trim(), 160);
   assert.ok(out.length <= 161, String(out.length));
