@@ -405,6 +405,28 @@ test('ledger dedup: a session already in the ledger is not re-appended', () => {
   assert.ok(refs.has(ledgerRow(s, grants[0]).ref), 'ref is stable and dedupable');
 });
 
+test('workflow templates: deploy template runs the whole test suite, pins match live', () => {
+  // setup/workflows/ is what sellers copy; .github/workflows/deploy.yml is
+  // what this repo runs. The two drift silently otherwise (the template
+  // shipped running only core.test.js, so a seller's CI skipped the
+  // dispatch and driver suites).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(__dirname, '..', '..');
+  const readWf = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+  const tpl = readWf('setup/workflows/deploy.yml');
+  assert.ok(tpl.includes('node --test scripts/test/*.test.js'),
+    'template must run every test file, not a hand-picked subset');
+  // action pins: for every action used in both files, the SHA must match
+  const pins = (src) => Object.fromEntries(
+    [...src.matchAll(/uses:\s*([^@\s]+)@(\S+)/g)].map((m) => [m[1], m[2]])
+  );
+  const livePins = pins(readWf('.github/workflows/deploy.yml'));
+  for (const [action, sha] of Object.entries(pins(tpl))) {
+    if (livePins[action]) assert.equal(sha, livePins[action], `pin drift for ${action}`);
+  }
+});
+
 test('markdown: bold spanning two source lines renders (not literal **)', () => {
   const html = renderMarkdown('start of para\n**bold across\nthe line break** and more text');
   assert.ok(html.includes('<strong>bold across the line break</strong>'), html);
