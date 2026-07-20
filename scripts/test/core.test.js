@@ -11,7 +11,7 @@ const {
   isFreeFulfillment,
 } = require('../lib/fulfill-core.js');
 const { parseFrontmatter } = require('../lib/fm.js');
-const { renderMarkdown, excerpt, firstRasterImage } = require('../lib/md.js');
+const { renderMarkdown, excerpt, firstRasterImage, safeUrl } = require('../lib/md.js');
 const {
   section, buyButton, productCard, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
@@ -493,6 +493,88 @@ test('markdown: protocol-relative link and image urls stay on our origin', () =>
   assert.ok(renderMarkdown('![a](/assets/a.png)').includes('src="/assets/a.png"'));
   assert.ok(renderMarkdown('[a](/terms.html)').includes('href="/terms.html"'));
   assert.equal(firstRasterImage('![a](/assets/a.png)'), '/assets/a.png');
+});
+
+test('url gate: a tab or newline cannot smuggle an authority past the path check', () => {
+  // The WHATWG url parser REMOVES ascii tab/LF/CR from a url before parsing, so
+  // "/<TAB>/evil.example" is delivered to the network as "//evil.example" — an
+  // authority, not a path. A gate that reads the raw string sees a leading "/"
+  // followed by a tab (not "/" or "\"), calls it root-relative, and lets it
+  // through. Verified against two independent parsers: node's WHATWG URL
+  // resolves it to https://evil.example/, and python's html tokenizer keeps the
+  // tab in the attribute for the browser to strip.
+  for (const bad of ['/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/\t\\evil.example']) {
+    assert.equal(safeUrl(bad), null, `safeUrl ${JSON.stringify(bad)}`);
+    assert.equal(safeUrl(bad, { anchor: true }), null, `safeUrl anchor ${JSON.stringify(bad)}`);
+
+    const steps = section({ type: 'steps', title: 'G', items: [{ title: 'g', text: 't', href: bad }] });
+    assert.ok(steps.includes('href="#"'), `steps ${JSON.stringify(bad)}: ${steps}`);
+    assert.ok(!steps.includes('evil.example'), `steps ${JSON.stringify(bad)}: ${steps}`);
+
+    // the checkout button is the one that costs money if it points off-origin
+    const btn = buyButton({ payment_link: bad, name: 'X', price: '$1' });
+    assert.ok(!btn.includes('evil.example'), `buyButton ${JSON.stringify(bad)}: ${btn}`);
+
+    // The markdown path was never exposed to this: LINKISH's target is
+    // [^\s()]*, so a tab or newline stops it being read as a link at all and it
+    // stays inert prose. Assert the property that matters — no live off-origin
+    // href — rather than the absence of the hostname, which legitimately
+    // appears as escaped text.
+    const link = renderMarkdown(`[x](${bad})`);
+    assert.ok(!/href="[^"]*evil\.example/.test(link), `link ${JSON.stringify(bad)}: ${link}`);
+    assert.ok(!link.includes('<a '), `link ${JSON.stringify(bad)} should not be a link: ${link}`);
+  }
+  // a control character must not silently rewrite an otherwise fine url either:
+  // what we approve is what we emit
+  assert.equal(safeUrl('https://ok.example/a\tb'), 'https://ok.example/ab');
+  // legitimate urls are untouched
+  assert.equal(safeUrl('/guides/a.html'), '/guides/a.html');
+  assert.equal(safeUrl('https://ok.example/a?b=1&c=2'), 'https://ok.example/a?b=1&c=2');
+  assert.equal(safeUrl('#top', { anchor: true }), '#top');
+});
+
+test('templateProblems: the fork guard survives a cosmetic edit to our link', () => {
+  // The guard compared with an exact-string Set, so a forker who kept our
+  // payment link but appended a utm parameter, a trailing slash, or changed the
+  // case walked straight past it and shipped a green build whose Buy button
+  // takes their buyers' money into HonorBox's Stripe account. That is the exact
+  // outcome the guard exists to prevent, and cosmetic edits are the common case
+  // (a fork that copies a link usually also tweaks it).
+  const fork = { repo: 'someone/their-store' };
+  const variants = [
+    'https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03?utm_source=hn',
+    'https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03#pay',
+    'https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03/',
+    'HTTPS://BUY.STRIPE.COM/8x29AT8J9d7xdqc8hma7C03',
+    '  https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03/?x=1  ',
+  ];
+  for (const v of variants) {
+    const out = templateProblems(fork, [{ id: 'x', payment_link: v }]);
+    assert.equal(out.length, 1, `product ${JSON.stringify(v)} -> ${JSON.stringify(out)}`);
+    assert.match(out[0], /HonorBox's own checkout/);
+  }
+  // the same normalization on the fulfillment grants
+  for (const v of ['plink_1TupsnE9zX2nUu1OV1JOs3x3 ', 'PLINK_1TUPSNE9ZX2NUU1OV1JOS3X3']) {
+    const out = templateProblems({ ...fork, fulfillment: [{ payment_link: v }] }, []);
+    assert.equal(out.length, 1, `grant ${JSON.stringify(v)} -> ${JSON.stringify(out)}`);
+  }
+  // a plink id pasted inside a url still counts as ours
+  assert.equal(
+    templateProblems({ ...fork, fulfillment: [{ payment_link: 'https://buy.stripe.com/x?pl=plink_1Tudl9E9zX2nUu1OZywmp76G' }] }, []).length,
+    1
+  );
+  // and a seller's own, genuinely different link is still fine
+  assert.deepEqual(templateProblems(fork, [{ id: 'x', payment_link: 'https://buy.stripe.com/theirOwnLink123' }]), []);
+  // Our own storefront is still exempt — but only on the FULL identity
+  // (repo + name + url), not on repo alone. A config carrying just our repo is
+  // a half-edited copy, and it correctly gets told so.
+  assert.deepEqual(
+    templateProblems(
+      { repo: 'Honorboxx/honorbox', name: 'HonorBox', url: 'https://honorboxx.github.io/honorbox' },
+      [{ id: 'x', payment_link: 'https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03' }]
+    ),
+    []
+  );
 });
 
 test('build: showcase drops non-numeric dimensions, keeps rendering', () => {

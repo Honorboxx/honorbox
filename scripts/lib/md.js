@@ -20,11 +20,22 @@ function escapeHtml(s) {
 // links, images, and the checkout button cannot drift apart (that drift is how
 // the buy button ended up with no scheme gate at all).
 // anchor: links may target "#section"; an image src has no use for one.
+// See URL_STRIP below: the string is normalized the way the url parser
+// normalizes it before either gate gets to look at it.
 const URL_GATE = /^(?:https?:\/\/|\/(?![/\\])|\.)/;
 const URL_GATE_ANCHOR = /^(?:https?:\/\/|\/(?![/\\])|#|\.)/;
 
+// The gate must read the url the BROWSER will parse, not the one we were
+// handed. The WHATWG parser removes every ascii tab/LF/CR from a url before
+// parsing it, so "/<TAB>/evil.example" reads here as a root-relative path — a
+// leading "/" followed by something that is neither "/" nor "\" — and reaches
+// the network as "//evil.example", the exact authority this gate exists to
+// block. Strip first, gate second, and return the STRIPPED value so what we
+// approved is byte-for-byte what we emit.
+const URL_STRIP = /[\t\n\r]/g;
+
 function safeUrl(url, { anchor = false } = {}) {
-  const u = String(url == null ? '' : url);
+  const u = String(url == null ? '' : url).replace(URL_STRIP, '');
   return (anchor ? URL_GATE_ANCHOR : URL_GATE).test(u) ? u : null;
 }
 
