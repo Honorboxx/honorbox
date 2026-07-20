@@ -85,11 +85,9 @@ GitHub whether that specific buyer holds access to that specific repo — one
 verdict per sale, non-zero exit when anything is lost, so you can schedule it
 instead of remembering it. Read-only.
 
-It also separates revenue from fulfillments. Run against our own store it
-reported `0 USD across 0 paid orders` for a ledger that says four sales, because
-all four were $0 tests — the
-[full transcript](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md)
-is public.
+It also separates revenue from fulfillments: a $0 order fulfilled by a coupon
+is a delivery, not a sale, and reconcile reports them apart so your revenue line
+means money that actually arrived.
 
 **Ops bots.** Two workflows for the unattended hours. One acknowledges and
 labels every new support issue within minutes. The other watches Stripe for

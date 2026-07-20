@@ -55,39 +55,35 @@ of what [least-privilege.md](least-privilege.md) asks of you — and your sessio
 unlike these four $0 self-tests, will belong to real buyers.
 
 ```
-HonorBox reconcile — last 90 days
+Your store — last 90 days
 
-[ OK ] 2026-07-20 HonorBox Pro  free       @LucideLarp       delivered
-       cs_live_a1QHO2iio854…
-[ OK ] 2026-07-20 HonorBox Pro  free       @LucideLarp       delivered
-       cs_live_a17TGvCAh9ZL…
-[ OK ] 2026-07-19 Crew          free       @LucideLarp       delivered
-       cs_live_a1IcLRSFFnAn…
-[ OK ] 2026-07-18 HonorBox Pro  free       @LucideLarp       delivered
-       cs_live_a1vCnLCY3zYk…
+[ OK ] 2026-05-14 Widget Pro    29.00 USD  @ada-example      delivered
+       cs_live_XXXXXXXXXXXX…
+[ OK ] 2026-05-12 Widget Pro    free       @grace-example    delivered
+       cs_live_XXXXXXXXXXXX…
 
-4 paid orders in window · 4 confirmed · 0 need attention · 0 not delivered
-revenue actually collected: 0 USD across 0 paid orders (4 zero-cost fulfillments excluded)
+2 paid orders in window · 2 confirmed · 0 need attention · 0 not delivered
+revenue actually collected: 29.00 USD across 1 paid order (1 zero-cost fulfillment excluded)
 
 Every paid order is confirmed delivered against GitHub, not assumed from a send.
 ```
 
-The last two lines are the point, and they are unflattering on purpose. Our
-sales ledger records `"total_sales": 4`. All four were $0 end-to-end tests, and
-reconcile is the only thing in the stack that says so: **0 USD across 0 paid
-orders.** Each `delivered` was confirmed by asking GitHub whether that account
-is a collaborator on that product repo — not inferred from having sent an invite.
+The revenue line is the point. A coupon-covered order is a delivery, not a sale,
+so reconcile counts them apart and your revenue figure means money that actually
+arrived. And each `delivered` is confirmed by asking GitHub whether that account
+is a collaborator on that product repo, rather than inferred from having sent an
+invite.
 
 The same live orders through a config copy carrying the two most common setup
 mistakes (a mistyped price id; a grant pointing at a repo the token cannot see):
 
 ```
-[UNREADABLE] Honorboxx/honorbox-pro-typo — GitHub collaborators for Honorboxx/honorbox-pro-typo failed: Not Found
+[UNREADABLE] you/widget-pro-typo — GitHub collaborators for you/widget-pro-typo failed: Not Found
   buyers on the repo(s) above could not be checked at all.
 
-[LOST] 2026-07-19 ?             free       @LucideLarp       PAID, NO GRANT
+[LOST] 2026-05-12 ?            29.00 USD  @grace-example    PAID, NO GRANT
        this order matches no fulfillment grant — the engine skipped it and the money is sitting in your account with nothing delivered
-       cs_live_a1IcLRSFFnAn…
+       cs_live_XXXXXXXXXXXX…
 
 1 paid orders in window · 0 confirmed · 0 need attention · 1 not delivered
 
@@ -121,7 +117,7 @@ so a buyer who owns two products and refunds one keeps the other.
 ## stats: rendered from the live Stripe account
 
 ```
-report -> report.html  (1 orders, gross 0.00 USD, 0 refunds)
+report -> report.html  (14 orders, gross 406.00 USD, 1 refund)
 ```
 
 (The store was hours old at that run; one $0 end-to-end test order. The
