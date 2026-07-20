@@ -75,9 +75,8 @@ every order you were *paid* for, does that buyer have the product *right now*?
 
 Those are different questions, and the free engine does not answer the second
 one. It writes its ledger row the moment it **sends** an invite, so a buyer who
-never clicks accept leaves every system you own reporting success:
-Stripe says paid, your ledger says delivered, the run is green. They have
-nothing.
+never clicks accept leaves every system you own reporting success: Stripe says
+paid, your ledger says delivered, the run is green. They have nothing.
 
 The engine will not let that invitation lapse quietly. It re-issues an
 unaccepted one before GitHub's seven-day expiry, three times, then warns you by
