@@ -114,9 +114,9 @@ party obtains your secret API key, they can make unauthorized charges,
 access customer data, or disrupt your integration."
 
 **Fine-grained PAT leaks (Administration on the product repos).**
-Can: fully administer *those repositories*, which means inviting anyone
-(including the attacker) at any permission level, removing buyers, changing
-settings, deleting the repo. Your product's content is at risk on GitHub;
+Can: fully administer *those repositories*. Invite anyone (including the
+attacker) at any permission level, remove buyers, change settings, delete the
+repo. Your product's content is at risk on GitHub;
 your local clone is the recovery path git already gives you.
 Cannot: see or touch any repository outside its named list, read your other
 code, act org-wide, or touch Stripe. If you enabled ledger publishing, add

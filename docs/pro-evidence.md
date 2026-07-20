@@ -55,7 +55,7 @@ of what [least-privilege.md](least-privilege.md) asks of you; your sessions,
 unlike these four $0 self-tests, will belong to real buyers.
 
 ```
-Your store — last 90 days
+Your store: last 90 days
 
 [ OK ] 2026-05-14 Widget Pro    29.00 USD  @ada-example      delivered
        cs_live_XXXXXXXXXXXX…
@@ -78,11 +78,11 @@ The same live orders through a config copy carrying the two most common setup
 mistakes (a mistyped price id; a grant pointing at a repo the token cannot see):
 
 ```
-[UNREADABLE] you/widget-pro-typo — GitHub collaborators for you/widget-pro-typo failed: Not Found
+[UNREADABLE] you/widget-pro-typo: GitHub collaborators for you/widget-pro-typo failed: Not Found
   buyers on the repo(s) above could not be checked at all.
 
 [LOST] 2026-05-12 ?            29.00 USD  @grace-example    PAID, NO GRANT
-       this order matches no fulfillment grant — the engine skipped it and the money is sitting in your account with nothing delivered
+       this order matches no fulfillment grant: the engine skipped it and the money is sitting in your account with nothing delivered
        cs_live_XXXXXXXXXXXX…
 
 1 paid orders in window · 0 confirmed · 0 need attention · 1 not delivered

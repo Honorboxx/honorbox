@@ -1,10 +1,10 @@
 // Guards on what the STORE says, as opposed to whether the builder works.
 //
-// Everything else in this suite tests behaviour. This file tests claims,
-// because that is where our defects have actually been: a headline price
-// that was arithmetically false, a docs link that pointed at a page we had
-// never published, line counts that went stale three times in one day, and a
-// FAQ item that explained our own pricing strategy to customers.
+// Everything else in this suite tests behaviour. This file tests claims and
+// house style, because that is where our defects have actually been: a
+// headline price that was arithmetically false, a docs link that pointed at a
+// page we had never published, line counts that went stale three times in one
+// day, and a FAQ item that explained our own pricing strategy to customers.
 //
 // A rule that lives only in someone's memory decays the moment the thing it
 // describes moves. These run on every build instead.
@@ -144,4 +144,109 @@ test('the built store carries neither, if it has been built', () => {
     }
   }
   assert.deepEqual(hits, [], `leaked into the built store:\n  ${hits.join('\n  ')}`);
+});
+
+// ---------- House style: no em dashes ----------------------------------------
+// Heavy em dash use is the most recognisable tell of machine-written prose, so
+// we ship none: not in copy, not in a comment, not in a workflow file. A comma,
+// a colon, a full stop or brackets says the same thing without the tell.
+//
+// Only U+2014 is a defect. U+2013 stays legal because it is the correct
+// character in a numeric range ("6-12 months" is written with one in
+// least-privilege.md), and hyphens and minus signs are a different character
+// again. Matching the one codepoint keeps this from touching any of them.
+//
+// Built from the codepoint rather than typed, because this file is inside the
+// tree it scans: a literal here is a hit on itself. The first run of this test
+// proved that by failing on its own definition.
+const EM_DASH = String.fromCodePoint(0x2014);
+
+// Binary and third-party files. assets/fonts/ holds the upstream OFL licence
+// texts, which we are not free to reword, so a dash arriving there is not our
+// defect to fix and must not be able to fail our suite.
+const NOT_OUR_PROSE = /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|eot)$|^assets\/fonts\//;
+
+// Files whose copy this lane does not own. Each still has to be cleaned; until
+// then it is named here with a reason, so the debt sits in the suite instead of
+// in somebody's memory.
+//
+// Asserted in BOTH directions on purpose. Nothing outside the list may carry an
+// em dash, and every file inside it must still carry one, so cleaning a file
+// fails this test until its entry is deleted. That is what stops a quarantine
+// list quietly turning into the place exceptions go to live forever.
+const EM_DASH_QUARANTINE = {
+  'scripts/fulfill.js': 'money path; edits route through the engine lane',
+  'scripts/lib/fulfill-core.js': 'money path, and its log strings are asserted in fulfill-driver.test.js',
+  'scripts/lib/imgsize.js': 'the engine lane owns scripts/lib',
+  'scripts/lib/md.js': 'the engine lane owns scripts/lib',
+  'scripts/test/fulfill-driver.test.js': 'three regexes match fulfill-core.js log strings; both sides have to move together',
+  'webhook-mode/relay-cloudflare.mjs': 'deployed relay; edits route through the engine lane',
+  'webhook-mode/relay-node.mjs': 'deployed relay; edits route through the engine lane',
+};
+
+// posix separators throughout, so the quarantine keys above read the same and
+// compare the same on Windows as they do here.
+function walk(rel, out = []) {
+  const abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) return out;
+  for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+    const child = `${rel}/${entry.name}`;
+    if (entry.isDirectory()) walk(child, out);
+    else if (!NOT_OUR_PROSE.test(child)) out.push(child);
+  }
+  return out;
+}
+
+// Everything else we ship: the engine, the themes, the workflows a seller
+// copies, and the relays. publicSources() already covers the prose.
+function shippedSources() {
+  const out = [];
+  for (const dir of ['scripts', 'themes', 'setup', 'webhook-mode', 'assets', 'static', '.github']) {
+    walk(dir, out);
+  }
+  for (const f of ['package.json', 'LICENSE']) {
+    if (fs.existsSync(path.join(ROOT, f))) out.push(f);
+  }
+  return out;
+}
+
+function emDashHits(files) {
+  const hits = [];
+  for (const f of files) {
+    read(f).split('\n').forEach((line, i) => {
+      if (line.includes(EM_DASH)) hits.push(`${f}:${i + 1}  ${line.trim().slice(0, 90)}`);
+    });
+  }
+  return hits;
+}
+
+test('public copy carries no em dashes', () => {
+  const hits = emDashHits(publicSources());
+  assert.deepEqual(hits, [], `em dash on a public surface, use a comma, colon, full stop or brackets:\n  ${hits.join('\n  ')}`);
+});
+
+test('shipped source carries no em dashes outside the quarantine', () => {
+  const hits = emDashHits(shippedSources().filter((f) => !(f in EM_DASH_QUARANTINE)));
+  assert.deepEqual(hits, [], `em dash in shipped source, use a comma, colon, full stop or brackets:\n  ${hits.join('\n  ')}`);
+});
+
+test('the em dash quarantine lists only files that still need cleaning', () => {
+  const stale = Object.keys(EM_DASH_QUARANTINE).filter((f) => {
+    const abs = path.join(ROOT, f);
+    return !fs.existsSync(abs) || !fs.readFileSync(abs, 'utf8').includes(EM_DASH);
+  });
+  assert.deepEqual(stale, [], `clean already, so delete these entries from EM_DASH_QUARANTINE:\n  ${stale.join('\n  ')}`);
+});
+
+test('the built store carries no em dashes, if it has been built', () => {
+  const dist = path.join(ROOT, 'dist');
+  if (!fs.existsSync(dist)) return; // build not run in this environment
+  const hits = [];
+  for (const f of fs.readdirSync(dist)) {
+    if (!f.endsWith('.html')) continue;
+    fs.readFileSync(path.join(dist, f), 'utf8').split('\n').forEach((line, i) => {
+      if (line.includes(EM_DASH)) hits.push(`dist/${f}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(hits, [], `em dash reached the built store:\n  ${hits.join('\n  ')}`);
 });
