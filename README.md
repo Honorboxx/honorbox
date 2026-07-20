@@ -23,20 +23,34 @@ checkout you see there is the engine in this repo, unmodified.
 
 ## Why
 
-| | Gumroad | Lemon Squeezy | HonorBox |
-|---|---|---|---|
-| Platform fee | 10% + 50¢ ² | 5% + 50¢ | **0%** |
-| Monthly cost | $0 | $0 | **$0** |
-| Your own Stripe account | no | no | **yes** |
-| Server to maintain | n/a | n/a | **none** |
-| Handles VAT for you | yes | yes | no; you're the merchant ¹ |
+| | Gumroad | Lemon Squeezy | Polar ³ | HonorBox |
+|---|---|---|---|---|
+| Platform fee | 10% + 50¢ ² | 5% + 50¢ | 5% + 50¢ free tier | **0%** |
+| Monthly cost | $0 | $0 | $0 on the free tier | **$0** |
+| Private-repo delivery | no | no | yes, instant | **yes, usually minutes** |
+| Handles VAT for you | yes | yes | yes | no; you're the merchant ¹ |
+| Server to maintain | n/a | n/a | n/a | **none** |
+| Who holds the money | the platform | the platform | the platform | **you** |
 
-¹ HonorBox is not a merchant of record. Fine for most small self-serve sellers;
-[docs/tax.md](docs/tax.md) spells out the trade-off.
+**Read that table honestly.** If you are selling a handful of copies a month,
+use a merchant of record. The fee you would save is roughly 81¢ a sale, about
+$8 a month at ten sales, and for that they do your VAT; EU digital goods have
+no registration threshold for non-EU sellers, so that job starts at your first
+sale. HonorBox earns its keep at volume, or when you specifically want the
+Stripe account and the customer relationship to be yours.
+
+¹ HonorBox is not a merchant of record. [docs/tax.md](docs/tax.md) spells out
+the trade-off.
 ² Plus card processing (2.9% + 30¢), charged on top per
 [Gumroad's fee page](https://gumroad.com/help/article/66-gumroads-fees).
-Lemon Squeezy's fee includes processing; with HonorBox you pay Stripe's
-standard rate and nothing else. Fees as published July 2026.
+Lemon Squeezy's and Polar's fees include processing; with HonorBox you pay
+Stripe's standard rate and nothing else. Fees as published July 2026.
+³ [Polar](https://polar.sh) is the closest comparison: private GitHub repo
+access is a [built-in benefit](https://polar.sh/docs/features/benefits/github-access)
+that grants instantly and revokes on refund, and they are a merchant of record.
+If you want that job done for you rather than run by you, use Polar. Fees from
+[their docs](https://polar.sh/docs/merchant-of-record/fees), checked
+July 20, 2026.
 
 ## How it works
 

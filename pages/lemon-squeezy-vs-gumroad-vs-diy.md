@@ -71,11 +71,25 @@ fee is cheaper than your time.
   GitHub account to a private repo, which is the wrong channel for lay-reader
   ebooks or general consumers. Full DIY with your own server avoids that, but
   then you're running a server.
+- **You're selling at low volume.** This is the one that catches people. At 10
+  sales a month of a $29 product you keep about 81¢ a sale versus a merchant of
+  record, roughly $8 a month, and in exchange you take on your own VAT
+  compliance. EU digital goods have no registration threshold for non-EU
+  sellers, so that obligation starts at your first sale, not at some later
+  volume. Eight dollars does not buy an hour of an accountant. Use a merchant
+  of record until the percentage is bigger than the paperwork.
 - **You never want to think about VAT or sales tax.** A merchant of record
   genuinely removes that job; Lemon Squeezy is the strongest pick here. DIY
   means tax is yours. Under most registration thresholds that's simpler than
   it sounds ([our tax doc](./tax.html)
   covers it without hand-waving), but it is never zero thought.
+- **You want GitHub delivery *and* your tax handled.** That combination
+  exists and it isn't us:
+  [Polar](https://polar.sh/docs/features/benefits/github-access) grants private
+  repo access automatically as a built-in benefit, revokes it on cancellation
+  or refund, and is a merchant of record. Its free tier is 5% + 50¢
+  ([fees](https://polar.sh/docs/merchant-of-record/fees), checked July 20,
+  2026). If that's your shape, it's the better tool and you should use it.
 - **Subscriptions and license keys at volume.** You can build both on plain
   Stripe, but Lemon Squeezy ships them today.
 - **You want instant-download delivery** and won't deploy anything: platforms
@@ -83,8 +97,16 @@ fee is cheaper than your time.
 
 ## When DIY wins
 
-You sell code, templates, courses, or tools to people who have GitHub
-accounts, and you'd rather keep the 5-15%. The checkout half takes minutes
+Two reasons, and they are not the same reason. The first is arithmetic: you
+sell code, templates, courses, or tools to people who have GitHub accounts, at
+enough volume that keeping the 5-15% is worth doing your own tax. As the
+low-volume point above says, that is not 10 sales a month; it is the point
+where the percentage outgrows the paperwork. The second is ownership, and it holds at any volume:
+you sell on your own Stripe account, so the balance and the customer are yours,
+there is no platform account to be declined for or removed from, and nothing to
+migrate off if a platform changes its terms. Stripe can still act on your
+account, so it is one less intermediary rather than none. The checkout half
+takes minutes
 with [Stripe Payment Links](./sell-with-stripe-payment-links.html); the
 delivery half is the actual gap. [HonorBox](./index.html) fills it without a
 server: a static storefront on GitHub Pages and a scheduled GitHub Action
