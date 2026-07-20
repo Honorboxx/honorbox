@@ -124,7 +124,13 @@ function guideSlugs(sections) {
 // rather than store documentation, and publishing it as a peer of the setup
 // guide both dilutes the docs and creates a page that silently goes stale.
 // It stays readable in the repo, where an auditing buyer already looks.
-const PUBLISHED_DOCS = ['how-it-works', 'setup', 'subscriptions', 'least-privilege', 'instant-delivery', 'tax'];
+//
+// failure-catalogue.md IS here, and is the one doc that is not about operating
+// HonorBox. It is the catalogue behind Pro's conformance suite, published whole
+// and free: it is worth reading on its own, it is what the suite's checks are
+// generated from, and keeping it off the site would leave "published openly" as
+// a claim rather than a fact. Regenerated from Pro, never edited here.
+const PUBLISHED_DOCS = ['how-it-works', 'setup', 'subscriptions', 'least-privilege', 'instant-delivery', 'tax', 'failure-catalogue'];
 
 // docs/*.md carry no frontmatter: the first "# " line is the title. Split it
 // off so the page template owns the <h1> (same shape as pages/) instead of the
@@ -150,9 +156,15 @@ function rewriteDocLinks(md, { repo, published = PUBLISHED_DOCS } = {}) {
   const blob = (p) => (repo ? `https://github.com/${repo}/blob/main/${p}` : `#${p}`);
   const tree = (p) => (repo ? `https://github.com/${repo}/tree/main/${p}` : `#${p}`);
   return String(md)
-    // sibling doc: bare name, no slash, .md suffix, optional #anchor
+    // sibling doc: bare name, no slash, .md suffix, optional #anchor.
+    // The anchor is carried into BOTH branches. Dropping it on the way to
+    // GitHub silently turned a deep link into a section into a link at the top
+    // of a 500-line document, which is the kind of rot nobody reports and
+    // everybody notices.
     .replace(/(\]\()([A-Za-z0-9_-]+)\.md(#[A-Za-z0-9_-]+)?(\))/g, (m, open, slug, hash, close) =>
-      published.includes(slug) ? `${open}./${slug}.html${hash || ''}${close}` : `${open}${blob(`docs/${slug}.md`)}${close}`
+      published.includes(slug)
+        ? `${open}./${slug}.html${hash || ''}${close}`
+        : `${open}${blob(`docs/${slug}.md`)}${hash || ''}${close}`
     )
     // anything one level up: ../dir/ (tree) or ../dir/file.ext (blob)
     .replace(/(\]\()\.\.\/([A-Za-z0-9_./-]+)(\))/g, (m, open, rest, close) =>

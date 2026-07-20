@@ -1454,6 +1454,14 @@ test('rewriteDocLinks: a doc we do NOT publish keeps working, via GitHub', () =>
   assert.equal(out, '[e](https://github.com/o/r/blob/main/docs/pro-evidence.md)');
 });
 
+test('rewriteDocLinks: a deep link into an unpublished doc keeps its anchor', () => {
+  // The anchor survived into ./slug.html but was dropped on the GitHub branch,
+  // so a link written at a specific section landed at the top of the document
+  // instead. Silent, and only wrong for the reader.
+  const out = rewriteDocLinks('[e](pro-evidence.md#audit-the-standing-guard)', { repo: 'o/r' });
+  assert.equal(out, '[e](https://github.com/o/r/blob/main/docs/pro-evidence.md#audit-the-standing-guard)');
+});
+
 test('rewriteDocLinks: repo paths outside docs/ resolve to GitHub, dir vs file', () => {
   const out = rewriteDocLinks('[w](../webhook-mode/) [f](../scripts/fulfill.js)', { repo: 'o/r' });
   assert.ok(out.includes('https://github.com/o/r/tree/main/webhook-mode/'), out);
@@ -1483,8 +1491,15 @@ test('docs build: every published doc exists and renders a titled page', () => {
     const { title, body } = docTitle(fs.readFileSync(file, 'utf8'), slug);
     assert.ok(title && title !== slug, `docs/${slug}.md needs an H1 for its page title`);
     const html = renderMarkdown(rewriteDocLinks(body, { repo: 'o/r' }));
-    // a doc that still points at a bare .md would 404 on the live site
-    assert.ok(!/href="[^"]*\.md"/.test(html), `docs/${slug}.md ships an unrewritten .md link`);
+    // A doc that still points at a RELATIVE .md would 404 on the live site.
+    // An absolute github.com blob URL ending in .md is the correct rewrite for
+    // a doc we do not publish, so it must not be flagged: matching every .md
+    // href caught that too, and the first doc to link a repo-only file would
+    // have failed this for doing the right thing.
+    const relativeMd = [...html.matchAll(/href="([^"]*\.md(?:#[^"]*)?)"/g)]
+      .map((m) => m[1])
+      .filter((href) => !/^https?:\/\//.test(href));
+    assert.deepEqual(relativeMd, [], `docs/${slug}.md ships an unrewritten .md link`);
   }
 });
 
