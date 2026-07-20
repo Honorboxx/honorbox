@@ -43,7 +43,7 @@ live Stripe API, GitHub token permissions.
 ## reconcile: run against the live HonorBox store (2026-07-20)
 
 Real output. One edit, and only this one: Stripe Checkout session ids are cut to
-their first 20 characters. Nothing else is changed — not a date, not a status,
+their first 20 characters. Nothing else is changed: not a date, not a status,
 not the LOST row further down.
 
 Cutting them costs a reader nothing, because a session id is not something you
@@ -51,7 +51,7 @@ could have checked anyway: retrieving one needs this account's secret key
 (`/v1/checkout/sessions/…` answers 401 without it), and the hosted checkout URL
 returns a byte-identical page for a fabricated id as for a real one. The full
 string is unverifiable decoration. Publishing it would also model the opposite
-of what [least-privilege.md](least-privilege.md) asks of you — and your sessions,
+of what [least-privilege.md](least-privilege.md) asks of you; your sessions,
 unlike these four $0 self-tests, will belong to real buyers.
 
 ```

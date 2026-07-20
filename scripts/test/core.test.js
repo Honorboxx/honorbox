@@ -98,7 +98,7 @@ test('how long to wait comes from GitHub headers, in the documented order', () =
   const { retryAfterMs } = require('../lib/fulfill-core.js');
   const now = 1_700_000_000_000;
   const nowSec = Math.floor(now / 1000);
-  // 1. retry-after wins — this is what a SECONDARY limit sends, and a burst
+  // 1. retry-after wins: this is what a SECONDARY limit sends, and a burst
   //    trips secondary limits, not primary ones.
   assert.equal(retryAfterMs(new Headers({ 'retry-after': '30' }), now), 30_000);
   // works through Headers (case-insensitive) and through the plain object a
@@ -128,7 +128,7 @@ test('a 403 carrying a rate-limit header is transient even when the prose says n
   const { isTransientInviteError } = require('../lib/fulfill-core.js');
   // The failure this closes: the only rate-limit test used to be a match on
   // the words of the response body. GitHub's wording is not part of any
-  // contract — reword it and a retryable throttle silently reclassifies as a
+  // contract. Reword it and a retryable throttle silently reclassifies as a
   // permanent permissions error, so the buyer is never retried at all and
   // lands in needs_attention instead.
   assert.ok(isTransientInviteError(Object.assign(new Error('403 Forbidden'), {
@@ -151,7 +151,7 @@ test('the in-run retry waits as long as GitHub asked, inside a bounded budget', 
   const limited = (secs) => Object.assign(new Error('secondary rate limit'), {
     status: 403, headers: new Headers({ 'retry-after': String(secs) }),
   });
-  // GitHub's number is honoured verbatim — never shortened, which is how a
+  // GitHub's number is honoured verbatim, never shortened, which is how a
   // secondary limit gets extended instead of cleared.
   assert.equal(inRunRetryDelayMs(limited(5), 1, 0), 5_000);
   // A wait longer than the ceiling is DECLINED rather than slept through: that
@@ -493,7 +493,7 @@ test('markdown: a nested list nests instead of flattening into one item', () => 
 
 test('markdown images: unsafe scheme actually hits the filter and emits no img', () => {
   // paren-free payload so it MATCHES the image-line regex (a parenthesized one
-  // never reaches the new code path — that was a decoration test)
+  // never reaches the new code path; that was a decoration test)
   const bad = renderMarkdown('![x](javascript:alert)');
   assert.ok(!bad.includes('<img'), bad);
   assert.ok(!bad.includes('javascript:'), bad);
@@ -509,7 +509,7 @@ test('markdown images: src is attribute-escaped (no injection via quote)', () =>
 });
 
 test('build: steps-section item href is attribute-escaped (no breakout)', () => {
-  // config is in-repo today, but a step href is a free-form URL — the same
+  // config is in-repo today, but a step href is a free-form URL, the same
   // attribute-injection shape reviewers already caught on img src / buy href.
   // A relative URL passes the scheme gate, so the embedded quote must be
   // attribute-escaped rather than closing the href and starting onmouseover.
@@ -538,7 +538,7 @@ test('build: steps-section item href neutralizes dangerous schemes', () => {
 });
 
 test('build: showcase section escapes img src, alt, caption, href', () => {
-  // same sinks as steps hrefs / markdown img src — the showcase emitter must
+  // same sinks as steps hrefs / markdown img src. The showcase emitter must
   // hold the same line: scheme-gate urls, attribute-escape everything.
   const html = section({
     type: 'showcase',
@@ -562,8 +562,8 @@ test('build: showcase section escapes img src, alt, caption, href', () => {
 });
 
 test('build: hrefs cannot leave the origin via a protocol-relative url', () => {
-  // "//host/x" and "/\host/x" both parse as an *authority*, not a path — the
-  // WHATWG url parser treats a backslash as a slash for special schemes — so a
+  // "//host/x" and "/\host/x" both parse as an *authority*, not a path. The
+  // WHATWG url parser treats a backslash as a slash for special schemes, so a
   // gate that only checks for a leading "/" lets a value that reads like a
   // local path resolve to somebody else's origin under our scheme.
   for (const bad of ['//evil.example/x', '/\\evil.example/x']) {
@@ -596,7 +596,7 @@ test('markdown: protocol-relative link and image urls stay on our origin', () =>
     assert.ok(!img.includes('evil.example'), `img ${JSON.stringify(bad)}: ${img}`);
     assert.equal(firstRasterImage(`![x](${bad}.png)`), null, JSON.stringify(bad));
   }
-  // root-relative assets and links keep working — this must not become a
+  // root-relative assets and links keep working: this must not become a
   // same-directory-only renderer
   assert.ok(renderMarkdown('![a](/assets/a.png)').includes('src="/assets/a.png"'));
   assert.ok(renderMarkdown('[a](/terms.html)').includes('href="/terms.html"'));
@@ -605,7 +605,7 @@ test('markdown: protocol-relative link and image urls stay on our origin', () =>
 
 test('url gate: a tab or newline cannot smuggle an authority past the path check', () => {
   // The WHATWG url parser REMOVES ascii tab/LF/CR from a url before parsing, so
-  // "/<TAB>/evil.example" is delivered to the network as "//evil.example" — an
+  // "/<TAB>/evil.example" is delivered to the network as "//evil.example", an
   // authority, not a path. A gate that reads the raw string sees a leading "/"
   // followed by a tab (not "/" or "\"), calls it root-relative, and lets it
   // through. Verified against two independent parsers: node's WHATWG URL
@@ -625,8 +625,8 @@ test('url gate: a tab or newline cannot smuggle an authority past the path check
 
     // The markdown path was never exposed to this: LINKISH's target is
     // [^\s()]*, so a tab or newline stops it being read as a link at all and it
-    // stays inert prose. Assert the property that matters — no live off-origin
-    // href — rather than the absence of the hostname, which legitimately
+    // stays inert prose. Assert the property that matters (no live off-origin
+    // href) rather than the absence of the hostname, which legitimately
     // appears as escaped text.
     const link = renderMarkdown(`[x](${bad})`);
     assert.ok(!/href="[^"]*evil\.example/.test(link), `link ${JSON.stringify(bad)}: ${link}`);
@@ -673,7 +673,7 @@ test('templateProblems: the fork guard survives a cosmetic edit to our link', ()
   );
   // and a seller's own, genuinely different link is still fine
   assert.deepEqual(templateProblems(fork, [{ id: 'x', payment_link: 'https://buy.stripe.com/theirOwnLink123' }]), []);
-  // Our own storefront is still exempt — but only on the FULL identity
+  // Our own storefront is still exempt, but only on the FULL identity
   // (repo + name + url), not on repo alone. A config carrying just our repo is
   // a half-edited copy, and it correctly gets told so.
   assert.deepEqual(
@@ -727,12 +727,12 @@ test('build: buy button escapes payment_link and name (regression guard)', () =>
 
 test('build: a payment_link the url gate rejects falls back to the disabled state', () => {
   // payment_link is product frontmatter, and HonorBox ships as a template a
-  // forker fills in — so the checkout href gets the same scheme gate as every
+  // forker fills in, so the checkout href gets the same scheme gate as every
   // other url we emit, not attribute escaping alone.
   // Gating it to "#" would leave a Buy button that looks alive and goes
   // nowhere. The module already has an honest state for "no usable checkout
   // link", and a rejected link is the same problem from the buyer's side, so
-  // it reuses that rather than inventing a third state — which is also the
+  // it reuses that rather than inventing a third state, which is also the
   // clearer signal for a forker who typo'd their URL.
   for (const bad of ['javascript:alert(1)', '//evil.example/x', '/\\evil.example/x']) {
     const html = buyButton({ payment_link: bad, name: 'P', price: '$1' });
@@ -750,7 +750,7 @@ test('build: a payment_link the url gate rejects falls back to the disabled stat
 
 test('build: the ledger total is escaped like every other cell on that page', () => {
   // Bot-written from Stripe integers today, so this is defense-in-depth rather
-  // than a live exploit — but the trust page is the one surface a seller
+  // than a live exploit, but the trust page is the one surface a seller
   // publishes to strangers, and "the number is bot-written" is exactly the
   // assumption that rots.
   const html = trustArticle({
@@ -853,8 +853,8 @@ test('setMeta/injectHead: $-patterns in a value cannot splice the document', () 
 });
 
 test('build: a config value cannot smuggle a {{placeholder}} into the layout', () => {
-  // Placeholders fill in ONE pass. With sequential replaces an escaped — so
-  // "safe" — config string of "{{content}}" expanded on a later key's turn,
+  // Placeholders fill in ONE pass. With sequential replaces an escaped (so
+  // "safe") config string of "{{content}}" expanded on a later key's turn,
   // pulling the raw, unescaped page HTML into <title> and into a meta
   // attribute (verified against the real builder before this was fixed).
   const layout = '<title>{{title}}</title><meta content="{{description}}"><body>{{content}}</body>';
@@ -930,7 +930,7 @@ test('sitemapXml: lastmod + priority per url, loc xml-escaped', () => {
   assert.ok(!/<lastmod>[^<]*<\/lastmod><\/url>.*p\.html/.test(xml), 'no lastmod invented for entry without one');
 });
 
-test('decoratePage: additive a11y only — classes and DOM structure survive', () => {
+test('decoratePage: additive a11y only, classes and DOM structure survive', () => {
   const pageHtml = '<head></head>\n<body class="home">\n<header class="site-head"><nav class="site-nav"><a href="./">Store</a></nav></header>\n<main>\n<p>x</p>\n</main>\n</body>';
   const out = decoratePage(pageHtml);
   assert.ok(out.includes('<main id="main">'), out);
@@ -1034,7 +1034,7 @@ test('templateProblems: a fork cannot silently sell HonorBox products', () => {
 
   // The seller this guard exists for: they edited exactly the fields
   // docs/setup.md lists (name, url, seller, copy) and never touched `repo`,
-  // because `repo` is not in that list. This used to return [] — the build
+  // because `repo` is not in that list. This used to return []: the build
   // exited 0 and shipped a storefront whose hero button sold HonorBox Pro into
   // HonorBox's Stripe account. It must never be silent again.
   const followedTheDocs = { ...ours, name: 'Widget Works', url: 'https://alice.github.io/widgets' };
@@ -1189,7 +1189,7 @@ test('markdown: wrapped ordered-list items join like unordered ones', () => {
 // GitHub bills PRIVATE-repo Actions per job, rounded UP to a whole minute,
 // against 2,000 free minutes/month on the Free plan:
 //   "GitHub rounds the minutes and partial minutes each job uses up to the
-//    nearest whole minute" — docs.github.com/en/billing/reference/actions-runner-pricing
+//    nearest whole minute" (docs.github.com/en/billing/reference/actions-runner-pricing)
 // A fulfillment run is ~15s, so it bills 1 minute whether or not it finds a
 // sale, and the monthly bill is just the run count. Verified against this
 // org's own metered usage: 44 runs of ~10-17s billed exactly 44.00 minutes.
@@ -1223,7 +1223,7 @@ function cronOf(wfPath) {
 
 test('cron budget: the shipped fulfillment poll fits inside the free tier', () => {
   // This is the whole "$0/month" claim. The template shipped */15 = 2,976
-  // billable minutes against a 2,000 allowance — 976 over, ~$5.86/month — so
+  // billable minutes against a 2,000 allowance (976 over, ~$5.86/month), so
   // the headline was false for the configuration we recommend.
   const cron = cronOf('setup/workflows/fulfill.yml.example');
   const minutes = monthlyBillableMinutes(cron);
@@ -1299,7 +1299,7 @@ test('rewriteDocLinks: repo paths outside docs/ resolve to GitHub, dir vs file',
 
 test('rewriteDocLinks: a link-shaped regex inside a code span is left alone', () => {
   // docs/how-it-works.md documents the username rule as
-  // `^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$` — which contains "](...)".
+  // `^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$`, which contains "](...)".
   // Rewriting runs on markdown source, so it sees inside code spans.
   const src = 'usernames match `^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$` exactly';
   assert.equal(rewriteDocLinks(src, { repo: 'o/r' }), src);
@@ -1401,7 +1401,7 @@ test('markdown: a short row is padded, not shifted into the wrong column', () =>
 // links; the surface is closed now, but the coupon path remains (it is how a
 // free E2E test is run), so the engine must still be able to say so out loud.
 // Note the shape this must catch: the live free session came back
-// payment_status="paid" with amount_total=0, NOT "no_payment_required" — a
+// payment_status="paid" with amount_total=0, NOT "no_payment_required". A
 // check written against only the latter would miss the real thing.
 test('a zero-cost fulfillment is distinguishable from a real sale', () => {
   const free = [
@@ -1422,7 +1422,7 @@ test('every theme lets a sized image keep its aspect ratio', () => {
   // The defect this pins, found on the live-preview pass before it shipped:
   // once <img> carries real width/height, a rule of `max-width: 100%` WITHOUT
   // `height: auto` honours the explicit height literally while clamping the
-  // width. A 1200x630 landscape panel then rendered as a 358x630 portrait —
+  // width. A 1200x630 landscape panel then rendered as a 358x630 portrait:
   // every gallery image on the product page stretched, desktop and mobile.
   //
   // It was latent in all six themes long before the attributes existed, and it
@@ -1445,7 +1445,7 @@ test('every theme lets a sized image keep its aspect ratio', () => {
     // deliberately broken CSS the first time it was written.
     const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
     const m = /\.prose img[^{]*\{([^}]*)\}/.exec(bare);
-    assert.ok(m, `${t}: no ".prose img" rule found — did the selector change?`);
+    assert.ok(m, `${t}: no ".prose img" rule found; did the selector change?`);
     assert.match(
       m[1], /height:\s*auto/,
       `${t}/style.css: ".prose img" sets max-width without "height: auto", so an ` +
@@ -1459,7 +1459,7 @@ test('the social card is a decision, and a fallback is never silent', () => {
   // find nothing a scraper could decode, so og:image, twitter:image and the
   // JSON-LD Product.image ALL silently changed from the terminal screenshot to
   // the theme preview. The build stayed green while the product's link preview
-  // quietly became a different picture — success reported, something else done.
+  // quietly became a different picture: success reported, something else done.
   const { firstRasterImage } = require('../lib/md.js');
   const OG_SAFE = /\.(png|jpe?g|gif)$/i;
   const body = [
@@ -1487,11 +1487,11 @@ test('the social card is a decision, and a fallback is never silent', () => {
 
 test('a named social card must be real and scraper-safe, or the build stops', () => {
   // og_image is an explicit choice, so a broken one is an error rather than
-  // something to paper over — the whole point is to stop cards changing by
+  // something to paper over. The whole point is to stop cards changing by
   // accident. Driven through the real builder in a child process, because the
   // check lives in the build's problem gate and exits the process.
   // spawnSync, not execFileSync: execFileSync only surfaces stderr on the
-  // throw path, so a SUCCESSFUL build's warnings would be invisible — and the
+  // throw path, so a SUCCESSFUL build's warnings would be invisible, and the
   // whole point of case (c) is that a green build still speaks up.
   const { spawnSync } = require('node:child_process');
   const fs = require('node:fs');

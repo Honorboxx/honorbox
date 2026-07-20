@@ -2,7 +2,7 @@
 
 HonorBox's default fulfillment is a poll every 30 minutes: zero
 infrastructure, zero accounts beyond Stripe + GitHub, and an invite a median
-of ~15 minutes after payment — sometimes hours when GitHub's cron drifts. (The
+of ~15 minutes after payment, sometimes hours when GitHub's cron drifts. (The
 cadence is set by the free Actions tier, not by taste; the arithmetic is in
 [setup.md](setup.md).) The *payment* is always instant; this page is about
 shrinking the wait for the *invite*.
@@ -112,7 +112,7 @@ schedulers cut the odds of a long gap without any always-on machine.
 Heartbeat buys **reliability, not speed**. Pair it with an hourly poll
 (`0 * * * *` in `fulfill.yml`, `30 * * * *` here) and you get the same
 ~15-minute median as the shipped `*/30` poll, for the same 1,488 Actions
-minutes a month, but from two schedulers instead of one — so a single
+minutes a month, but from two schedulers instead of one, so a single
 scheduler drifting no longer means a long silence. It does not beat the
 webhook relay, and it is not free to run tighter: see the cost note below.
 
@@ -136,7 +136,7 @@ eventually loses its heartbeat (you get an email; any push re-arms).
   **private** ops repo, and private runs bill a whole minute each even when
   they find nothing. So a nudge costs exactly what a poll costs: 1 minute.
   Hourly here + hourly in `fulfill.yml` = 1,488 min/month, inside the free
-  2,000. A `*/5` heartbeat would be 8,928 min/month — 4.5x the free tier.
+  2,000. A `*/5` heartbeat would be 8,928 min/month, 4.5x the free tier.
   The arithmetic is in [setup.md](setup.md).
 - **Staying on the plain poll costs nothing** and remains the default:
   set the buyer's expectation at checkout ("usually within minutes, always

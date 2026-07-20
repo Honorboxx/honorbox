@@ -73,7 +73,7 @@ test('init: missing required args die with exit 2', () => {
 // allow_promotion_codes must stay 'false'. A link with the promo field open is
 // a live discount surface: the seller who later makes a 100%-off code to test
 // delivery has handed that code's value to anyone who guesses it. We did this
-// to ourselves — on 2026-07-20 two live 100%-off codes were found on our own
+// to ourselves: on 2026-07-20 two live 100%-off codes were found on our own
 // checkout the day before a launch. If this assertion is failing because
 // someone flipped the default back, that is the bug, not the test.
 test('init: generated payment links have promotion codes OFF by default', () => {
@@ -123,7 +123,7 @@ test('init: a typo\'d flag is named, instead of blamed on the flag it hid', () =
 });
 
 test('init: non-interactive stdin refuses loudly instead of exiting 0 having done nothing', () => {
-  // spawnSync gives the child a pipe, not a TTY — the same shape as CI, a
+  // spawnSync gives the child a pipe, not a TTY: the same shape as CI, a
   // devcontainer task, or `| tee init.log`. readline's callback never fires
   // there, so this used to print the prompt and exit 0 with nothing created,
   // which a scripted caller reads as success.

@@ -16,7 +16,7 @@ const relays = (async () => ({
   valtown: await import(relayUrl('relay-node.mjs')),
 }))();
 
-// Arbitrary test secret — the same string goes to the verifier and the
+// Arbitrary test secret: the same string goes to the verifier and the
 // in-test HMAC, exactly as Stripe uses the whsec_... value on both ends.
 const SECRET = 'whsec_test_Kd83maV9pQ27xLtN51RfB4';
 const NOW = 1_700_000_000;
@@ -92,7 +92,7 @@ test('secret rolling: any one valid v1 among several passes', async () => {
   }
 });
 
-test('dispatch payload shape — and no raw session id leaks', async () => {
+test('dispatch payload shape, and no raw session id leaks', async () => {
   const wantRef = crypto.createHash('sha256').update('cs_test_abc123').digest('hex').slice(0, 10);
   for (const [name, mod] of Object.entries(await relays)) {
     const d = await mod.buildDispatch(EVENT);
@@ -229,7 +229,7 @@ test('relay variants share an identical verification/dispatch core', async () =>
 
 // --- Secret containment ------------------------------------------------------
 // The relay is deployed and takes live Stripe traffic, holding a GitHub token
-// and the Stripe signing secret. Nothing it can emit may carry either — not a
+// and the Stripe signing secret. Nothing it can emit may carry either: not a
 // whole value, not a distinguishing fragment. Without this, "no code path
 // echoes the secret" is a property that happened to be true the last time
 // somebody read the file, which is not a property at all once the file is
@@ -273,11 +273,11 @@ test('no response path leaks a secret (body or headers)', async () => {
 });
 
 // The deployment was verified by observing outcome:ok on every event and the
-// absence of console.log — i.e. no throw was ever forced. This forces one. A
+// absence of console.log: no throw was ever forced. This forces one. A
 // rejecting fetch is not hypothetical: GitHub being unreachable (DNS, reset,
 // timeout) is the ordinary failure and there is no try/catch around the
 // dispatch, so the rejection escapes the handler. That is acceptable
-// behaviour — the Worker 500s and Stripe retries — but only if what escapes
+// behaviour (the Worker 500s and Stripe retries), but only if what escapes
 // carries no secret, and the Authorization header is built one line above it.
 test('a throw escaping the handler carries no secret in message or stack', async () => {
   const t = Math.floor(Date.now() / 1000);
@@ -303,8 +303,8 @@ test('a throw escaping the handler carries no secret in message or stack', async
 });
 
 // A signed body of literal `null` used to throw on event.type. Stripe never
-// sends it, so this was never attacker-reachable — the signature gate is
-// upstream — but it is a crash on a live money path, so it is pinned shut.
+// sends it, so this was never attacker-reachable (the signature gate is
+// upstream), but it is a crash on a live money path, so it is pinned shut.
 test('a signed body that parses to null or a non-object is acked, not crashed', async () => {
   const t = Math.floor(Date.now() / 1000);
   for (const [relay, mod] of Object.entries(await relays)) {

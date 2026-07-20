@@ -15,8 +15,8 @@ const DIST = path.join(ROOT, 'dist');
 // Intrinsic size of a site-relative image reference ("./assets/x.webp"), read
 // from the file on disk so an <img> can reserve its box before it loads.
 // Remote URLs, SVGs and anything unreadable return null and the attributes are
-// simply omitted — never guessed, because a wrong reservation shifts the page
-// just as badly as no reservation.
+// simply omitted, never guessed. A wrong reservation shifts the page just as
+// badly as no reservation.
 const sizeCache = new Map();
 function sizeOfLocal(src) {
   if (typeof src !== 'string' || /^(?:[a-z]+:)?\/\//i.test(src)) return null;
@@ -45,8 +45,8 @@ function listMd(dir) {
 // neutralize anything that isn't http(s)/relative/anchor (blocks javascript:
 // and protocol-relative "//host"), then attribute-escape. The gate itself is
 // md.js's, so the renderer and the builder cannot disagree about what a safe
-// URL is. EVERY url we put in an href/src goes through here — escaping alone
-// is not enough, it happily preserves a javascript: value.
+// URL is. EVERY url we put in an href/src goes through here. Escaping alone is
+// not enough: it happily preserves a javascript: value.
 function safeHref(url) {
   return escapeHtml(safeUrl(url, { anchor: true }) || '#');
 }
@@ -54,7 +54,7 @@ function safeHref(url) {
 // ---------- SEO / social plumbing (pure helpers, covered by core.test.js) ----------
 
 // "$29" / "$29.50" -> "29" / "29.50" for schema.org offers. Null when the
-// frontmatter price isn't a plain USD amount — then the offer is honestly
+// frontmatter price isn't a plain USD amount, so the offer is honestly
 // omitted rather than guessed.
 function usdPrice(price) {
   const m = /^\$(\d+(?:\.\d{1,2})?)$/.exec(String(price == null ? '' : price).trim());
@@ -68,7 +68,7 @@ function absUrl(site, ref) {
 }
 
 // The replacement is a FUNCTION, not a string: in a string replacement "$&"
-// and "$'" are substitution patterns, and escapeHtml does not touch "$" — so a
+// and "$'" are substitution patterns, and escapeHtml does not touch "$", so a
 // config value could otherwise paste matched or trailing document text
 // (quotes included) into the tag it is being written into.
 function injectHead(html, block) {
@@ -77,7 +77,7 @@ function injectHead(html, block) {
 
 // Fill {{placeholders}} in a theme layout, in a SINGLE pass. Sequential
 // per-key replaces let one value's text contain another key's placeholder and
-// get expanded on that key's turn — which let an escaped config string smuggle
+// get expanded on that key's turn, which let an escaped config string smuggle
 // the raw, unescaped page HTML into <title> or a meta attribute. Own keys
 // only, so inherited names like "constructor" are not placeholders.
 function tpl(layout, vars) {
@@ -86,7 +86,7 @@ function tpl(layout, vars) {
 
 // Set a <meta ... content="..."> value: replace in place when the theme layout
 // already emits the tag (both themes hardcode og:type="website"), else append
-// to <head>. Attribute-level only — themes own their markup.
+// to <head>. Attribute-level only: themes own their markup.
 function setMeta(html, attr, name, content) {
   const esc = escapeHtml(String(content));
   const re = new RegExp(`(<meta\\s+${attr}="${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s+content=")[^"]*(")`);
@@ -119,8 +119,8 @@ function guideSlugs(sections) {
 // Which docs/*.md become pages on the store, in reading order (the docs index
 // and the nav follow this order, not the alphabet).
 //
-// pro-evidence.md is deliberately NOT here. It is Pro sales collateral — dated
-// transcripts of live-store runs plus a paid playbook's table of contents —
+// pro-evidence.md is deliberately NOT here. It is Pro sales collateral (dated
+// transcripts of live-store runs plus a paid playbook's table of contents)
 // rather than store documentation, and publishing it as a peer of the setup
 // guide both dilutes the docs and creates a page that silently goes stale.
 // It stays readable in the repo, where an auditing buyer already looks.
@@ -143,7 +143,7 @@ function docTitle(md, fallback) {
 // http(s) and #anchors are left exactly as authored.
 //
 // This runs on the markdown source, so it must not corrupt a link-looking
-// string inside a code span — docs/how-it-works.md carries the username regex
+// string inside a code span. docs/how-it-works.md carries the username regex
 // `...](?:-?[a-zA-Z0-9]){0,38}$`. The targets below are anchored to real path
 // shapes (a .md suffix, or a leading ../), which that regex is not.
 function rewriteDocLinks(md, { repo, published = PUBLISHED_DOCS } = {}) {
@@ -223,7 +223,7 @@ function articleJsonLd({ title, description, url, config, image, dateModified })
   return ld;
 }
 
-// entries: [{ path, lastmod, priority }] — path relative to the site root.
+// entries: [{ path, lastmod, priority }]; path is relative to the site root.
 function sitemapXml(site, entries) {
   const urls = entries.map(({ path: p, lastmod, priority }) => {
     const parts = [`<loc>${escapeHtml(`${site}/${p}`)}</loc>`];
@@ -313,8 +313,8 @@ const UPSTREAM_CHECKOUT = new Set([
 //
 // The gate used to key on `repo` alone, which left it silent for the one person
 // it most needed to stop. `repo` is not in the field list in docs/setup.md, so a
-// seller who edited exactly what the docs told them to — name, url, seller, the
-// copy — kept `repo` at its shipped value, the guard returned [], the build
+// seller who edited exactly what the docs told them to (name, url, seller, the
+// copy) kept `repo` at its shipped value, the guard returned [], the build
 // exited 0, and their storefront's hero button read "Buy HonorBox Pro · $29"
 // pointed at our checkout. Their buyers' money would have landed in our balance.
 //
@@ -335,7 +335,7 @@ function isUpstreamStore(config) {
 
 // A fork rarely keeps our link byte-for-byte either. Appending a utm
 // parameter, a fragment, or a trailing slash, or pasting it back in a
-// different case, all used to walk straight past an exact-string Set — and the
+// different case, all used to walk straight past an exact-string Set, and the
 // resulting build was GREEN, so nothing told the forker their Buy button was
 // still paying HonorBox. Compare on a normalized key instead: query and
 // fragment removed (they change nothing about which checkout is opened),
@@ -356,7 +356,7 @@ function templateProblems(config, products) {
   // Say the quiet part first: the field nobody was told to set is the field
   // that decides where the fulfillment engine tries to invite buyers.
   if (!config.repo || config.repo === UPSTREAM_REPO) {
-    out.push('store.config.json: "repo" is still HonorBox\'s ("' + (config.repo || '') + '"). Set it to YOUR storefront repo (owner/name) — it is how this build knows the store is yours.');
+    out.push('store.config.json: "repo" is still HonorBox\'s ("' + (config.repo || '') + '"). Set it to YOUR storefront repo (owner/name). It is how this build knows the store is yours.');
   }
   const owned = (v) => {
     if (typeof v !== 'string') return false;
@@ -421,7 +421,7 @@ function slugProblems(productIds, pageSlugs, { dir = 'pages', what = 'product id
 }
 
 function buyButton(p, big = false) {
-  // No usable checkout link — missing, or a URL the gate rejects. Gating a bad
+  // No usable checkout link: missing, or a URL the gate rejects. Gating a bad
   // link down to "#" would ship a Buy button that looks alive and goes
   // nowhere; from the buyer's side that is the same problem as no link at all,
   // so it gets the state this module already has. For a forker who typo'd
@@ -433,7 +433,7 @@ function buyButton(p, big = false) {
 }
 
 // variant: '' (default) | 'flagship' | 'companion'. Additive modifier classes
-// only — every theme keeps styling .product-card; a theme that knows the
+// only: every theme keeps styling .product-card; a theme that knows the
 // variants steps the companion down visually.
 function productCard(p, variant = '') {
   return `<article class="product-card${variant ? ` ${variant}` : ''}">
@@ -471,7 +471,7 @@ function section(s, sizeOf = sizeOfLocal) {
   if (s.type === 'faq') {
     // Optional `href`/`href_label`: an answer that points at a doc gets a real
     // link. The answer itself stays plain escaped text (no HTML in config), so
-    // the link is appended rather than embedded — same discipline as `steps`.
+    // the link is appended rather than embedded, same discipline as `steps`.
     return `<section class="faq"><h2>${escapeHtml(s.title)}</h2>${s.items
       .map((it) => {
         const more = it.href
@@ -492,8 +492,8 @@ function section(s, sizeOf = sizeOfLocal) {
       .map((it) => {
         // The FILE is the truth, the config is the fallback. These items
         // carried width="1360" height="900" for images that are actually
-        // 1200x630 — an aspect ratio 26% wrong, reserving a box the image
-        // never fills. A declared number drifts the moment the art is
+        // 1200x630. That aspect ratio is 26% wrong, reserving a box the
+        // image never fills. A declared number drifts the moment the art is
         // re-exported; a measured one cannot.
         const measured = typeof sizeOf === 'function' ? sizeOf(it.img) : null;
         const w = measured ? measured.width : Number(it.width);
@@ -520,20 +520,20 @@ function main() {
   const layout = read(path.join(themeDir, 'layout.html'));
 
   const problems = []; // fatal: the build refuses to ship a store this broken
-  const warnings = []; // non-fatal, but printed on EVERY build — never silent
+  const warnings = []; // non-fatal, but printed on EVERY build, never silent
   for (const problem of configProblems(config)) problems.push(`store.config.json: ${problem}`);
   const products = listMd(path.join(ROOT, 'products')).map((f) => {
     const { data, body, error } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
     if (error) problems.push(`products/${f}: ${error}`);
     for (const problem of productProblems(data)) problems.push(`products/${f}: ${problem}`);
-    // The social card, when it is named explicitly, is a deliberate choice —
+    // The social card, when it is named explicitly, is a deliberate choice,
     // so a broken one is a build error, not something to paper over. Checked
     // HERE rather than where the card is emitted, because that happens after
     // the problem gate has already run.
     if (data.og_image) {
       const bare = String(data.og_image).split(/[?#]/)[0];
       if (!/\.(png|jpe?g|gif)$/i.test(bare)) {
-        problems.push(`products/${f}: og_image must be .png/.jpg/.gif — link-preview scrapers do not reliably render anything else`);
+        problems.push(`products/${f}: og_image must be .png/.jpg/.gif: link-preview scrapers do not reliably render anything else`);
       } else if (!/^https?:\/\//i.test(bare) && !fs.existsSync(path.join(ROOT, bare.replace(/^\.?\//, '')))) {
         problems.push(`products/${f}: og_image "${data.og_image}" does not exist`);
       }
@@ -591,13 +591,13 @@ function main() {
 
   const site = config.url.replace(/\/$/, '');
   // Sitemap <lastmod> / Article dateModified: honor a pinned BUILD_DATE (CI
-  // can pass one for reproducible builds), else today — same determinism
+  // can pass one for reproducible builds), else today, same determinism
   // level as the {{year}} already in the footer.
   const buildDate = /^\d{4}-\d{2}-\d{2}$/.test(process.env.BUILD_DATE || '')
     ? process.env.BUILD_DATE
     : new Date().toISOString().slice(0, 10);
   // Default social card: config override > the configured theme's real
-  // storefront screenshot (raster — scrapers don't render SVG) > the logo.
+  // storefront screenshot (raster, because scrapers don't render SVG) > the logo.
   const themePreview = `assets/previews/${config.theme || 'stand'}.png`;
   const defaultOgImage = config.og_image
     ? absUrl(site, config.og_image)
@@ -702,12 +702,12 @@ function main() {
     // The failure this replaces: the gallery moved to WebP, firstRasterImage
     // found nothing a scraper could decode, and the card SILENTLY fell back to
     // the theme preview. The page still built green while the product's link
-    // preview quietly changed — the same shape as every bug worth fixing here,
-    // where the system reports success and does something else.
+    // preview quietly changed. That is the same shape as every bug worth fixing
+    // here, where the system reports success and does something else.
     //
     // Scraper-safe formats only: a card scraper that cannot decode WebP shows
     // no preview at all, and a blank card costs more than the bytes WebP saves.
-    // Those bytes are not on the critical path anyway — a card image is fetched
+    // Those bytes are not on the critical path anyway: a card image is fetched
     // by scrapers, never by a visitor loading the page.
     const OG_SAFE = /\.(png|jpe?g|gif)$/i;
     let ogImage;
@@ -841,7 +841,7 @@ files that ship in the repo.</p>
 
   // Printed at the END, after the pages that generate them have been written.
   // Not fatal, but a silent fallback is how the product's social card changed
-  // without anyone deciding to change it — a green build still has to say so.
+  // without anyone deciding to change it. A green build still has to say so.
   for (const w of warnings) console.error(`build: WARN ${w}`);
   console.log(`built dist/: ${products.length} product(s), ${pages.length} page(s), ${docs.length} doc(s), ledger page: ${hasLedger ? 'on' : 'off'}`);
 }

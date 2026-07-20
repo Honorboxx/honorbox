@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// HonorBox init — from zero to a sellable product in one command.
+// HonorBox init: from zero to a sellable product in one command.
 //
 //   STRIPE_SECRET_KEY=rk_... node scripts/init.js \
 //     --name "My Tool" --price 2900 --currency usd --repo you/my-tool-access
 //
 // Creates on your Stripe account:  Product -> Price -> Payment Link with the
 // required github_username field and a delivery confirmation message.
-// Promotion codes are OFF by default — see paymentLinkParams. Then wires everything into store.config.json and
-// scaffolds products/<id>.md. Idempotent-ish: run once per product.
+// Promotion codes are OFF by default (see paymentLinkParams). Then wires
+// everything into store.config.json and scaffolds products/<id>.md. Idempotent-ish: run once per product.
 //
 // Optional: --id <slug>  --config <path>  --products <dir>  --dry-run
 // Zero dependencies. Read-only on Stripe until you confirm (or pass --yes).
@@ -37,7 +37,7 @@ const KNOWN_FLAGS = ['name', 'price', 'currency', 'repo', 'id', 'config', 'produ
 // Switches take no value. `has()` matches the exact token, so `--dry-run=true`
 // evaluated FALSE while passing flag validation: a command that literally says
 // dry-run created live Stripe objects on the operator's account. Refuse the
-// spelling instead of interpreting it — `--dry-run=false` is the same trap
+// spelling instead of interpreting it. `--dry-run=false` is the same trap
 // pointing the other way, and on a money path an ambiguous switch should stop,
 // not guess.
 const SWITCHES = ['dry-run', 'yes', 'help'];
@@ -49,7 +49,7 @@ function switchesWithValues(argv) {
 }
 
 // A typo'd flag used to be discarded in silence, so `--reppo you/x` died with
-// "--repo is required" — technically true and completely unhelpful. Worse, a
+// "--repo is required", technically true and completely unhelpful. Worse, a
 // typo'd --repo on a real run would have created live Stripe objects pointing
 // at nothing. Name the token we did not understand.
 function unknownFlags(argv) {
@@ -108,7 +108,7 @@ async function stripe(pathname, form) {
 // allow_promotion_codes is OFF deliberately. A link with the promo field open
 // is a live discount surface on a money path, and the seller who later makes a
 // 100%-off code to test delivery has handed that code's value to anyone who
-// guesses it — we did exactly that to ourselves on 2026-07-20 and found two
+// guesses it. We did exactly that to ourselves on 2026-07-20 and found two
 // live 100%-off codes on our own checkout the day before a launch. Sellers who
 // want typed codes can enable it per link in the Stripe Dashboard, which is the
 // right direction for a default that costs money when it is wrong.
@@ -122,14 +122,14 @@ function paymentLinkParams(priceId, repo) {
     'custom_fields[0][type]': 'text',
     'after_completion[type]': 'hosted_confirmation',
     'after_completion[hosted_confirmation][custom_message]':
-      `You're in. The fulfillment bot will invite your GitHub account to the private ${repo} repository — usually within 30 minutes, always within a few hours. No invite? Reply to your Stripe receipt and it will be fixed or refunded.`,
+      `You're in. The fulfillment bot will invite your GitHub account to the private ${repo} repository, usually within 30 minutes, always within a few hours. No invite? Reply to your Stripe receipt and it will be fixed or refunded.`,
     allow_promotion_codes: 'false',
   };
 }
 
 async function confirm(question) {
   if (has('yes')) return true;
-  // Non-interactive stdin — a pipe, CI, a devcontainer task, `| tee init.log` —
+  // Non-interactive stdin (a pipe, CI, a devcontainer task, `| tee init.log`)
   // never delivers an answer. readline's callback simply never fires, the event
   // loop drains, and node exits 0 having created nothing and said nothing. A
   // scripted caller reads that exit 0 as success and carries on. Refuse loudly
@@ -179,7 +179,7 @@ async function main() {
   console.log(`  price     ${priceHuman} one-time`);
   console.log(`  link      Payment Link with required "GitHub username" field`);
   console.log(`  delivery  invite to ${repo}\n`);
-  if (has('dry-run')) { console.log('dry run — nothing created.'); return; }
+  if (has('dry-run')) { console.log('dry run: nothing created.'); return; }
   if (!(await confirm('Create them?'))) { console.log('aborted.'); return; }
 
   const product = await stripe('/v1/products', { name });
@@ -221,7 +221,7 @@ Sell it here. What problem it solves, who it's for, what's inside.
 ## How delivery works
 
 Checkout asks for your GitHub username. The fulfillment bot invites that
-account to the private repository — usually within 30 minutes. You keep
+account to the private repository, usually within 30 minutes. You keep
 access permanently; updates land in the same repo.
 `);
     console.log(`scaffolded: ${mdPath}`);
@@ -245,9 +245,9 @@ access permanently; updates land in the same repo.
   3. Delete every products/*.md you are not selling, and set "repo" in
      ${configPath} to your own storefront repo. The build refuses to publish a
      store that still carries HonorBox's checkout links, and will list them.
-  4. Copy the updated ${configPath} into your private ops repo — the fulfillment
+  4. Copy the updated ${configPath} into your private ops repo. The fulfillment
      engine reads its grants from THAT copy, so a grant added here is not live
-     until it is copied across
+     until it is copied across.
   5. node scripts/build.js && deploy
   6. Set up the fulfillment cron (docs/setup.md §5) if you haven't\n
 Checkout URL: ${link.url}`);

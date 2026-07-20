@@ -1,4 +1,4 @@
-/* HonorBox theme: "terminal" — phosphor on glass, for CLI tools.
+/* HonorBox theme: "terminal", phosphor on glass, for CLI tools.
    Commits to dark. Mono everywhere. The product IS the aesthetic.
    This is a full Pro theme published here (MIT) as an auditable sample of
    what the paid pack's code looks like. Four more live in Pro. */
@@ -156,7 +156,7 @@ tr.attn td { color: var(--attn); }
 .product-card.companion .pc-buy { border-top: none; padding-top: 0.7rem; }
 .product-card.companion .price { font-size: 1.1rem; }
 
-/* showcase — proof band of real storefront screenshots */
+/* showcase: proof band of real storefront screenshots */
 .showcase { margin-top: 2.4rem; }
 .showcase .muted { font-size: 0.9rem; }
 .showcase-grid {

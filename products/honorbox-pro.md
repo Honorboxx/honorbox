@@ -73,15 +73,15 @@ every order you were *paid* for, does that buyer have the product *right now*?
 
 Those are different questions. The engine writes its ledger row the moment it
 **sends** an invite, and nothing ever goes back to check that it was accepted. A
-buyer who never clicks accept leaves every system you own reporting success —
-Stripe says paid, your ledger says delivered, the run is green — while they have
-nothing. Seven days later the invitation expires, and the loss is permanent and
+buyer who never clicks accept leaves every system you own reporting success
+(Stripe says paid, your ledger says delivered, the run is green) while they
+have nothing. Seven days later the invitation expires, and the loss is permanent and
 still invisible. The same blind spot hides an order that matched no grant, an
 invite that never landed, a typo'd username, and a refunded buyer who kept
 access.
 
 Reconcile starts from the money, walks every paid Stripe session, and asks
-GitHub whether that specific buyer holds access to that specific repo — one
+GitHub whether that specific buyer holds access to that specific repo: one
 verdict per sale, non-zero exit when anything is lost, so you can schedule it
 instead of remembering it. Read-only.
 

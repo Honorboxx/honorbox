@@ -27,7 +27,7 @@
 #   OPS_WORKFLOW = workflow file to nudge (default fulfill.yml)
 #   OPS_BRANCH   = branch that workflow lives on (default main)
 #
-# COST — read this before tightening the cron:
+# COST. Read this before tightening the cron:
 #   This cron runs in your PUBLIC storefront repo, where Actions minutes are
 #   free. But every nudge starts a run in your PRIVATE ops repo, and private
 #   runs are billed per job, rounded UP to a whole minute, against 2,000 free

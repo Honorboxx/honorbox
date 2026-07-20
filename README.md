@@ -55,7 +55,7 @@ ten minutes: [`scripts/fulfill.js`](scripts/fulfill.js).
 
 ## Quickstart
 
-1. **Use this template**, edit `store.config.json` — name, copy, your URLs, and
+1. **Use this template**, edit `store.config.json`: name, copy, your URLs, and
    `repo` (your own `owner/name`). Then delete `products/honorbox-pro.md` and
    `products/crew.md` and write your own: they carry HonorBox's real checkout
    links, and a store that keeps them sells *our* product into *our* Stripe

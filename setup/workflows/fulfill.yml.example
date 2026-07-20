@@ -29,7 +29,7 @@ on:
     #
     # The spare 512 minutes cover sale-triggered runs (fulfill-on-sale.yml,
     # 1 minute per sale) and manual dispatches. Tightening this cron is the
-    # one edit here that can put a seller over the free tier — see
+    # one edit here that can put a seller over the free tier. Read
     # docs/setup.md ("What this costs") before you change it.
     - cron: "*/30 * * * *"
   workflow_dispatch:

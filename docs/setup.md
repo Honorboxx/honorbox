@@ -1,6 +1,6 @@
 # Setup: from fork to first sale
 
-Time: ~30 minutes. Cost: $0/month — the arithmetic is in
+Time: ~30 minutes. Cost: $0/month. The arithmetic is in
 [§6](#6-what-this-costs), not asserted. You need a GitHub account and an
 activated Stripe account (charges enabled).
 
@@ -14,7 +14,7 @@ activated Stripe account (charges enabled).
    - `seller`: who the merchant is. Use your real name or entity; it builds
      trust and it's the law in most places.
    - `repo`: **your** storefront repo, as `owner/name`. This one is not
-     cosmetic — it is how the build knows the store is yours rather than a
+     cosmetic: it is how the build knows the store is yours rather than a
      copy of HonorBox's, and leaving it unset is what used to let a store
      ship with HonorBox's Buy buttons still live.
    - `sections`: keep, edit, or delete the marketing sections. They're plain
@@ -118,7 +118,7 @@ Keep secrets and state **out of your public repo**:
 $0/month, and here is the arithmetic rather than the assurance.
 
 **GitHub Pages + the storefront build.** Your storefront repo is public, and
-Actions minutes in public repositories are not billed at all — GitHub's own
+Actions minutes in public repositories are not billed at all. GitHub's own
 wording is "There are no billable minutes when using GitHub Actions in public
 repositories." So the site build and deploy are free at any frequency.
 
@@ -126,7 +126,7 @@ repositories." So the site build and deploy are free at any frequency.
 repo is private, and private-repo Actions bill against **2,000 free
 minutes/month** on the GitHub Free plan. Two rules decide the bill:
 
-- Each *job* is rounded **up to a whole minute** — "GitHub rounds the minutes
+- Each *job* is rounded **up to a whole minute**: "GitHub rounds the minutes
   and partial minutes each job uses up to the nearest whole minute."
 - A fulfillment run takes ~15 seconds, so it is billed as **1 minute**,
   whether it finds a sale or not.
@@ -136,17 +136,17 @@ So the monthly cost of polling is simply its run count, and the shipped
 
 | Poll cron | Runs/month (31d) | Billable minutes | Inside 2,000? |
 |---|---|---|---|
-| **`*/30` (shipped default)** | 1,488 | 1,488 | **yes** — 512 spare |
-| `*/20` | 2,232 | 2,232 | no — 232 over |
-| `*/15` | 2,976 | 2,976 | no — 976 over (~$5.86/mo at $0.006/min) |
-| `*/5` | 8,928 | 8,928 | no — 4.5x the tier |
+| **`*/30` (shipped default)** | 1,488 | 1,488 | **yes**, 512 spare |
+| `*/20` | 2,232 | 2,232 | no, 232 over |
+| `*/15` | 2,976 | 2,976 | no, 976 over (~$5.86/mo at $0.006/min) |
+| `*/5` | 8,928 | 8,928 | no, 4.5x the tier |
 
 The 512 spare minutes are real headroom, not rounding: they cover
 sale-triggered runs (`fulfill-on-sale.yml` costs 1 minute per sale, so 512
 sales/month before the free tier binds) and any manual re-runs.
 
 If you turn on the optional heartbeat (§ [instant-delivery.md](instant-delivery.md)),
-loosen this cron to hourly — heartbeat nudges cost an ops-repo minute each, and
+loosen this cron to hourly: heartbeat nudges cost an ops-repo minute each, and
 hourly + hourly is the same 1,488 minutes as a lone `*/30`.
 
 **What you actually wait for.** With the `*/30` default and no webhook relay,
@@ -185,8 +185,8 @@ neither needing a card.
 
 **B. Pre-applied coupon on a Checkout Session** (no flag to remember to unset)
 
-Create the Session from the API with `discounts[0][coupon]=<coupon_id>` — the
-coupon id, not the promotion code — and open the URL it returns. The link's
+Create the Session from the API with `discounts[0][coupon]=<coupon_id>` (the
+coupon id, not the promotion code) and open the URL it returns. The link's
 promo setting is irrelevant, so there is nothing to switch back off afterwards.
 This is the path this project uses for its own testing.
 

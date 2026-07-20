@@ -66,7 +66,7 @@ async function runMain(dir, routes) {
   process.env.GH_FULFILL_TOKEN = 'ghp_test_stub';
   const { calls, restore } = stubFetch(routes);
   // Retries are real in main() but must not cost real seconds here: record the
-  // waits instead of serving them. `slept` is then assertable — a test can
+  // waits instead of serving them. `slept` is then assertable: a test can
   // prove the engine waited the number of seconds GitHub asked for.
   const slept = [];
   const fakeSleep = async (ms) => { slept.push(ms); };
@@ -261,7 +261,7 @@ test('a paid session that matches no grant is reported, not swallowed', async ()
   // The worst shape of failure on the money path: the buyer paid, the grant
   // ids are wrong or missing, pickNewPaidSessions drops the session, and the
   // run prints new_paid=0 and exits 0. Nothing in the log said a sale had
-  // been lost. It must warn — once, on the loud channel the watchdog reads.
+  // been lost. It must warn once, on the loud channel the watchdog reads.
   const dir = tmp();
   const s = paidSession('cs_orphan_1', 1_700_000_000, { payment_link: 'plink_NOT_IN_CONFIG' });
   const stripe = { match: 'api.stripe.com', res: () => jsonRes({ data: [s], has_more: false }) };
@@ -273,7 +273,7 @@ test('a paid session that matches no grant is reported, not swallowed', async ()
 
   const warn = err1.lines.find((l) => l.includes('cs_orphan_1'));
   assert.ok(warn, `expected a warning, got:\n${err1.lines.join('\n')}`);
-  assert.match(warn, /^WARN:/, 'the watchdog greps for "WARN:" — the prefix is load-bearing');
+  assert.match(warn, /^WARN:/, 'the watchdog greps for "WARN:"; the prefix is load-bearing');
   assert.match(warn, /matches no fulfillment grant/);
   assert.match(warn, /29\.00 USD/, 'the operator needs to know how much went undelivered');
   assert.ok(!first.calls.some((c) => c.url.includes('api.github.com')), 'nothing to deliver, so no invite');
@@ -292,7 +292,7 @@ test('a paid session that matches no grant is reported, not swallowed', async ()
 
 test('a burst of checkouts in one poll window all get delivered', async () => {
   // HN traffic arrives in clumps: several sessions complete inside a single
-  // 120s poll. Every one of them must be invited, ledgered, and processed —
+  // 120s poll. Every one of them must be invited, ledgered, and processed:
   // the loop must not stop at the first, and the cursor must land on the
   // newest session seen, not the last one iterated.
   const dir = tmp();
@@ -323,8 +323,8 @@ test('a burst of checkouts in one poll window all get delivered', async () => {
 });
 
 test('one undeliverable buyer in a burst does not block the buyers behind them', async () => {
-  // A single typo'd username 404s. If that aborted the loop — or quietly ate
-  // the rest — the buyers after it in the same poll would pay and get
+  // A single typo'd username 404s. If that aborted the loop (or quietly ate
+  // the rest), the buyers after it in the same poll would pay and get
   // nothing, and the log would show one failure instead of four deliveries.
   const dir = tmp();
   const names = ['alice', 'ghost-user', 'carol'];
@@ -484,13 +484,13 @@ test('both APIs are called with a deadline attached', async () => {
   for (const host of ['api.stripe.com', 'api.github.com']) {
     const call = calls.find((c) => c.url.includes(host));
     assert.ok(call, `${host} was never called`);
-    assert.ok(call.init.signal, `${host} call has no abort signal — an unanswered socket would stall the cycle`);
+    assert.ok(call.init.signal, `${host} call has no abort signal: an unanswered socket would stall the cycle`);
     assert.equal(typeof call.init.signal.aborted, 'boolean', `${host} signal is not an AbortSignal`);
   }
 });
 
 // A throttled response whose BODY says nothing useful: only the header marks
-// it as a rate limit. That is deliberate — GitHub's wording is not a contract,
+// it as a rate limit. That is deliberate: GitHub's wording is not a contract,
 // and matching on prose was the old, brittle test.
 const throttledRes = (retryAfterSeconds) => ({
   ok: false,
@@ -505,7 +505,7 @@ test('a secondary rate limit is retried inside the run, not left to the next pol
   // DISPATCH lands, which says nothing about whether the INVITE succeeded, so
   // Stripe never retries a failed invite. Before this, a burst that tripped
   // GitHub's secondary limit left the buyer waiting for the hourly
-  // reconciliation poll — up to ~60 minutes for a throttle that clears in
+  // reconciliation poll, up to ~60 minutes for a throttle that clears in
   // seconds.
   const dir = tmp();
   let attempts = 0;
@@ -535,8 +535,8 @@ test('a secondary rate limit is retried inside the run, not left to the next pol
 test('the in-run retry budget is shared across a burst, so it cannot stretch without bound', async () => {
   // Ten throttled buyers must not serialize into ten separate waits and hold
   // the Actions job open. The budget is per-RUN: once spent, the buyers behind
-  // it fall back to exactly the old behaviour — unprocessed, retried by the
-  // next poll — rather than each buying another wait.
+  // it fall back to exactly the old behaviour (unprocessed, retried by the
+  // next poll) rather than each buying another wait.
   const dir = tmp();
   const sessions = Array.from({ length: 10 }, (_, i) =>
     paidSession(`cs_rl_${i}`, 1_700_000_000 + i, {
