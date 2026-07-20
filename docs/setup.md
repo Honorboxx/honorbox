@@ -153,9 +153,10 @@ one more fine-grained token. Full steps, the payload, and the threat model:
 
 Worth knowing before you choose: neither option changes GitHub's cap of 50
 repository invitations per repo per 24 hours. Webhook mode makes the 50th
-delivery instant; it does not make the 51st possible. That ceiling is lifted
-by moving the product repo into a GitHub organization, not by delivering
-faster:
+delivery instant; it does not make the 51st possible, and nothing does. Moving
+the repo into an organization does not lift it either: org invitations are
+capped too, and it would let every buyer list every other buyer. Past the 50th,
+buyers queue and the queue drains on its own:
 [how-it-works.md](how-it-works.md#githubs-invitation-cap-50-per-repo-per-day).
 
 ## 7. What this costs

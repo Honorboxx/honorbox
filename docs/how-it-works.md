@@ -130,8 +130,9 @@ invitations, not pulls.
 WARN: you/product has reached GitHub's cap of 50 repository invitations per
 24 hours. Sales are still being recorded and NOTHING is lost: queued buyers
 are invited automatically as the cap frees up, which takes up to 24h from the
-invite that filled it. To remove the ceiling, move the repo into a GitHub
-organization and invite buyers as org members, which GitHub does not cap.
+invite that filled it. This ceiling cannot be removed: inviting buyers as org
+members is capped too (50/day for a new org, 500 once it is over a month old)
+and it lets every buyer list every other buyer.
 
 WARN: 10 paid buyers are waiting behind the invitation cap on you/product.
 ```
@@ -196,7 +197,7 @@ transparency; keeping it private is the default.
 | Buyer never accepts the invite | Renewed automatically at 6 days, up to 3 times. After that the run warns with the buyer's name and stops; email them or refund. See [Delivery model](#delivery-model) |
 | GitHub cron delayed | Delivery late by minutes to hours; confirmation message sets expectation |
 | Actions outage | Sales queue up; next run drains the backlog (poll + idempotency) |
-| More than 50 sales to one repo in 24h | GitHub's [invitation cap](#githubs-invitation-cap-50-per-repo-per-day). Buyers past the 50th are queued and delivered automatically as the window frees, and the run warns with the number waiting. Move the repo to an organization to remove the ceiling |
+| More than 50 sales to one repo in 24h | GitHub's [invitation cap](#githubs-invitation-cap-50-per-repo-per-day). Buyers past the 50th are queued and delivered automatically as the window frees, and the run warns with the number waiting. This ceiling cannot be removed; org membership is capped too |
 | Stripe key leaked | Restricted key limits blast radius to reading checkout sessions; rotate in dashboard |
 | Refund issued | `renew-invites.js --revoke you/product:username` removes access and records it, so renewal can never re-invite them. Removing them by hand on GitHub records nothing |
 | Subscription ends | Nothing, unless you turn on [subscription enforcement](subscriptions.md); then the customer is removed after a grace period |

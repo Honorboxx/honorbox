@@ -283,3 +283,46 @@ test('every doc link points at a heading that exists', () => {
   }
   assert.deepEqual(dead, [], `doc links pointing at headings that do not exist:\n  ${dead.join('\n  ')}`);
 });
+
+// The "move your repo to an organization to lift the 50/day invitation cap"
+// claim was false and shipped in three places: two prose sections and a table
+// row inside a file whose prose had already been corrected. It is false twice
+// over. Org invitations are capped too, and org membership lets every buyer
+// enumerate every other buyer.
+//
+// What this bans is the INSTRUCTION, not the topic. Docs stay free to quote
+// GitHub's "no limit for organization members" wording in order to rebut it,
+// and to say plainly that the ceiling cannot be removed. The harm is only in
+// telling a seller to migrate: they do the work, gain nothing, and expose
+// their buyer list.
+//
+// Negation is checked against the lifting verb, not the sentence. A sentence
+// scoped check reads "that ceiling is lifted by moving to an organization, NOT
+// by delivering faster" as safe, because it finds a "not" that is negating
+// something else entirely. Negation binds to a verb, so that is where to look.
+test('no doc tells a seller to move to an organization to lift the cap', () => {
+  const MOVE_TO_ORG = /\b(move|moving|migrate|migrating|put|putting|host)\b[^.]{0,90}\borgani[sz]ation\b/i;
+  const LIFTS = /\b(lift|lifts|lifted|remove|removes|removed|uncapped?|ceiling|limit)\b/gi;
+  const NEGATION_BEFORE_VERB = /\b(no|not|never|cannot|can't|doesn't|don't)\b[^.]{0,12}$/i;
+
+  const offenders = [];
+  for (const file of publicSources()) {
+    // Splitting too eagerly only shrinks the window, so it can raise a false
+    // alarm but never hide a real one. Table cells split on the pipe likewise.
+    for (const sentence of read(file).split(/(?<=[.!?])\s+|\n\s*\n|\|/)) {
+      if (!MOVE_TO_ORG.test(sentence)) continue;
+      // Every lifting verb in the sentence must carry its own negation. One
+      // asserted lift is enough to mislead, however the rest of it reads.
+      const asserted = [...sentence.matchAll(LIFTS)]
+        .filter((m) => !NEGATION_BEFORE_VERB.test(sentence.slice(0, m.index)));
+      if (!asserted.length) continue;
+      offenders.push(`${file}: ${sentence.trim().replace(/\s+/g, ' ').slice(0, 110)}`);
+    }
+  }
+
+  assert.deepEqual(offenders, [],
+    'moving to an organization does not lift the 50/day invitation cap: org ' +
+    'invites are capped too, and org membership lets every buyer enumerate ' +
+    'every other buyer. Sending a seller to migrate costs them the work and ' +
+    'their buyers the privacy:\n  ' + offenders.join('\n  '));
+});
