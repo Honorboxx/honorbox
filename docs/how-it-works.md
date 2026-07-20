@@ -31,6 +31,11 @@ product repo. That's deliberate:
 - It's durable: buyers keep access and get updates via `git pull`.
 - It's auditable: the invite log is the entitlement record.
 
+Note what "durable" costs you if you sell a subscription: removing a collaborator
+stops future `git pull`, but the clone they already have stays on their machine.
+A subscription here sells continued access and future updates, not use of the
+product. See [selling a subscription](subscriptions.md).
+
 The cost: by default delivery is not instant (the poll runs on a schedule and
 GitHub sometimes delays it). Set that expectation at checkout:
 "usually within minutes, always within a few hours." If you want near-instant
@@ -78,3 +83,5 @@ transparency; keeping it private is the default.
 | Actions outage | Sales queue up; next run drains the backlog (poll + idempotency) |
 | Stripe key leaked | Restricted key limits blast radius to reading checkout sessions; rotate in dashboard |
 | Refund issued | Revoke collaborator access by hand (or leave it; your call) |
+| Subscription ends | Nothing, unless you turn on [subscription enforcement](subscriptions.md); then the customer is removed after a grace period |
+| Subscriber's card fails | Nothing. `past_due` is never treated as a cancellation while Stripe is still retrying |

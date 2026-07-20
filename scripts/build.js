@@ -124,7 +124,7 @@ function guideSlugs(sections) {
 // rather than store documentation, and publishing it as a peer of the setup
 // guide both dilutes the docs and creates a page that silently goes stale.
 // It stays readable in the repo, where an auditing buyer already looks.
-const PUBLISHED_DOCS = ['how-it-works', 'setup', 'least-privilege', 'instant-delivery', 'tax'];
+const PUBLISHED_DOCS = ['how-it-works', 'setup', 'subscriptions', 'least-privilege', 'instant-delivery', 'tax'];
 
 // docs/*.md carry no frontmatter: the first "# " line is the title. Split it
 // off so the page template owns the <h1> (same shape as pages/) instead of the
