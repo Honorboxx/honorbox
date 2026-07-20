@@ -169,9 +169,13 @@ function subscriptionRepos(sub, grants) {
 //             a grace clock and eventually be revoked. That is the exact
 //             failure this whole design exists to prevent, so HOLD is carried
 //             explicitly rather than inferred from an absence.
+//
+// Protection is carried TWICE, by subscription id and by (repo, user) pair,
+// because neither covers the other. See the two comments inside.
 function desiredEntitlements(subs, subUsers, grants) {
   const desired = new Map(); // grantKey -> { repo, user, sub, reason }
   const heldSubs = new Set(); // subscription ids that must not lapse
+  const heldPairs = new Set(); // grantKeys that must not lapse
   const notes = [];
   for (const sub of Array.isArray(subs) ? subs : []) {
     if (!sub || !sub.id) continue;
@@ -182,21 +186,33 @@ function desiredEntitlements(subs, subUsers, grants) {
     // Protection is recorded per SUBSCRIPTION, before anything else can go
     // wrong, and this is deliberate. Everything below can fail to resolve: the
     // username may not be known yet, the price may have moved to a plan this
-    // config does not name. If protection were recorded per (repo, user) pair,
-    // every one of those failures would leave an existing grant looking
+    // config does not name. If protection were recorded ONLY per (repo, user)
+    // pair, every one of those failures would leave an existing grant looking
     // unwanted, and an unwanted grant lapses and is eventually revoked. That
     // would mean a paying customer loses access because WE lost track of their
     // username, which is precisely the failure this file exists to prevent.
     // A subscription that is not lapsed protects its grants, full stop.
     heldSubs.add(sub.id);
 
-    if (action !== GRANT) continue;
     const repos = subscriptionRepos(sub, grants);
+    const users = seatUsernames(subUsers[sub.id]);
+
+    // And protection is ALSO recorded per pair, for the case the id cannot
+    // reach. A grant record names the one subscription it was written from, and
+    // nothing refreshes it. When a customer re-subscribes, Stripe cancels the
+    // old subscription and opens a new one, so the id on the record is dead and
+    // a hold on the live subscription never finds their grant. Held pairs close
+    // that gap: whoever a non-lapsed subscription resolves to is protected by
+    // name, whichever subscription happened to be recorded. This is computed
+    // for every non-lapsed subscription and not only for granting ones, because
+    // past_due is precisely the status that must protect without granting.
+    for (const repo of repos) for (const user of users) heldPairs.add(grantKey(repo, user));
+
+    if (action !== GRANT) continue;
     if (repos.length === 0) {
       notes.push({ sub: sub.id, message: `is ${reason} but its price matches no configured product, so it cannot be granted` });
       continue;
     }
-    const users = seatUsernames(subUsers[sub.id]);
     if (users.length === 0) {
       notes.push({ sub: sub.id, message: `is ${reason} but no GitHub username is known for it, so it cannot be granted` });
       continue;
@@ -207,7 +223,7 @@ function desiredEntitlements(subs, subUsers, grants) {
       }
     }
   }
-  return { desired, heldSubs, notes };
+  return { desired, heldSubs, heldPairs, notes };
 }
 
 // --- grace ------------------------------------------------------------------
@@ -239,12 +255,19 @@ function graceExpired(lapsedSince, graceDays, now) {
 //   lapsing  - pairs whose grace clock should start (or keep running).
 //   due      - pairs whose grace has expired and which may now be revoked.
 //   keep     - pairs still entitled, whose clock must be cleared.
-function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null } = {}) {
-  const out = { grants: [], lapsing: [], due: [], keep: [] };
+//   refresh  - pairs whose record names a subscription that is no longer the
+//              one entitling them, so the record can be re-pointed at the live
+//              one. Without this a record keeps a dead id for good, and every
+//              log line about that customer names a subscription the seller
+//              will not find in their dashboard.
+function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null, heldPairs = null } = {}) {
+  const out = { grants: [], lapsing: [], due: [], keep: [], refresh: [] };
 
   for (const [key, want] of desired) {
-    if (!records[key]) out.grants.push(want);
-    else if (records[key].lapsed_since) out.keep.push({ key, ...records[key] });
+    const rec = records[key];
+    if (!rec) { out.grants.push(want); continue; }
+    if (rec.lapsed_since) out.keep.push({ key, ...rec });
+    if (rec.sub !== want.sub) out.refresh.push({ key, from: rec.sub, sub: want.sub, repo: want.repo, user: want.user });
   }
 
   for (const [key, rec] of Object.entries(records || {})) {
@@ -259,6 +282,9 @@ function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, no
     // most, and it must not even START a clock, because Stripe is still
     // retrying the card and this person has not left.
     if (heldSubs && heldSubs.has(rec.sub)) continue;
+    // The same protection reached by name rather than by id, for the customer
+    // whose live subscription is not the one on their record.
+    if (heldPairs && heldPairs.has(key)) continue;
     // A repo that has left the config is OUT OF SCOPE, not a mass cancellation.
     // "The seller removed a product from config" and "the seller wants every
     // customer of that product kicked out" are indistinguishable from here, and
@@ -353,12 +379,26 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
 // and carries everything needed to undo it by hand in seconds, including the
 // literal command. A seller reading this at 3am should not have to work
 // anything out.
-function revokeLine(pair, { dryRun = false } = {}) {
-  const verb = dryRun ? 'WOULD REVOKE (reporting only, nothing was changed)' : 'REVOKED';
+// `confirmed` is false when GitHub answered 404: the account is not a
+// collaborator under THAT name, which is usually because it never was, but is
+// also what a renamed GitHub account looks like. Saying "REVOKED" there would
+// report that access was taken away when possibly nothing was, so the two cases
+// get different words and the uncertain one says what to check.
+function revokeLine(pair, { dryRun = false, confirmed = true } = {}) {
+  const verb = dryRun
+    ? 'WOULD REVOKE (reporting only, nothing was changed)'
+    : confirmed
+      ? 'REVOKED'
+      : 'REVOKED, UNCONFIRMED:';
+  const tail = confirmed || dryRun
+    ? `Undo: gh api -X PUT repos/${pair.repo}/collaborators/${pair.user} -f permission=pull`
+    : `GitHub answered 404, so nobody by that name is a collaborator and the removal could not be ` +
+      `confirmed. If they renamed their GitHub account they may still have access under the new name. ` +
+      `Check: gh api repos/${pair.repo}/collaborators`;
   return (
     `WARN: ${verb} ${pair.user} from ${pair.repo} ` +
     `(subscription ${pair.sub} ${pair.reason || 'lapsed'}, grace expired; lapsed since ${pair.lapsed_since}). ` +
-    `Undo: gh api -X PUT repos/${pair.repo}/collaborators/${pair.user} -f permission=pull`
+    tail
   );
 }
 

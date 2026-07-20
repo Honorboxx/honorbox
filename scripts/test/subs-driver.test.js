@@ -277,6 +277,107 @@ test('an active subscription with a known username is invited', async () => {
   assert.match(logs, /granted alice -> acme\/widget/);
 });
 
+// --- absence as evidence, the third instance -------------------------------
+// Both bugs this code has already had came from reading "missing from a set" as
+// "does not exist". These are the same shape in two new places.
+
+test('a pending invitation past the first page is still cancelled on revocation', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  // GitHub returns 30 invitations per page by default and paginates the rest.
+  // A store holding more than one page of unaccepted invitations puts the
+  // lapsed customer's invitation somewhere past page one, where a single-page
+  // read cannot see it. Absent from page one is not absent.
+  const filler = Array.from({ length: 100 }, (_, i) => ({ id: 1000 + i, invitee: { login: `other${i}` } }));
+  const { calls, logs } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: [subscription('sub_a', 'canceled')], has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      {
+        match: '/invitations',
+        res: (url) => {
+          if (url.includes('/invitations/')) return jsonRes({}, 204); // the delete
+          return jsonRes(url.includes('page=2') ? [{ id: 77, invitee: { login: 'alice' } }] : filler);
+        },
+      },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_a: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_a', repo: 'acme/widget', user: 'alice', lapsed_since: long_ago } },
+      breaker: { tripped_at: null, would_revoke: [] },
+    }
+  );
+  assert.match(logs, /REVOKED alice from acme\/widget/);
+  const invDeletes = calls.filter((c) => c.method === 'DELETE' && /\/invitations\/77$/.test(c.url));
+  assert.equal(invDeletes.length, 1,
+    'the revoked customer keeps a live invitation they can still accept if only page one is read');
+});
+
+test('a customer whose new subscription is past_due is not revoked over their old one', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  // Alice re-subscribed, so Stripe cancelled sub_old and opened sub_new. Our
+  // grant record still names sub_old, because that is the subscription it was
+  // written from and nothing ever refreshes it. sub_new is past_due: Stripe is
+  // still retrying her card and she has not left. Protection is looked up by
+  // the recorded subscription id, so the hold on sub_new never reaches her
+  // grant, and the most important rule in this engine (past_due is never a
+  // lapse) is defeated by a stale id.
+  const { calls, logs, state } = await runMain(
+    dir,
+    [
+      {
+        match: '/v1/subscriptions',
+        res: () => jsonRes({
+          data: [subscription('sub_old', 'canceled'), subscription('sub_new', 'past_due')],
+          has_more: false,
+        }),
+      },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/invitations', res: () => jsonRes([]) },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_old: 'alice', sub_new: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_old', repo: 'acme/widget', user: 'alice', lapsed_since: long_ago } },
+      breaker: { tripped_at: null, would_revoke: [] },
+    }
+  );
+  assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0,
+    'a customer with a live past_due subscription must never be revoked');
+  assert.doesNotMatch(logs, /REVOKED alice/);
+  assert.ok(state.grants['acme/widget|alice'], 'and her grant record survives');
+});
+
+test('a revocation GitHub could not confirm is not reported as done', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  // She renamed her GitHub account, so the old login 404s. The person is still
+  // a collaborator under the new name. Reporting a clean REVOKED here tells the
+  // seller enforcement worked when nothing was taken away.
+  const { logs } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: [subscription('sub_a', 'canceled')], has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/invitations', res: () => jsonRes([]) },
+      { match: '/collaborators/', res: () => jsonRes({ message: 'Not Found' }, 404) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_a: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_a', repo: 'acme/widget', user: 'alice', lapsed_since: long_ago } },
+      breaker: { tripped_at: null, would_revoke: [] },
+    }
+  );
+  assert.match(logs, /could not be confirmed|was not a collaborator/,
+    'a 404 must be reported as unconfirmed, not as a completed revocation');
+});
+
 test('a past_due customer is neither granted nor revoked', async () => {
   const dir = tmpdir();
   const { calls, state } = await runMain(

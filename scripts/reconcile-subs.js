@@ -165,24 +165,59 @@ async function invite(repo, user, token) {
   throw new Error(`invite ${repo} <- ${user} -> ${res.status}${inviteStatusHint(res.status)}`);
 }
 
-// Remove a collaborator and any invitation they have not accepted yet. A 404 is
-// the desired end state, not an error: the account was renamed, or was never
-// there. It is logged and never retried.
+// Every pending invitation on a repo, not just the first page.
+//
+// GitHub returns 30 per page and paginates the rest. Removing a collaborator
+// does not cancel an invitation they have not accepted, so an invitation this
+// sweep fails to see stays live and acceptable: the customer we just revoked
+// clicks the email a week later and is back in. A store holding more than one
+// page of unaccepted invitations is ordinary, which puts the lapsed customer
+// past the boundary on nothing more than alphabetical luck.
+//
+// Reading one page and calling it the whole list is the same mistake that has
+// now bitten this codebase three times: absent from the part we looked at is
+// not absent. Returns null when the list could not be read, so the caller can
+// say so rather than treat a failure as "no invitations pending".
+const INVITE_PER_PAGE = 100;
+
+async function listInvitations(repo, token) {
+  const all = [];
+  for (let page = 1; ; page++) {
+    const res = await gh('GET', `/repos/${repo}/invitations?per_page=${INVITE_PER_PAGE}&page=${page}`, token);
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return null;
+    all.push(...rows);
+    if (rows.length < INVITE_PER_PAGE) break;
+  }
+  return all;
+}
+
+// Remove a collaborator and every invitation they have not accepted yet.
+//
+// A 404 on the removal is not an error to retry: nobody by that name is a
+// collaborator. It is reported as unconfirmed rather than as a completed
+// revocation, because it is also what a renamed GitHub account looks like.
+// Returns { confirmed } so the caller can log the difference.
 async function revoke(repo, user, token) {
   const res = await gh('DELETE', `/repos/${repo}/collaborators/${encodeURIComponent(user)}`, token);
-  if (!res.ok && res.status !== 404 && res.status !== 204) {
+  if (!res.ok && res.status !== 404) {
     throw new Error(`revoke ${repo} -> ${user} -> ${res.status}${inviteStatusHint(res.status)}`);
   }
-  const invRes = await gh('GET', `/repos/${repo}/invitations`, token);
-  if (invRes.ok) {
-    const invites = await invRes.json();
-    for (const inv of Array.isArray(invites) ? invites : []) {
-      if (inv.invitee && normalizeUser(inv.invitee.login) === normalizeUser(user)) {
+  const invitations = await listInvitations(repo, token);
+  if (invitations == null) {
+    console.error(
+      `WARN: removed ${user} from ${repo} but could not read its invitation list, so a pending ` +
+        `invitation may still be live and acceptable. Check: gh api repos/${repo}/invitations`
+    );
+  } else {
+    for (const inv of invitations) {
+      if (inv && inv.invitee && normalizeUser(inv.invitee.login) === normalizeUser(user)) {
         await gh('DELETE', `/repos/${repo}/invitations/${inv.id}`, token);
       }
     }
   }
-  return res.status;
+  return { status: res.status, confirmed: res.status !== 404 };
 }
 
 async function main(sleep = defaultSleep) {
@@ -236,7 +271,7 @@ async function main(sleep = defaultSleep) {
   Object.assign(state.users, learned.map);
   state.cursor = Math.max(state.cursor || 0, learned.cursor || 0);
 
-  const { desired, heldSubs, notes } = desiredEntitlements(subs, state.users, grants);
+  const { desired, heldSubs, heldPairs, notes } = desiredEntitlements(subs, state.users, grants);
   for (const n of notes) console.error(`WARN: subscription ${n.sub}: ${n.message}`);
 
   // Stripe's dunning can be set to leave a failed subscription past_due
@@ -257,7 +292,7 @@ async function main(sleep = defaultSleep) {
     }
   }
 
-  const diff = diffEntitlements(desired, state.grants, { graceDays, now, knownRepos, heldSubs });
+  const diff = diffEntitlements(desired, state.grants, { graceDays, now, knownRepos, heldSubs, heldPairs });
 
   // Grants first, and never gated by the breaker. A tripped breaker means "do
   // not take anything away". It must never mean "stop letting customers in".
@@ -302,6 +337,14 @@ async function main(sleep = defaultSleep) {
   for (const k of diff.keep) {
     state.grants[k.key].lapsed_since = null;
     console.log(`recovered ${k.user} on ${k.repo}: entitled again, lapse cleared`);
+  }
+
+  // A customer who re-subscribed is entitled by a different subscription than
+  // the one on their record. Re-point the record so later logs name the
+  // subscription the seller can actually look up.
+  for (const r of diff.refresh) {
+    state.grants[r.key].sub = r.sub;
+    console.log(`re-pointed ${r.user} on ${r.repo}: now entitled by ${r.sub} (was ${r.from})`);
   }
 
   // Start or continue the grace clock. Nothing is removed here.
@@ -350,8 +393,12 @@ async function main(sleep = defaultSleep) {
           'lapse' // ours, and therefore the only kind we may later clear
         );
         writeJson(botsStatePath, bots);
-        await revoke(p.repo, p.user, ghToken);
-        console.error(revokeLine(p));
+        const { confirmed } = await revoke(p.repo, p.user, ghToken);
+        console.error(revokeLine(p, { confirmed }));
+        // The record goes either way. We have done everything we can do from
+        // here, and keeping it would re-attempt the same removal every pass
+        // while inflating the breaker's numerator with a person who is already
+        // gone, eventually refusing revocations that are genuine.
         delete state.grants[p.key];
       } catch (err) {
         console.error(`FAILED revoke ${p.user} from ${p.repo}: ${err.message}`);
