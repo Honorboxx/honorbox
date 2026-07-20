@@ -40,6 +40,58 @@ fulfillment entry. The store sells two products today, and a current run
 covers both. All three tiers are exercised either way: offline config checks,
 live Stripe API, GitHub token permissions.
 
+## reconcile: run against the live HonorBox store (2026-07-20)
+
+Real output, unedited:
+
+```
+HonorBox reconcile — last 90 days
+
+[ OK ] 2026-07-20 HonorBox Pro  free       @LucideLarp       delivered
+       cs_live_a1QHO2iio854df8m5CJNfvU56UZy1JsYRxMXLvseLu72JJdqziY2e92S94
+[ OK ] 2026-07-20 HonorBox Pro  free       @LucideLarp       delivered
+       cs_live_a17TGvCAh9ZLHFzNoKgSpmrL2HEXDkBxMKvCItRn3PM0E2qptvLuMHzIRo
+[ OK ] 2026-07-19 Crew          free       @LucideLarp       delivered
+       cs_live_a1IcLRSFFnAnjX2IFJBeMnDp5G1mGCZvXEOW0KvCF3PdhES8vTRHqEaqBX
+[ OK ] 2026-07-18 HonorBox Pro  free       @LucideLarp       delivered
+       cs_live_a1vCnLCY3zYk1qqwhaBatXm4qZSYOLYdJPg2kEo1fOXfvBIUxz8utwM4ai
+
+4 paid orders in window · 4 confirmed · 0 need attention · 0 not delivered
+revenue actually collected: 0 USD across 0 paid orders (4 zero-cost fulfillments excluded)
+
+Every paid order is confirmed delivered against GitHub, not assumed from a send.
+```
+
+The last two lines are the point, and they are unflattering on purpose. Our
+sales ledger records `"total_sales": 4`. All four were $0 end-to-end tests, and
+reconcile is the only thing in the stack that says so: **0 USD across 0 paid
+orders.** Each `delivered` was confirmed by asking GitHub whether that account
+is a collaborator on that product repo — not inferred from having sent an invite.
+
+The same live orders through a config copy carrying the two most common setup
+mistakes (a mistyped price id; a grant pointing at a repo the token cannot see):
+
+```
+[UNREADABLE] Honorboxx/honorbox-pro-typo — GitHub collaborators for Honorboxx/honorbox-pro-typo failed: Not Found
+  buyers on the repo(s) above could not be checked at all.
+
+[LOST] 2026-07-19 ?             free       @LucideLarp       PAID, NO GRANT
+       this order matches no fulfillment grant — the engine skipped it and the money is sitting in your account with nothing delivered
+       cs_live_a1IcLRSFFnAnjX2IFJBeMnDp5G1mGCZvXEOW0KvCF3PdhES8vTRHqEaqBX
+
+1 paid orders in window · 0 confirmed · 0 need attention · 1 not delivered
+
+1 order(s) took money and delivered nothing. That is the list to act on today.
+```
+
+Exit 1, so a scheduled run fails loudly. A repo it cannot read is reported as
+unreadable, never silently counted clean.
+
+Scope note in the same spirit: our store has never had a pending or expired
+invitation, so those verdicts are covered by the module's test suite over
+fixtures (18 tests) rather than by a live catch. The test that matters most
+there pins that GitHub's own `expired` flag decides expiry, never our clock.
+
 ## ops bots: real issue, real ack
 
 Issue [Honorboxx/honorbox#1](https://github.com/Honorboxx/honorbox/issues/1)
