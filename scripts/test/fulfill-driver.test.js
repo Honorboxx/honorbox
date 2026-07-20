@@ -772,3 +772,81 @@ test('a queue behind the cap still ends: past the window it escalates to a human
   assert.equal(out.lines.filter((l) => /^queued /.test(l)).length, 0,
     'nothing may be reported as calmly queued once the window has expired');
 });
+
+test('a cap on one repo does not stop a different repo from delivering', async () => {
+  // A multi-product store. The cap is per repository, so one full repo must
+  // not become an outage for the others: pausing the whole run on the first
+  // cap would turn one product's ceiling into every product's.
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'store.config.json'), JSON.stringify({
+    fulfillment: [
+      { payment_link: 'plink_full', product: 'Full', repo: 'o/full' },
+      { payment_link: 'plink_ok', product: 'Ok', repo: 'o/ok' },
+    ],
+  }));
+  const sessions = [
+    paidSession('cs_full_1', 1_700_000_000, { payment_link: 'plink_full',
+      custom_fields: [{ key: 'github_username', text: { value: 'buyer-a' } }] }),
+    paidSession('cs_ok_1', 1_700_000_001, { payment_link: 'plink_ok',
+      custom_fields: [{ key: 'github_username', text: { value: 'buyer-b' } }] }),
+    paidSession('cs_full_2', 1_700_000_002, { payment_link: 'plink_full',
+      custom_fields: [{ key: 'github_username', text: { value: 'buyer-c' } }] }),
+  ];
+  const err = captureErr();
+  const out = captureLog();
+  let res;
+  try {
+    res = await runMain(dir, [
+      { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+      { match: 'api.github.com', res: (url) => (url.includes('/o/full/') ? capRes(403) : jsonRes({}, 201)) },
+    ]);
+  } finally { err.restore(); out.restore(); }
+
+  assert.deepEqual(res.readState('fulfill-state.json').processed, ['cs_ok_1'],
+    'the healthy repo must still deliver while the other is capped');
+  assert.ok(out.lines.some((l) => /fulfilled cs_ok_1: invited buyer-b to o\/ok/.test(l)));
+  // Only the capped repo is warned about, and only once.
+  const warns = err.lines.filter((l) => l.startsWith('WARN:'));
+  assert.equal(warns.filter((l) => /o\/full/.test(l)).length, 2);
+  assert.equal(warns.filter((l) => /o\/ok/.test(l)).length, 0);
+});
+
+test('the cap gates invitations only, not the orders that never needed one', async () => {
+  // Two orders that reach a capped repo but ask nothing of the invitations
+  // endpoint. Parking either behind the cap would be wrong: a typo is broken
+  // whether or not the repo is full, and the seller test-buying their own
+  // product needs no invitation at all.
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'store.config.json'), JSON.stringify({
+    fulfillment: [{ payment_link: 'plink_1', product: 'P', repo: 'octo/product' }],
+  }));
+  const sessions = [
+    paidSession('cs_cap', 1_700_000_000, {
+      custom_fields: [{ key: 'github_username', text: { value: 'buyer-real' } }] }),
+    paidSession('cs_typo', 1_700_000_001, {
+      custom_fields: [{ key: 'github_username', text: { value: 'not a username!' } }] }),
+    paidSession('cs_owner', 1_700_000_002, {
+      custom_fields: [{ key: 'github_username', text: { value: 'octo' } }] }),
+  ];
+  const err = captureErr();
+  const out = captureLog();
+  let res;
+  try {
+    res = await runMain(dir, [
+      { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+      { match: 'api.github.com', res: () => capRes(422) },
+    ]);
+  } finally { err.restore(); out.restore(); }
+
+  const state = res.readState('fulfill-state.json');
+  // The typo settles now, as a permanent needs_attention, not "queued".
+  assert.ok(state.processed.includes('cs_typo'), 'a bad username is broken regardless of the cap');
+  // The repo owner is fulfilled outright: no invitation, so no cap.
+  assert.ok(state.processed.includes('cs_owner'), 'an owner needs no invitation, so no cap applies');
+  assert.ok(out.lines.some((l) => /fulfilled cs_owner: octo owns octo\/product, no invite needed/.test(l)));
+  // Only the real buyer is queued.
+  assert.ok(!state.processed.includes('cs_cap'));
+  const warns = err.lines.filter((l) => l.startsWith('WARN:'));
+  assert.ok(warns.some((l) => /1 paid buyer is waiting behind the invitation cap/.test(l)),
+    'the queue count must count only buyers who actually need an invitation');
+});

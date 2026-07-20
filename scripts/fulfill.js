@@ -244,8 +244,14 @@ async function main(sleep = defaultSleep) {
     // quietly and move on. Deliberately NOT a FAILED line, because one capped
     // repo would otherwise alert the operator once per waiting buyer and bury
     // the single WARN that explains all of them.
+    //
+    // The cap only gates orders that need an INVITATION. A username that
+    // cannot be valid is permanently broken whether the repo is full or not,
+    // and a buyer who already owns the repo needs no invitation at all, so
+    // neither may be parked in this queue.
     const cap = cappedRepos.get(grant.repo);
-    if (cap) {
+    const needsInvite = validUsername(username) && !isRepoOwner(grant.repo, username);
+    if (cap && needsInvite) {
       cap.queued++;
       if (shouldRetryInvite(cap.err, state.failures, s.id)) {
         console.log(`queued ${s.id}: ${grant.repo} is at its daily invitation cap, delivery deferred to a later poll`);
@@ -257,13 +263,13 @@ async function main(sleep = defaultSleep) {
       // never sit in a queue that has quietly stopped having an end.
     }
     try {
-      if (cap) throw cap.err; // no second call to a repo we know is full
       if (!validUsername(username)) {
         throw Object.assign(new Error(`invalid github username: ${JSON.stringify(username)}`), { permanent: true });
       }
       if (isRepoOwner(grant.repo, username)) {
         console.log(`fulfilled ${s.id}: ${username} owns ${grant.repo}, no invite needed`);
       } else {
+        if (cap) throw cap.err; // no second call to a repo we already know is full
         const code = await inviteWithRetry(grant.repo, username, ghToken, budget, sleep);
         // 201 created an invitation; 204 means the account was already a
         // collaborator. Reporting both as "invited" made a seller's own
