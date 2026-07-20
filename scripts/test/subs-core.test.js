@@ -161,27 +161,70 @@ test('a held subscription is carried explicitly, not left to look like a lapse',
   // eventually revoked, which is the exact failure this design exists to
   // prevent. Found by the driver test; asserted here at the cheap layer too.
   const subs = [sub({ id: 'sub_a', status: 'past_due' }), sub({ id: 'sub_b', status: 'incomplete' })];
-  const { desired, held } = desiredEntitlements(subs, { sub_a: 'alice', sub_b: 'bob' }, GRANTS);
+  const { desired, heldSubs } = desiredEntitlements(subs, { sub_a: 'alice', sub_b: 'bob' }, GRANTS);
   assert.equal(desired.size, 0, 'held subscriptions are not entitled');
-  assert.deepEqual([...held].sort(), ['acme/widget|alice', 'acme/widget|bob']);
+  assert.deepEqual([...heldSubs].sort(), ['sub_a', 'sub_b']);
 });
 
 test('a past_due customer never starts a grace clock', () => {
   const subs = [sub({ id: 'sub_a', status: 'past_due' })];
-  const { desired, held } = desiredEntitlements(subs, { sub_a: 'alice' }, GRANTS);
+  const { desired, heldSubs } = desiredEntitlements(subs, { sub_a: 'alice' }, GRANTS);
   const records = { 'acme/widget|alice': { repo: 'acme/widget', user: 'alice', sub: 'sub_a', lapsed_since: null } };
-  const d = diffEntitlements(desired, records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), held });
+  const d = diffEntitlements(desired, records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), heldSubs });
   assert.deepEqual(d.lapsing, [], 'no clock may start');
   assert.deepEqual(d.due, [], 'and nothing may be revoked');
 });
 
 test('a paused subscription held for an unknown reason keeps access', () => {
   const subs = [sub({ id: 'sub_a', status: 'paused' })];
-  const { desired, held } = desiredEntitlements(subs, { sub_a: 'alice' }, GRANTS);
+  const { desired, heldSubs } = desiredEntitlements(subs, { sub_a: 'alice' }, GRANTS);
   const records = { 'acme/widget|alice': { repo: 'acme/widget', user: 'alice', sub: 'sub_a', lapsed_since: null } };
-  const d = diffEntitlements(desired, records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), held });
+  const d = diffEntitlements(desired, records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), heldSubs });
   assert.deepEqual(d.due, []);
   assert.deepEqual(d.lapsing, []);
+});
+
+test('losing a customer username must never cost them access', () => {
+  // The hole this closes: a live subscription whose username we cannot resolve
+  // produced no desired pair, so its existing grant looked unwanted, lapsed,
+  // and was eventually revoked. A paying customer would have lost access
+  // because WE lost track of their username. Protection is per subscription and
+  // is recorded before any of that resolution can fail.
+  const subs = [sub({ id: 'sub_a', status: 'active' })];
+  const { desired, heldSubs } = desiredEntitlements(subs, {} /* no username known */, GRANTS);
+  assert.equal(desired.size, 0);
+  assert.ok(heldSubs.has('sub_a'), 'the subscription still protects its grants');
+
+  const records = { 'acme/widget|alice': { repo: 'acme/widget', user: 'alice', sub: 'sub_a', lapsed_since: null } };
+  const d = diffEntitlements(desired, records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), heldSubs });
+  assert.deepEqual(d.lapsing, []);
+  assert.deepEqual(d.due, []);
+});
+
+test('a plan moving to an unconfigured price does not evict the customer', () => {
+  // Same shape: the subscription is alive, we just cannot map it to a repo.
+  // That is a config question for a human, not grounds for removing anyone.
+  const subs = [sub({ id: 'sub_a', status: 'active', items: { data: [{ price: { id: 'price_unknown' } }] } })];
+  const { desired, heldSubs, notes } = desiredEntitlements(subs, { sub_a: 'alice' }, GRANTS);
+  assert.equal(desired.size, 0);
+  assert.ok(heldSubs.has('sub_a'));
+  assert.match(notes[0].message, /matches no configured product/);
+
+  const records = { 'acme/widget|alice': { repo: 'acme/widget', user: 'alice', sub: 'sub_a', lapsed_since: null } };
+  const d = diffEntitlements(desired, records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), heldSubs });
+  assert.deepEqual(d.due, []);
+  assert.deepEqual(d.lapsing, []);
+});
+
+test('a genuinely cancelled subscription is still not protected', () => {
+  // The counterweight: heldSubs must not become a blanket amnesty, or
+  // enforcement stops working entirely.
+  const subs = [sub({ id: 'sub_a', status: 'canceled' })];
+  const { heldSubs } = desiredEntitlements(subs, { sub_a: 'alice' }, GRANTS);
+  assert.equal(heldSubs.has('sub_a'), false);
+  const records = { 'acme/widget|alice': { repo: 'acme/widget', user: 'alice', sub: 'sub_a', lapsed_since: new Date(NOW - 9 * DAY).toISOString() } };
+  const d = diffEntitlements(new Map(), records, { graceDays: 7, now: NOW, knownRepos: new Set(['acme/widget']), heldSubs });
+  assert.deepEqual(d.due.map((p) => p.user), ['alice']);
 });
 
 test('an entitled subscription with no known username is reported, never guessed', () => {

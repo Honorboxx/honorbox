@@ -171,34 +171,43 @@ function subscriptionRepos(sub, grants) {
 //             explicitly rather than inferred from an absence.
 function desiredEntitlements(subs, subUsers, grants) {
   const desired = new Map(); // grantKey -> { repo, user, sub, reason }
-  const held = new Set();    // grantKey
+  const heldSubs = new Set(); // subscription ids that must not lapse
   const notes = [];
   for (const sub of Array.isArray(subs) ? subs : []) {
     if (!sub || !sub.id) continue;
     const { action, reason, warn } = subscriptionAction(sub);
     if (warn) notes.push({ sub: sub.id, message: reason });
     if (action === LAPSE) continue;
+
+    // Protection is recorded per SUBSCRIPTION, before anything else can go
+    // wrong, and this is deliberate. Everything below can fail to resolve: the
+    // username may not be known yet, the price may have moved to a plan this
+    // config does not name. If protection were recorded per (repo, user) pair,
+    // every one of those failures would leave an existing grant looking
+    // unwanted, and an unwanted grant lapses and is eventually revoked. That
+    // would mean a paying customer loses access because WE lost track of their
+    // username, which is precisely the failure this file exists to prevent.
+    // A subscription that is not lapsed protects its grants, full stop.
+    heldSubs.add(sub.id);
+
+    if (action !== GRANT) continue;
     const repos = subscriptionRepos(sub, grants);
-    if (repos.length === 0) continue; // not a product this store fulfills
+    if (repos.length === 0) {
+      notes.push({ sub: sub.id, message: `is ${reason} but its price matches no configured product, so it cannot be granted` });
+      continue;
+    }
     const users = seatUsernames(subUsers[sub.id]);
     if (users.length === 0) {
-      if (action === GRANT) {
-        notes.push({
-          sub: sub.id,
-          message: `entitled (${reason}) but no GitHub username is known for it, so it cannot be granted`,
-        });
-      }
+      notes.push({ sub: sub.id, message: `is ${reason} but no GitHub username is known for it, so it cannot be granted` });
       continue;
     }
     for (const repo of repos) {
       for (const user of users) {
-        const key = grantKey(repo, user);
-        if (action === GRANT) desired.set(key, { repo, user, sub: sub.id, reason });
-        else held.add(key);
+        desired.set(grantKey(repo, user), { repo, user, sub: sub.id, reason });
       }
     }
   }
-  return { desired, held, notes };
+  return { desired, heldSubs, notes };
 }
 
 // --- grace ------------------------------------------------------------------
@@ -230,7 +239,7 @@ function graceExpired(lapsedSince, graceDays, now) {
 //   lapsing  - pairs whose grace clock should start (or keep running).
 //   due      - pairs whose grace has expired and which may now be revoked.
 //   keep     - pairs still entitled, whose clock must be cleared.
-function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, held = null } = {}) {
+function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null } = {}) {
   const out = { grants: [], lapsing: [], due: [], keep: [] };
 
   for (const [key, want] of desired) {
@@ -245,10 +254,11 @@ function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, no
     // sees an entitled subscription with no grant and helpfully re-invites the
     // customer the refund guard just removed, forever.
     if (rec.suppressed) continue;
-    // HOLD: the subscription exists and says to change nothing. past_due is the
-    // case that matters, and it must not even START a clock, because Stripe is
-    // still retrying the card and this person has not left.
-    if (held && held.has(key)) continue;
+    // The subscription behind this grant is alive and not lapsed: entitled,
+    // held, or entitled-but-unresolvable. past_due is the case that matters
+    // most, and it must not even START a clock, because Stripe is still
+    // retrying the card and this person has not left.
+    if (heldSubs && heldSubs.has(rec.sub)) continue;
     // A repo that has left the config is OUT OF SCOPE, not a mass cancellation.
     // "The seller removed a product from config" and "the seller wants every
     // customer of that product kicked out" are indistinguishable from here, and

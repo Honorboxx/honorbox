@@ -28,12 +28,8 @@ const {
   revokeLine,
   breakerLine,
   subscriptionConfigProblems,
-  subscriptionAction,
   grantKey,
   normalizeUser,
-  seatUsernames,
-  subscriptionRepos,
-  GRANT,
 } = require('./lib/subs-core.js');
 const { REQUEST_TIMEOUT_MS, validUsername, extractGithubUsername, inviteStatusHint } = require('./lib/fulfill-core.js');
 
@@ -233,7 +229,7 @@ async function main(sleep = defaultSleep) {
   Object.assign(state.users, learned.map);
   state.cursor = Math.max(state.cursor || 0, learned.cursor || 0);
 
-  const { desired, held, notes } = desiredEntitlements(subs, state.users, grants);
+  const { desired, heldSubs, notes } = desiredEntitlements(subs, state.users, grants);
   for (const n of notes) console.error(`WARN: subscription ${n.sub}: ${n.message}`);
 
   // Stripe's dunning can be set to leave a failed subscription past_due
@@ -254,7 +250,7 @@ async function main(sleep = defaultSleep) {
     }
   }
 
-  const diff = diffEntitlements(desired, state.grants, { graceDays, now, knownRepos, held });
+  const diff = diffEntitlements(desired, state.grants, { graceDays, now, knownRepos, heldSubs });
 
   // Grants first, and never gated by the breaker. A tripped breaker means "do
   // not take anything away". It must never mean "stop letting customers in".
