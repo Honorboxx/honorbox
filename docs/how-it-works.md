@@ -59,7 +59,7 @@ That line is the point. The failure this replaces was silent; somebody who
 ignores four emails over three weeks needs a human, and now you are told which
 buyer and when instead of finding out never.
 
-Two things are still worth doing yourself:
+Three things are still worth doing yourself:
 
 - Put "accept the invite" in your post-payment confirmation and receipt. Most
   buyers who miss it simply did not realise there was a second step, and a
@@ -69,6 +69,9 @@ Two things are still worth doing yourself:
   invitation, and records the revocation permanently so renewal can never hand
   it back. Removing them by hand on GitHub does *not* record anything, and a
   poll already in flight can re-invite them.
+- Renew from one place only. If you also run some other tool that re-issues
+  invitations for the same product repos, both will send, and your buyer gets
+  two of every email. Pick a single owner for renewal per repo.
 
 Pro's [ops bots](https://github.com/Honorboxx/honorbox-pro) add the reporting
 around this: continuous triage of every pending invitation rather than a warning
