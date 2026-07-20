@@ -326,3 +326,51 @@ test('no doc tells a seller to move to an organization to lift the cap', () => {
     'every other buyer. Sending a seller to migrate costs them the work and ' +
     'their buyers the privacy:\n  ' + offenders.join('\n  '));
 });
+
+// The same false claim, caught by what it ASSERTS rather than by what it
+// recommends. The test above models a bad sentence as "a lifting verb that
+// nothing negates", and that model has one blind spot it cannot see out of:
+// the claim can be made entirely in the negative. On 2026-07-20 it came back
+// as "move the product repo into a GitHub organization first: organizations
+// are free, and inviting org members to an org repo HAS NO CAP", which the
+// guard read as safe because it found a negation in front of the only token it
+// recognised. "Does not lift the cap" and "has no cap" are both negations, and
+// they mean opposite things, so negation cannot be the discriminator.
+//
+// What is actually dangerous is the bare proposition "an organization repo is
+// uncapped", because a seller who reads it migrates and gains nothing. The
+// proposition is TRUE of people who are already organization members, which is
+// exactly why it keeps being repeated and exactly why it keeps misleading. So
+// the rule is not "never say it": it is that saying it obliges you to say who
+// it applies to, in the same breath.
+test('an "organization repos are uncapped" claim must name who it applies to', () => {
+  // Asserting the absence of a cap, however the sentence is worded.
+  const NO_CAP = /\b(no (cap|limit)|uncapped|not capped|without a (cap|limit))\b/i;
+  const ORG = /\borgani[sz]ation|\borg\b/i;
+  // The qualifier that makes it true. GitHub's exemption covers EXISTING
+  // members, and a buyer who just paid is not one; any honest use of this
+  // sentence has to carry that, and every correct use in our docs does.
+  const QUALIFIED = /\balready\b/i;
+
+  const offenders = [];
+  for (const file of publicSources()) {
+    // Blockquoted lines are dropped before splitting, because this rule is
+    // about what WE assert and a blockquote is what GitHub said. how-it-works
+    // quotes the limit and its organization-member exception verbatim and then
+    // spends a section rebutting it, which is the correct way to handle a true
+    // sentence that misleads. Prose around the quote is still checked, so the
+    // rebuttal itself cannot go missing without one of these guards noticing.
+    const ours = read(file).split('\n').filter((l) => !/^\s*>/.test(l)).join('\n');
+    for (const sentence of ours.split(/(?<=[.!?])\s+|\n\s*\n|\|/)) {
+      if (!NO_CAP.test(sentence) || !ORG.test(sentence)) continue;
+      if (QUALIFIED.test(sentence)) continue;
+      offenders.push(`${file}: ${sentence.trim().replace(/\s+/g, ' ').slice(0, 110)}`);
+    }
+  }
+
+  assert.deepEqual(offenders, [],
+    'an organization repo is only uncapped for people who are ALREADY org ' +
+    'members, and creating that membership is itself capped. Stating it ' +
+    'unqualified is the claim that sent a seller off to migrate for nothing. ' +
+    'Say who it applies to in the same sentence:\n  ' + offenders.join('\n  '));
+});

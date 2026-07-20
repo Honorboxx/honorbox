@@ -4,9 +4,11 @@
    Space separates sections; hairlines only where a divider earns its keep.
    Palette: warm near-black ink on white paper, three neutral grays, and one
    colour. The accent red is the coin: #b5482a on paper, #d9603c on ink, and
-   it is allowed in six places only (the mark's coin and slot, the buy
-   button, the price, focus rings, and the note's rule). Everything else,
-   headings included, prints in ink. Display face: Schibsted Grotesk (OFL,
+   it is allowed in five places only (the coin in the mark, the buy button,
+   the price, focus rings, and the note's rule). The box and its slot print
+   in ink, because a red slot under a red coin merges into one shape at
+   favicon sizes. Everything else, headings included, prints in ink too.
+   Display face: Schibsted Grotesk (OFL,
    self-hosted in assets/fonts/). Both schemes are first class; the theme
    mirrors rather than dims. */
 
@@ -388,8 +390,8 @@ th {
 }
 th, td { text-align: left; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { border-bottom: 1px solid var(--ink); }
-td.rowhead { font-weight: 600; color: var(--ink); }
 td { color: var(--ink-soft); }
+td.rowhead { font-weight: 600; color: var(--ink); }
 td.num { font-family: var(--mono); }
 tr.attn td { font-weight: 600; background: var(--wash); color: var(--ink); }
 .compare th:last-child, .compare td:last-child { background: var(--wash); }
@@ -413,7 +415,9 @@ tr.attn td { font-weight: 600; background: var(--wash); color: var(--ink); }
 .faq summary:hover { color: var(--accent-deep); }
 .faq details[open] summary::after { transform: rotate(45deg); }
 .faq p { color: var(--ink-soft); margin: 0 0 1.3rem; max-width: var(--measure); padding: 0 0.15rem; font-size: 0.96rem; }
-.faq-more { color: var(--accent-deep); white-space: nowrap; }
+/* Wraps on purpose. A seller writes this label, so it can be any length, and
+   nowrap turned a long one into horizontal overflow on a phone. */
+.faq-more { color: var(--accent-deep); }
 
 /* note: a quiet aside marked by the accent, in both schemes. It used to be an
    inverted plate, which in dark mode became the brightest object on the page. */
