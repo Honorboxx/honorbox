@@ -48,6 +48,39 @@ const SALES_STATE = [
   /(sold|shipped)\s+\d+\s+(copies|licen[cs]es)/i,
 ];
 
+// OUR OWN operating data, as distinct from an example store's. This is the
+// rule that got broken worst: a sample run of `reconcile` against the real
+// account was pasted into the Pro page as proof, so the live sales page told
+// every visitor we had collected nothing and that our ledger's sales were
+// fake. It read as a transparency win while being exactly the disclosure our
+// own rules forbid.
+//
+// Illustrative output is fine and is how these docs should teach. What is
+// never fine is OUR numbers, OUR identities, or OUR live object ids. Example
+// data must be obviously synthetic: placeholder handles and XXXX-style ids.
+const OUR_OWN_DATA = [
+  /\bLucideLarp\b/,                       // our GitHub identity
+  /\bHonorboxx\/(honorbox-pro|crew-full)\b(?=[^\n]*@)/,  // our product repo beside a buyer handle
+  /cs_live_(?!X)[A-Za-z0-9]{6,}/,         // a real Stripe session id (synthetic uses XXXX)
+  /"total_sales"\s*:\s*\d+/,              // a ledger value, quoted
+  /\b(run\s+)?against\s+our\s+own\s+(store|account)\b/i, // the phrase that framed the leak
+  /\bour\s+(sales\s+)?ledger\s+(records|says|shows)\b/i,
+  /\bwe\s+have\s+(collected|sold|made)\b/i,
+];
+
+test('public copy contains none of our own operating data', () => {
+  const hits = [];
+  for (const f of publicSources()) {
+    const body = read(f);
+    body.split('\n').forEach((line, i) => {
+      for (const re of OUR_OWN_DATA) {
+        if (re.test(line)) hits.push(`${f}:${i + 1}  ${line.trim().slice(0, 90)}`);
+      }
+    });
+  }
+  assert.deepEqual(hits, [], `our own data on a public surface:\n  ${hits.join('\n  ')}`);
+});
+
 test('public copy states no sales figures and no sales state', () => {
   const hits = [];
   for (const f of publicSources()) {
@@ -105,7 +138,7 @@ test('the built store carries neither, if it has been built', () => {
   for (const f of fs.readdirSync(dist)) {
     if (!f.endsWith('.html')) continue;
     const body = fs.readFileSync(path.join(dist, f), 'utf8');
-    for (const re of [...SALES_STATE, ...INTERNAL_REASONING]) {
+    for (const re of [...SALES_STATE, ...INTERNAL_REASONING, ...OUR_OWN_DATA]) {
       const m = body.match(re);
       if (m) hits.push(`dist/${f}  ${m[0]}`);
     }
