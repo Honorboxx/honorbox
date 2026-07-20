@@ -57,6 +57,36 @@ test('every Stripe subscription status maps to its documented action', () => {
   }
 });
 
+// The table above is only worth anything if it is COMPLETE. A status this
+// engine has never heard of falls through to the forward-compatibility branch,
+// which holds access and warns: correct as a backstop, wrong as the everyday
+// treatment of a status Stripe has always had, because it means a seller gets a
+// warning on every pass forever and no cancellation is ever enforced.
+//
+// This list is the `status` enum of the Subscription object, read from Stripe's
+// published OpenAPI schema (stripe/openapi, components.schemas.subscription).
+// It is deliberately written out rather than derived, so that a status being
+// added upstream shows up as a decision someone has to make here rather than as
+// a silently passing test.
+//
+// `all` and `ended` are NOT in this list on purpose. Stripe accepts both as
+// filter values on GET /v1/subscriptions, which makes them easy to mistake for
+// statuses, but no Subscription object ever carries either one.
+const STRIPE_SUBSCRIPTION_STATUSES = [
+  'active', 'canceled', 'incomplete', 'incomplete_expired',
+  'past_due', 'paused', 'trialing', 'unpaid',
+];
+
+test('every status Stripe can actually set is classified, not merely tolerated', () => {
+  for (const status of STRIPE_SUBSCRIPTION_STATUSES) {
+    const a = subscriptionAction(sub({ status }));
+    assert.ok(
+      !/unrecognized/.test(a.reason || ''),
+      `${status} is a real Stripe subscription status but this engine does not classify it`
+    );
+  }
+});
+
 test('past_due is NEVER a lapse, however long it lasts', () => {
   // The single most important assertion in this file. Stripe retries failed
   // cards for weeks; treating that window as a cancellation locks out a
