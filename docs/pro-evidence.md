@@ -42,19 +42,29 @@ live Stripe API, GitHub token permissions.
 
 ## reconcile: run against the live HonorBox store (2026-07-20)
 
-Real output, unedited:
+Real output. One edit, and only this one: Stripe Checkout session ids are cut to
+their first 20 characters. Nothing else is changed — not a date, not a status,
+not the LOST row further down.
+
+Cutting them costs a reader nothing, because a session id is not something you
+could have checked anyway: retrieving one needs this account's secret key
+(`/v1/checkout/sessions/…` answers 401 without it), and the hosted checkout URL
+returns a byte-identical page for a fabricated id as for a real one. The full
+string is unverifiable decoration. Publishing it would also model the opposite
+of what [least-privilege.md](least-privilege.md) asks of you — and your sessions,
+unlike these four $0 self-tests, will belong to real buyers.
 
 ```
 HonorBox reconcile — last 90 days
 
 [ OK ] 2026-07-20 HonorBox Pro  free       @LucideLarp       delivered
-       cs_live_a1QHO2iio854df8m5CJNfvU56UZy1JsYRxMXLvseLu72JJdqziY2e92S94
+       cs_live_a1QHO2iio854…
 [ OK ] 2026-07-20 HonorBox Pro  free       @LucideLarp       delivered
-       cs_live_a17TGvCAh9ZLHFzNoKgSpmrL2HEXDkBxMKvCItRn3PM0E2qptvLuMHzIRo
+       cs_live_a17TGvCAh9ZL…
 [ OK ] 2026-07-19 Crew          free       @LucideLarp       delivered
-       cs_live_a1IcLRSFFnAnjX2IFJBeMnDp5G1mGCZvXEOW0KvCF3PdhES8vTRHqEaqBX
+       cs_live_a1IcLRSFFnAn…
 [ OK ] 2026-07-18 HonorBox Pro  free       @LucideLarp       delivered
-       cs_live_a1vCnLCY3zYk1qqwhaBatXm4qZSYOLYdJPg2kEo1fOXfvBIUxz8utwM4ai
+       cs_live_a1vCnLCY3zYk…
 
 4 paid orders in window · 4 confirmed · 0 need attention · 0 not delivered
 revenue actually collected: 0 USD across 0 paid orders (4 zero-cost fulfillments excluded)
@@ -77,7 +87,7 @@ mistakes (a mistyped price id; a grant pointing at a repo the token cannot see):
 
 [LOST] 2026-07-19 ?             free       @LucideLarp       PAID, NO GRANT
        this order matches no fulfillment grant — the engine skipped it and the money is sitting in your account with nothing delivered
-       cs_live_a1IcLRSFFnAnjX2IFJBeMnDp5G1mGCZvXEOW0KvCF3PdhES8vTRHqEaqBX
+       cs_live_a1IcLRSFFnAn…
 
 1 paid orders in window · 0 confirmed · 0 need attention · 1 not delivered
 
