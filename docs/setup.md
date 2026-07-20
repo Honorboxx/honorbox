@@ -169,11 +169,13 @@ and the whole-minute rounding above is exactly what makes that free:
 | Its own `*/30` cron | 1,488 | 1,488 (~2x the whole tier with the poll) |
 
 A fulfillment run takes ~15 seconds and is billed as a full minute either way,
-so the renewal step spends the seconds already paid for. It adds one
-`GET /repos/{owner}/{repo}/invitations` per product repo per poll, plus a
-`PUT` only on the rare poll that actually renews somebody: single-digit
-seconds, nowhere near the 60 that would push the job to a second minute. A
-separate cron would have bought nothing and cost more than the headroom.
+so the renewal step spends the seconds already paid for. Per poll it adds one
+`GET /repos/{owner}/{repo}/invitations` per product repo (one more per 100
+invitations you have pending, which is a lot), plus a `PUT` only on the rare
+poll that actually renews somebody. Measured against a real repo it takes well
+under a second, nowhere near the 60 that would push the job into a second
+billable minute. A separate cron would have bought nothing and cost more than
+the headroom.
 
 This also means renewal inherits the poll's cadence, which is the margin it
 needs. Renewal fires at 6 days against a 7-day expiry, so it has 24 hours and
