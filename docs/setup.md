@@ -230,12 +230,18 @@ within a few hours" and why webhook mode (seconds, and free) exists for
 sellers who want the wait gone.
 
 **The one limit that is not about money.** GitHub allows **50 invitations per
-repository per 24 hours**, so one product repo on a personal account can take
-on at most 50 new buyers a day. Buyers past that are queued and delivered
-automatically as the window frees, and the run tells you how many are waiting,
-so nothing is lost. But if you are planning a launch that could clear 50 sales
-in a day, move the product repo into a **GitHub organization** first:
-organizations are free, and inviting org members to an org repo has no cap.
+repository per 24 hours**, so one product repo can take on at most 50 new
+buyers a day. Buyers past that are queued and delivered automatically as the
+window frees, and the run tells you how many are waiting, so nothing is lost.
+
+There is no way to remove this ceiling, so plan around it rather than against
+it. Moving the product repo into a **GitHub organization** does not lift it:
+organization invitations are capped too (50 a day, rising to 500 once the
+organization is over a month old or on a paid plan), and organization
+membership would let every buyer list every other buyer. GitHub's note that
+inviting organization members to an organization repository is uncapped
+applies to people who are *already* members, and a buyer who has just paid is
+not one.
 Details in [how-it-works.md](how-it-works.md#githubs-invitation-cap-50-per-repo-per-day).
 
 **Stripe** takes its per-transaction percentage and no monthly fee. That is a
