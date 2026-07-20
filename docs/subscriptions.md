@@ -49,8 +49,14 @@ Add one block to `store.config.json`:
 Then schedule the reconciler alongside your fulfillment job:
 
 ```
-node scripts/reconcile-subs.js --config store.config.json --state state/subscriptions.json
+node scripts/reconcile-subs.js --config store.config.json \
+  --state state/subscriptions.json --bots-state state/bots-state.json
 ```
+
+`--bots-state` is where removals are written down. If you run the ops bots, use
+the same path they use, so the two agree about who has been removed. Getting
+this wrong is what would let one part of the system invite back somebody another
+part just removed.
 
 **Leave `enforce` set to `false` at first.** That is reporting mode: the
 reconciler works out exactly who it would remove and prints it, and removes
@@ -143,6 +149,24 @@ Copy the `Undo:` line and run it. The customer is invited straight back.
 One caveat worth knowing: a re-invitation has to be accepted from the email
 GitHub sends, and those expire after 7 days. If a customer says they never got
 back in, check for a pending invitation on the repo.
+
+### If they resubscribe
+
+Every removal is also written to a list of people whose access was taken away on
+purpose. That list is what stops other parts of the system from quietly inviting
+a removed customer back in.
+
+When a former customer subscribes again they are invited normally, so they get
+back in. But their entry on that list is **not** cleared automatically, and that
+is deliberate: from the reconciler's side, a subscription that lapsed looks the
+same as a refund, and clearing the wrong one would hand access back to somebody
+who was refunded.
+
+The practical effect is small. Their invitation still arrives and still works.
+It just will not be automatically renewed if they leave it unaccepted for a
+week. The reconciler prints a warning naming them when this happens, and you
+clear their entry from `revoked_access` in your bots state file to restore
+normal behaviour.
 
 ## Who can never be removed
 

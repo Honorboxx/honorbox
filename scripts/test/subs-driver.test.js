@@ -14,6 +14,24 @@ const path = require('node:path');
 
 const driver = require('../reconcile-subs.js');
 
+// A test must never write into the repository's own state/. The reconciler
+// defaults --state and --bots-state to paths under the working directory, so a
+// harness that forgets to redirect them silently commits test data, or worse,
+// edits live ops state. This asserts the repo's state/ is untouched by the run.
+const REPO_STATE = path.join(__dirname, '..', '..', 'state');
+function repoStateFingerprint() {
+  if (!fs.existsSync(REPO_STATE)) return 'absent';
+  return fs.readdirSync(REPO_STATE).sort().map((f) => {
+    const p = path.join(REPO_STATE, f);
+    return `${f}:${fs.statSync(p).isFile() ? fs.readFileSync(p, 'utf8').length : 'dir'}`;
+  }).join('|');
+}
+const STATE_BEFORE = repoStateFingerprint();
+
+test.after(() => {
+  assert.equal(repoStateFingerprint(), STATE_BEFORE, 'a test wrote into the repository state/ directory');
+});
+
 function stubFetch(routes) {
   const calls = [];
   const orig = globalThis.fetch;
@@ -64,7 +82,14 @@ async function runMain(dir, routes, config, stateSeed) {
   console.error = (...a) => logs.push(a.join(' '));
   process.env.STRIPE_SECRET_KEY = 'sk_test_x';
   process.env.GH_FULFILL_TOKEN = 'ghp_x';
-  process.argv = ['node', 'reconcile-subs.js', '--config', cfg, '--state', statePath, '--force'];
+  // --bots-state MUST be pointed into the temp dir. Without it the reconciler
+  // falls back to its default, state/bots-state.json relative to the working
+  // directory, and a test run writes a fake revocation into the repository's
+  // real state file. That happened once: it polluted live ops state with a
+  // revocation for a repo that does not exist.
+  const botsStatePath = path.join(dir, 'state', 'bots-state.json');
+  process.argv = ['node', 'reconcile-subs.js', '--config', cfg, '--state', statePath,
+    '--bots-state', botsStatePath, '--force'];
   const f = stubFetch(routes);
   try {
     await driver.main(async () => {});
