@@ -42,6 +42,38 @@ function extractGithubUsername(session, fieldKey = 'github_username') {
   return u;
 }
 
+// GitHub caps a repository at 50 invitations per 24 hours. From the REST docs
+// for "Add a repository collaborator" (PUT /repos/{owner}/{repo}/collaborators/
+// {username}): "You are limited to sending 50 invitations to a repository per
+// 24 hour period. Note there is no limit if you are inviting organization
+// members to an organization repository."
+//
+// WHICH HTTP STATUS CARRIES THAT VERDICT IS NOT DOCUMENTED, and that is the
+// whole problem. The same page documents 403 ("Forbidden") and 422
+// ("Validation failed, or the endpoint has been spammed") without saying which
+// one the cap uses; the general rate-limit page says primary and secondary
+// limits return "403 or 429". The github/docs issue asking for exactly this
+// clarification (#18506) is open and unresolved, and its reporter could not
+// even trigger the cap to find out. We cannot generate 50 real invitations to
+// settle it either.
+//
+// So this is deliberately NOT keyed on status. The cap is a per-repository
+// endpoint quota, not the core 5000/hour quota, so x-ratelimit-remaining still
+// reads healthy while it is in force and the header path cannot see it. The
+// one signal GitHub does emit consistently is the sentence itself, so that is
+// what we match, across every status it could arrive with.
+const INVITE_CAP_PER_REPO_PER_DAY = 50;
+const INVITE_CAP_RE = /\blimited to (?:sending|creating) \d+ (?:organization )?invitations?\b/i;
+
+// Matched against GitHub's RESPONSE BODY only, never against a message we
+// built. Decorating a message and then pattern-matching it is how the old
+// prose check started matching our own hint text: inviteStatusHint(403) ends
+// with "or a secondary rate limit is in force", so /secondary/ matched EVERY
+// permissions 403 and retried a dead token for six hours.
+function isInvitationCapError(err) {
+  return !!err && INVITE_CAP_RE.test(String(err.body ?? ''));
+}
+
 // How long GitHub itself says to wait, in ms, or null if it said nothing.
 // Documented order of precedence (REST "rate limits" / "best practices"):
 //   1. `retry-after: <seconds>` — what a SECONDARY limit sends. Short, and the
@@ -73,6 +105,10 @@ function retryAfterMs(headers, now = Date.now()) {
 // token) is a permanent needs_attention row for a human.
 function isTransientInviteError(err) {
   if (!err || err.permanent) return false;
+  // The cap clears on its own, so it is transient whatever status it wore.
+  // Checked before the status rules because it arrives as a 403 or a 422 and
+  // the 422 branch below would otherwise file it as permanent on attempt one.
+  if (isInvitationCapError(err)) return true;
   if (err.status == null) return true; // fetch threw: DNS, timeout, reset
   if (err.status === 429 || err.status >= 500) return true;
   if (err.status !== 403) return false;
@@ -80,8 +116,10 @@ function isTransientInviteError(err) {
   // that lacks admin, which retrying cannot fix. GitHub signals a limit in the
   // headers as well as the prose; matching prose alone (the old test) misses a
   // limit worded any other way, and the wording is not part of any contract.
-  // Headers first, prose kept as the fallback.
-  return retryAfterMs(err.headers) !== null || /rate limit|secondary/i.test(String(err.message));
+  // Headers first, then GitHub's own words. Read err.body, never err.message:
+  // the message carries our hint text, which itself says "secondary rate
+  // limit", so matching it classified every permissions 403 as retryable.
+  return retryAfterMs(err.headers) !== null || /rate limit|secondary/i.test(String(err.body ?? ''));
 }
 
 // --- in-run retry -----------------------------------------------------------
@@ -115,6 +153,11 @@ const IN_RUN_BACKOFF_MS = [1_000, 4_000];
 // "don't — let the poll have it". `spentMs` is the run's cumulative wait so far.
 function inRunRetryDelayMs(err, attempt, spentMs, now = Date.now()) {
   if (!isTransientInviteError(err)) return null;
+  // Never retry the cap inside the run. It clears in hours, so every attempt
+  // is guaranteed to fail, and GitHub's rate-limit guidance is explicit that
+  // continuing to call while limited "may result in the banning of your
+  // integration". The poll picks it up once the window has actually moved.
+  if (isInvitationCapError(err)) return null;
   if (attempt >= IN_RUN_MAX_ATTEMPTS) return null;
   const left = IN_RUN_RETRY_BUDGET_MS - spentMs;
   if (left <= 0) return null;
@@ -133,10 +176,33 @@ function inRunRetryDelayMs(err, attempt, spentMs, now = Date.now()) {
 // "always within a few hours" delivery promise), then surface to a human.
 const INVITE_RETRY_WINDOW_SECONDS = 6 * 3600;
 
+// The cap is the one failure whose clearing time we KNOW, and it is longer
+// than the general window, so it gets its own. Widening the general window to
+// cover it would be the wrong trade: 6h is how long a genuinely broken order
+// waits before a human is told, and stretching that to a day to accommodate a
+// condition that resolves itself would make every unrelated breakage quieter.
+//
+// 26h = GitHub's 24h period + 2h slack. The cap is a rolling 24h window per
+// repo, so the longest a blocked invite can wait is just under 24h from the
+// moment it is blocked (the oldest of the 50 ages out). The 2h covers the poll
+// cadence, clock skew between us and GitHub, and the gap between the true
+// start of the block and our first blocked attempt. Under 24h and a launch-day
+// queue expires before GitHub relents, which is the bug this fixes; far over
+// 26h and a cap that is really something else sits unreported for no reason.
+//
+// The escalation delay this buys is NOT silence: a capped repo is announced on
+// the run that detects it (see fulfill.js), so the operator knows within one
+// poll. The window governs when we stop trying, not when we speak up.
+const INVITE_CAP_RETRY_WINDOW_SECONDS = 26 * 3600;
+
+function inviteRetryWindowSeconds(err) {
+  return isInvitationCapError(err) ? INVITE_CAP_RETRY_WINDOW_SECONDS : INVITE_RETRY_WINDOW_SECONDS;
+}
+
 function shouldRetryInvite(err, failures, sessionId, now = Date.now()) {
   if (!isTransientInviteError(err)) return false;
   const first = failures.find((f) => f.session === sessionId && f.transient);
-  return !first || now - Date.parse(first.ts) < INVITE_RETRY_WINDOW_SECONDS * 1000;
+  return !first || now - Date.parse(first.ts) < inviteRetryWindowSeconds(err) * 1000;
 }
 
 function inviteAttempts(failures, sessionId) {
@@ -293,7 +359,15 @@ const INVITE_STATUS_HINT = {
   401: 'the fulfillment token is bad or expired — NOTHING is being delivered until it is replaced',
 };
 
-function inviteStatusHint(status) {
+// `body` is GitHub's raw response. The cap outranks the status table: it
+// arrives as a 403 or a 422, and both of those entries would otherwise send
+// the operator hunting for a token problem or a bad buyer account when the
+// real answer is "this repo is full for today and will drain by itself".
+function inviteStatusHint(status, body = '') {
+  if (isInvitationCapError({ body })) {
+    return ` (GitHub's cap of ${INVITE_CAP_PER_REPO_PER_DAY} repository invitations per 24 hours is in force:` +
+      ` the buyer is queued and will be invited automatically, nothing is lost)`;
+  }
   if (INVITE_STATUS_HINT[status]) return ` (${INVITE_STATUS_HINT[status]})`;
   if (status >= 500) return ' (GitHub server error — transient, will retry)';
   if (status === 429) return ' (rate limited — transient, will retry)';
@@ -306,6 +380,10 @@ module.exports = {
   INVITE_STATUS_HINT,
   inviteStatusHint,
   INVITE_RETRY_WINDOW_SECONDS,
+  INVITE_CAP_RETRY_WINDOW_SECONDS,
+  INVITE_CAP_PER_REPO_PER_DAY,
+  isInvitationCapError,
+  inviteRetryWindowSeconds,
   IN_RUN_RETRY_BUDGET_MS,
   IN_RUN_MAX_WAIT_MS,
   IN_RUN_MAX_ATTEMPTS,
