@@ -598,3 +598,177 @@ test('a transient Stripe error retries instead of killing the whole cycle', asyn
   } finally { err2.restore(); }
   assert.equal(authHits, 1, 'a bad key fails on the first call, not after retries');
 });
+
+// GitHub's documented cap sentence, verbatim from the "Add a repository
+// collaborator" REST page. Which status carries it is undocumented, so the
+// tests below pin the behaviour for each status it could plausibly wear.
+const capRes = (status) => ({
+  ok: false,
+  status,
+  headers: new Headers({ 'x-ratelimit-remaining': '4831' }),
+  json: async () => ({}),
+  text: async () => JSON.stringify({
+    message: 'You are limited to sending 50 invitations to a repository per 24 hour period.',
+    documentation_url: 'https://docs.github.com/rest/collaborators/collaborators#add-a-repository-collaborator',
+  }),
+});
+
+for (const status of [403, 422]) {
+  test(`a burst past the invitation cap (as ${status}) queues calmly and tells the operator`, async () => {
+    // The launch-day case. GitHub allows 50 invitations per repo per 24h, so
+    // on the day a store does well the 51st sale is refused. What must NOT
+    // happen: 10 pointless calls to an endpoint GitHub has asked us to stop
+    // calling, 10 FAILED lines burying the one fact that matters, or any of
+    // those buyers being written off as permanently undeliverable.
+    const dir = tmp();
+    const sessions = ['cs_burst_1', 'cs_burst_2', 'cs_burst_3'].map((id, i) =>
+      paidSession(id, 1_700_000_000 + i, {
+        custom_fields: [{ key: 'github_username', text: { value: `buyer-${i}` } }],
+      })
+    );
+    let ghCalls = 0;
+    const out = captureLog();
+    const err = captureErr();
+    let res;
+    try {
+      res = await runMain(dir, [
+        { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+        { match: 'api.github.com', res: () => { ghCalls++; return capRes(status); } },
+      ]);
+    } finally { err.restore(); out.restore(); }
+
+    // One call, not three: the first cap verdict pauses the repo for the run.
+    assert.equal(ghCalls, 1, 'a capped repo must not be called again in the same run');
+    // No in-run sleeping either: the cap does not clear in seconds.
+    assert.deepEqual(res.slept, [], 'a cap must not be waited on inside the run');
+
+    const state = res.readState('fulfill-state.json');
+    // Nothing is written off. Every buyer stays unprocessed so the next poll
+    // delivers them once the window frees a slot.
+    assert.deepEqual(state.processed, [], 'no capped buyer may be marked processed');
+    assert.equal(state.failures.length, 3);
+    assert.ok(state.failures.every((f) => f.transient === true),
+      'every capped buyer must stay in the retry queue, not become a permanent failure');
+
+    const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+    assert.equal(ledger.rows.filter((r) => r.needs_attention).length, 0,
+      'a cap is not a needs_attention row: it clears by itself');
+    assert.equal(ledger.rows.length, 0, 'nothing may be logged as delivered');
+
+    // The operator learns it from their own log, in the shape the watchdog
+    // greps, on the run that saw it -- not from the buyer.
+    const warns = err.lines.filter((l) => l.startsWith('WARN:'));
+    assert.equal(warns.length, 2, 'one warning that the cap is in force, one for what it is costing');
+    assert.match(warns[0], /reached GitHub's cap of 50 repository invitations per 24 hours/);
+    assert.match(warns[0], /NOTHING is lost/);
+    assert.match(warns[0], /organization/, 'the warning must name the way out of the cap');
+    assert.match(warns[1], /3 paid buyers are waiting behind the invitation cap on o\/r/);
+    // The queued ones say so plainly, and do not read as failures.
+    assert.equal(out.lines.filter((l) => /^queued cs_burst_/.test(l)).length, 2);
+    // And the one line that did report the refusal must not blame the buyer.
+    const failed = err.lines.filter((l) => l.startsWith('FAILED'));
+    assert.equal(failed.length, 1);
+    assert.match(failed[0], /cap of 50 repository invitations per 24 hours/);
+    assert.doesNotMatch(failed[0], /account cannot be added/,
+      'a cap must never be reported as a bad buyer account');
+  });
+}
+
+test('the watchdog would actually alert on a capped repo', async () => {
+  // Guards the seam between what fulfill.js prints and what ops greps. The
+  // ops watchdog matches /FAILED|WARN:|BOTS FAILED|^CONFIG /; a cap warning
+  // worded outside that vocabulary would be invisible no matter how clear it
+  // reads to a person.
+  const ALERT_RE = /FAILED|WARN:|BOTS FAILED|^CONFIG /;
+  const dir = tmp();
+  const err = captureErr();
+  const out = captureLog();
+  try {
+    await runMain(dir, [
+      { match: 'api.stripe.com', res: () => jsonRes({ data: [paidSession('cs_wd', 1_700_000_000)], has_more: false }) },
+      { match: 'api.github.com', res: () => capRes(422) },
+    ]);
+  } finally { err.restore(); out.restore(); }
+  const alerting = err.lines.filter((l) => ALERT_RE.test(l.trim()));
+  assert.ok(alerting.some((l) => /cap of 50 repository invitations/.test(l)),
+    'the cap must reach the operator through a line the watchdog already greps');
+});
+
+test('a permissions 403 is still permanent, and our own hint text cannot disguise it', async () => {
+  // The regression a unit test misses. isTransientInviteError was fed the
+  // decorated MESSAGE, which embeds inviteStatusHint(403) -- and that hint
+  // says "or a secondary rate limit is in force". So the prose check matched
+  // our own words on every permissions 403 and quietly retried a token that
+  // had lost admin, for six hours, instead of surfacing it at once. The unit
+  // tests passed throughout because they built errors from bare strings that
+  // never carried the hint. Only the driver builds the real message.
+  const dir = tmp();
+  const err = captureErr();
+  let res;
+  try {
+    res = await runMain(dir, [
+      { match: 'api.stripe.com', res: () => jsonRes({ data: [paidSession('cs_perm', 1_700_000_000)], has_more: false }) },
+      { match: 'api.github.com', res: () => ({
+        ok: false,
+        status: 403,
+        headers: new Headers({ 'x-ratelimit-remaining': '4831' }),
+        json: async () => ({}),
+        text: async () => JSON.stringify({ message: 'Resource not accessible by personal access token' }),
+      }) },
+    ]);
+  } finally { err.restore(); }
+
+  const state = res.readState('fulfill-state.json');
+  assert.deepEqual(state.processed, ['cs_perm'], 'a permissions 403 is settled, not queued forever');
+  assert.equal(state.failures.length, 1);
+  assert.ok(!state.failures[0].transient,
+    'a token that lacks admin must NOT be classified transient: retrying cannot fix it');
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+  assert.equal(ledger.rows.filter((r) => r.needs_attention).length, 1,
+    'it must reach a human on the first run, not after six hours of silence');
+  assert.ok(err.lines.some((l) => /FAILED cs_perm/.test(l) && !/will retry/.test(l)));
+});
+
+test('a queue behind the cap still ends: past the window it escalates to a human', async () => {
+  // The trap in the short-circuit. Deferring a buyer without consulting the
+  // retry window would queue them on every poll forever, so a repo that is
+  // "capped" for a reason that never clears (or a cap that is really
+  // something else wearing its words) would keep paying customers waiting
+  // silently and indefinitely. The queue must have an end.
+  const dir = tmp();
+  const sessions = ['cs_old_1', 'cs_old_2'].map((id, i) =>
+    paidSession(id, 1_700_000_000 + i, {
+      custom_fields: [{ key: 'github_username', text: { value: `buyer-${i}` } }],
+    })
+  );
+  // Both buyers first failed 30h ago, past the 26h cap window.
+  const thirtyHoursAgo = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'state', 'fulfill-state.json'), JSON.stringify({
+    cursor: 0,
+    processed: [],
+    failures: sessions.map((s) => ({ session: s.id, ts: thirtyHoursAgo, transient: true })),
+  }));
+
+  let ghCalls = 0;
+  const err = captureErr();
+  const out = captureLog();
+  let res;
+  try {
+    res = await runMain(dir, [
+      { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+      { match: 'api.github.com', res: () => { ghCalls++; return capRes(403); } },
+    ]);
+  } finally { err.restore(); out.restore(); }
+
+  // Still only one call: knowing the repo is full is not a reason to re-ask.
+  assert.equal(ghCalls, 1);
+  const state = res.readState('fulfill-state.json');
+  assert.deepEqual(state.processed.sort(), ['cs_old_1', 'cs_old_2'],
+    'a queue past its window must settle, not roll forward another day');
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+  assert.equal(ledger.rows.filter((r) => r.needs_attention).length, 2,
+    'both buyers must reach a human once the cap can no longer explain the wait');
+  assert.equal(out.lines.filter((l) => /^queued /.test(l)).length, 0,
+    'nothing may be reported as calmly queued once the window has expired');
+});

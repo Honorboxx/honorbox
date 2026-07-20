@@ -35,6 +35,8 @@ const {
   retryAfterMs,
   pruneFailures,
   IN_RUN_MAX_ATTEMPTS,
+  isInvitationCapError,
+  INVITE_CAP_PER_REPO_PER_DAY,
 } = require('./lib/fulfill-core.js');
 
 // Injectable so tests exercise the real retry paths without real waiting.
@@ -135,12 +137,14 @@ async function inviteCollaborator(repo, username, token) {
   // Everything else is a failure, including anything unrecognized. Widening
   // this set is how a delivery failure starts reading like a delivery.
   if (res.status === 201 || res.status === 204) return res.status;
-  const msg = `GitHub invite ${repo} <- ${username} -> ${res.status}${inviteStatusHint(res.status)}: ${await res.text()}`;
-  // Headers ride along on the error: retry-after / x-ratelimit-* are how a
-  // rate limit is told apart from a permissions 403, and how long to wait is
-  // GitHub's call, not ours. Discarding them was why the old code had to guess
-  // from the prose of the message.
-  throw Object.assign(new Error(msg), { status: res.status, headers: res.headers });
+  const body = await res.text();
+  const msg = `GitHub invite ${repo} <- ${username} -> ${res.status}${inviteStatusHint(res.status, body)}: ${body}`;
+  // Headers AND the raw body ride along on the error: retry-after /
+  // x-ratelimit-* are how a rate limit is told apart from a permissions 403,
+  // and how long to wait is GitHub's call, not ours. The body is carried
+  // separately from the message so classification reads what GitHub said and
+  // never the hint text we wrapped around it.
+  throw Object.assign(new Error(msg), { status: res.status, headers: res.headers, body });
 }
 
 // Retry the invite INSIDE this run while the budget allows, instead of leaving
@@ -197,6 +201,15 @@ async function main(sleep = defaultSleep) {
   // the run without bound; this caps the total wait no matter how many fail.
   const budget = { spentMs: 0 };
 
+  // Repos known to be at GitHub's invitation cap in THIS run: repo -> the
+  // count of buyers waiting behind it and the error GitHub answered with.
+  // Once a repo answers with the cap, every further invite to it this run is
+  // certain to fail the same way, so they are queued without the call: 10
+  // pointless round trips, 10 misleading FAILED lines and 10 nudges at an
+  // endpoint GitHub has asked us to leave alone, all avoided. Queued sessions
+  // stay unprocessed, so the next poll delivers them.
+  const cappedRepos = new Map();
+
   const since = Math.max(0, (state.cursor || 0) - OVERLAP_SECONDS);
   const sessions = await listSessionsSince(since, stripeKey, sleep);
   const fresh = pickNewPaidSessions(sessions, state.processed, config.fulfillment);
@@ -227,7 +240,24 @@ async function main(sleep = defaultSleep) {
     const entry = { session: s.id, ts: new Date().toISOString() };
     const row = ledgerRow(s, grant);
     if (ledgerRefs.has(row.ref)) { state.processed.push(s.id); continue; }
+    // Queued behind a cap this run, and still inside the retry window: say so
+    // quietly and move on. Deliberately NOT a FAILED line, because one capped
+    // repo would otherwise alert the operator once per waiting buyer and bury
+    // the single WARN that explains all of them.
+    const cap = cappedRepos.get(grant.repo);
+    if (cap) {
+      cap.queued++;
+      if (shouldRetryInvite(cap.err, state.failures, s.id)) {
+        console.log(`queued ${s.id}: ${grant.repo} is at its daily invitation cap, delivery deferred to a later poll`);
+        state.failures.push({ ...entry, error: `deferred: ${grant.repo} at invitation cap`, transient: true });
+        continue; // NOT marked processed: the next poll delivers it
+      }
+      // Waited longer than a cap can explain. Fall through so the shared catch
+      // escalates it exactly like any other exhausted retry: a buyer must
+      // never sit in a queue that has quietly stopped having an end.
+    }
     try {
+      if (cap) throw cap.err; // no second call to a repo we know is full
       if (!validUsername(username)) {
         throw Object.assign(new Error(`invalid github username: ${JSON.stringify(username)}`), { permanent: true });
       }
@@ -253,6 +283,19 @@ async function main(sleep = defaultSleep) {
       ledgerRefs.add(row.ref);
       newSales.push(username);
     } catch (err) {
+      // Announce the cap the moment it is first seen, on the run that sees it,
+      // in the shape the watchdog greps ("WARN:"). A seller must learn this
+      // from their own log, not from the buyer who did not get in.
+      if (isInvitationCapError(err) && !cappedRepos.has(grant.repo)) {
+        cappedRepos.set(grant.repo, { queued: 1, err });
+        console.error(
+          `WARN: ${grant.repo} has reached GitHub's cap of ${INVITE_CAP_PER_REPO_PER_DAY} repository ` +
+            `invitations per 24 hours. Sales are still being recorded and NOTHING is lost: queued buyers ` +
+            `are invited automatically as the cap frees up, which takes up to 24h from the invite that ` +
+            `filled it. To remove the ceiling, move the repo into a GitHub organization and invite buyers ` +
+            `as org members, which GitHub does not cap.`
+        );
+      }
       const attempt = inviteAttempts(state.failures, s.id) + 1;
       // retry budget is 6h from the first transient failure, then a human
       const retry = shouldRetryInvite(err, state.failures, s.id);
@@ -263,6 +306,17 @@ async function main(sleep = defaultSleep) {
       ledgerRefs.add(row.ref);
     }
     state.processed.push(s.id);
+  }
+
+  // How big the queue actually is. The detection warning above says the cap is
+  // in force; this says what it is costing right now, which is the number the
+  // operator needs when deciding whether to sit tight or move to an org.
+  for (const [repo, { queued }] of cappedRepos) {
+    console.error(
+      `WARN: ${queued} paid ${queued === 1 ? 'buyer is' : 'buyers are'} waiting behind the invitation ` +
+        `cap on ${repo}. They stay queued until GitHub's 24h window frees a slot; no action is required ` +
+        `for them to be delivered.`
+    );
   }
 
   state.cursor = nextCursor(sessions, state.cursor);

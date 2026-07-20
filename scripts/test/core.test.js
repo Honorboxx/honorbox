@@ -73,7 +73,10 @@ test('extracts username from a pasted GitHub profile URL', () => {
 
 test('invite failures classify as transient (retry) or permanent (attention)', () => {
   const { isTransientInviteError, inviteAttempts } = require('../lib/fulfill-core.js');
-  const withStatus = (status, message = 'x') => Object.assign(new Error(message), { status });
+  // GitHub's prose is read from `body`, the raw response, not from `message`,
+  // which is ours and carries the hint text. Passing prose as `message` here
+  // used to be enough to classify; it no longer is, and that is the point.
+  const withStatus = (status, body = '') => Object.assign(new Error('x'), { status, body });
   // no HTTP verdict at all: DNS, timeout, connection reset
   assert.ok(isTransientInviteError(new Error('fetch failed')));
   assert.ok(isTransientInviteError(withStatus(429)));
@@ -142,6 +145,125 @@ test('a 403 carrying a rate-limit header is transient even when the prose says n
   assert.ok(!isTransientInviteError(Object.assign(new Error('Resource not accessible by personal access token'), {
     status: 403, headers: new Headers({ 'x-ratelimit-remaining': '4998' }),
   })));
+});
+
+// GitHub's documented cap sentence, verbatim from the "Add a repository
+// collaborator" REST page. The status it arrives with is NOT documented, so
+// every plausible one is exercised.
+const CAP_BODY = JSON.stringify({
+  message: 'You are limited to sending 50 invitations to a repository per 24 hour period.',
+  documentation_url: 'https://docs.github.com/rest/collaborators/collaborators#add-a-repository-collaborator',
+});
+
+test('the invitation cap is recognized whatever status GitHub chooses to send it with', () => {
+  const { isInvitationCapError, isTransientInviteError } = require('../lib/fulfill-core.js');
+  const cap = (status) => Object.assign(new Error('x'), {
+    status, body: CAP_BODY, headers: new Headers({ 'x-ratelimit-remaining': '4831' }),
+  });
+  // 403 and 422 are both documented on that endpoint and GitHub does not say
+  // which the cap uses; 429 is what the general rate-limit page allows. All
+  // three must be caught, and all three must be retryable.
+  for (const status of [403, 422, 429]) {
+    assert.ok(isInvitationCapError(cap(status)), `cap must be recognized at ${status}`);
+    assert.ok(isTransientInviteError(cap(status)), `cap must be transient at ${status}`);
+  }
+  // Note the healthy x-ratelimit-remaining above: the cap is a per-repo
+  // endpoint quota, not the core 5000/hour quota, so the header path is blind
+  // to it. That is why the sentence is matched at all.
+  const { retryAfterMs } = require('../lib/fulfill-core.js');
+  assert.equal(retryAfterMs(cap(403).headers), null);
+  // Not a cap: an ordinary permissions refusal stays permanent.
+  assert.ok(!isInvitationCapError(Object.assign(new Error('x'), {
+    status: 403, body: JSON.stringify({ message: 'Resource not accessible by personal access token' }),
+  })));
+  assert.ok(!isInvitationCapError(null));
+  assert.ok(!isInvitationCapError(Object.assign(new Error('x'), { status: 403 })));
+});
+
+test('classification reads GitHub\'s body, never the hint text we wrapped around it', () => {
+  const { isTransientInviteError, isInvitationCapError, inviteStatusHint } = require('../lib/fulfill-core.js');
+  // The live defect this closes. inviteStatusHint(403) ends with "or a
+  // secondary rate limit is in force", and fulfill.js embeds that hint in the
+  // error message. The old check ran /rate limit|secondary/ over the MESSAGE,
+  // so every permissions 403 matched our own words and was retried for six
+  // hours instead of surfacing at once as a dead token.
+  assert.match(inviteStatusHint(403), /secondary rate limit/);
+  const realPermissions403 = Object.assign(
+    new Error(`GitHub invite o/r <- buyer -> 403${inviteStatusHint(403)}: ` +
+      JSON.stringify({ message: 'Resource not accessible by personal access token' })),
+    { status: 403, headers: new Headers({ 'x-ratelimit-remaining': '4831' }),
+      body: JSON.stringify({ message: 'Resource not accessible by personal access token' }) }
+  );
+  assert.ok(!isTransientInviteError(realPermissions403),
+    'a permissions 403 must not be made retryable by our own hint text');
+  assert.ok(!isInvitationCapError(realPermissions403));
+});
+
+test('the cap outranks the status table, so the log stops blaming the buyer', () => {
+  const { inviteStatusHint } = require('../lib/fulfill-core.js');
+  // A cap arriving as 422 used to print "GitHub rejected the invite as invalid
+  // (the account cannot be added to this repo)", sending the operator after
+  // the buyer's account when the truth is the repo is full for the day.
+  assert.match(inviteStatusHint(422, CAP_BODY), /cap of 50 repository invitations per 24 hours/);
+  assert.match(inviteStatusHint(403, CAP_BODY), /cap of 50 repository invitations per 24 hours/);
+  assert.doesNotMatch(inviteStatusHint(422, CAP_BODY), /account cannot be added/);
+  // Without a cap body the table is untouched.
+  assert.match(inviteStatusHint(422), /account cannot be added/);
+  assert.match(inviteStatusHint(404), /no such GitHub user/);
+});
+
+test('the cap retries past GitHub\'s 24h window while everything else still escalates at 6h', () => {
+  const {
+    shouldRetryInvite, INVITE_RETRY_WINDOW_SECONDS, INVITE_CAP_RETRY_WINDOW_SECONDS,
+  } = require('../lib/fulfill-core.js');
+  // The mismatch this fixes: a 6h budget against a 24h cap left 18h of the
+  // limit still running after we had given up, so sale 51 on a good day was
+  // never delivered and fell out to manual handling.
+  assert.ok(INVITE_CAP_RETRY_WINDOW_SECONDS > 24 * 3600,
+    'the cap window must outlive GitHub\'s own 24h period');
+  assert.equal(INVITE_CAP_RETRY_WINDOW_SECONDS, 26 * 3600);
+  // The general window is deliberately NOT widened: a broken order must still
+  // reach a human in 6h.
+  assert.equal(INVITE_RETRY_WINDOW_SECONDS, 6 * 3600);
+
+  const now = Date.parse('2026-07-20T12:00:00Z');
+  const cap = Object.assign(new Error('x'), { status: 403, body: CAP_BODY });
+  const other = Object.assign(new Error('bad gateway'), { status: 502 });
+  const firstAt = (iso) => [{ session: 'cs_a', ts: iso, transient: true }];
+
+  // 20h in, the middle of GitHub's window: the cap keeps going, a plain
+  // transient has long since been handed to a human.
+  const twentyHoursAgo = firstAt('2026-07-19T16:00:00Z');
+  assert.ok(shouldRetryInvite(cap, twentyHoursAgo, 'cs_a', now));
+  assert.ok(!shouldRetryInvite(other, twentyHoursAgo, 'cs_a', now));
+  // Just inside 26h: still retrying, because the cap can take a full day to
+  // free the slot and the poll cadence adds slack on top.
+  assert.ok(shouldRetryInvite(cap, firstAt('2026-07-19T10:30:00Z'), 'cs_a', now));
+  // Past 26h this is not a cap that cleared, it is something else wearing the
+  // cap's words, and it goes to a human.
+  assert.ok(!shouldRetryInvite(cap, firstAt('2026-07-19T09:00:00Z'), 'cs_a', now));
+});
+
+test('a capped repo is never retried inside the run', () => {
+  const { inRunRetryDelayMs } = require('../lib/fulfill-core.js');
+  const cap = Object.assign(new Error('x'), { status: 403, body: CAP_BODY });
+  // Every in-run attempt is certain to fail for hours, and GitHub's rate-limit
+  // guidance warns that continuing to call while limited "may result in the
+  // banning of your integration". Holding the run open for it also burns
+  // billed Actions time delivering nothing.
+  assert.equal(inRunRetryDelayMs(cap, 1, 0), null);
+  // Even when GitHub attaches a retry-after short enough to be affordable, a
+  // cap is not the kind of thing a 5s wait clears.
+  const capWithHeader = Object.assign(new Error('x'), {
+    status: 403, body: CAP_BODY, headers: new Headers({ 'retry-after': '5' }),
+  });
+  assert.equal(inRunRetryDelayMs(capWithHeader, 1, 0), null);
+  // A genuine secondary limit with the same header IS still retried in-run.
+  const secondary = Object.assign(new Error('x'), {
+    status: 403, body: 'You have exceeded a secondary rate limit',
+    headers: new Headers({ 'retry-after': '5' }),
+  });
+  assert.equal(inRunRetryDelayMs(secondary, 1, 0), 5_000);
 });
 
 test('the in-run retry waits as long as GitHub asked, inside a bounded budget', () => {
