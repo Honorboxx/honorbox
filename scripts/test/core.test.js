@@ -500,12 +500,13 @@ test('markdown: structure and escaping', () => {
 });
 
 test('markdown: headings carry the anchor the docs already link to', () => {
-  // setup.md has linked to "#6-what-this-costs" since it was written and
-  // nothing emitted an id for it, so the link was dead on the published page.
-  // The slug follows GitHub's rules because that is what an author writing a
-  // fragment link will assume.
-  const html = renderMarkdown('## 6. What this costs\n\n## Delivery model\n\n## The `ref` column');
-  assert.ok(html.includes('<h2 id="6-what-this-costs">'), html);
+  // setup.md links to "#7-what-this-costs" and nothing emitted an id for it,
+  // so the link was dead on the published page. The slug follows GitHub's
+  // rules because that is what an author writing a fragment link will assume.
+  // The leading number matters: inserting a setup step renumbers the heading,
+  // and the anchor has to track the text rather than be hand-maintained.
+  const html = renderMarkdown('## 7. What this costs\n\n## Delivery model\n\n## The `ref` column');
+  assert.ok(html.includes('<h2 id="7-what-this-costs">'), html);
   assert.ok(html.includes('<h2 id="delivery-model">'), html);
   assert.ok(html.includes('<h2 id="the-ref-column">'), 'formatting is stripped before slugging');
 

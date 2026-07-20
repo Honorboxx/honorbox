@@ -11,7 +11,7 @@
 // Runs as a step inside the fulfillment workflow rather than on a schedule of
 // its own: a private-repo Actions job is billed rounded up to a whole minute,
 // so sharing the poll's job costs nothing at all, while a second cron would
-// cost a minute every time it fired. See docs/setup.md section 6.
+// cost a minute every time it fired. See docs/setup.md section 7.
 //
 // It is deliberately separate from fulfill.js. Fulfillment's contract is
 // "one paid session, one invite, exactly once" and its state is a session

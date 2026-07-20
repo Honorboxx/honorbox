@@ -1,4 +1,4 @@
-# Instant delivery (optional)
+# Instant delivery
 
 HonorBox's default fulfillment is a poll every 30 minutes: zero
 infrastructure, zero accounts beyond Stripe + GitHub, and an invite a median
@@ -7,8 +7,9 @@ cadence is set by the free Actions tier, not by taste; the arithmetic is in
 [setup.md](setup.md).) The *payment* is always instant; this page is about
 shrinking the wait for the *invite*.
 
-Both upgrades here are opt-in. The poll stays on either way; it is the
-safety net, and skipping these keeps a perfectly working store.
+Both upgrades here are opt-in, and [setup §6](setup.md) is where you decide.
+The poll stays on either way; it is the safety net, and skipping these keeps a
+perfectly working store rather than a degraded one.
 
 | Mode | Typical delivery | Worst case | What you add |
 |---|---|---|---|
@@ -87,7 +88,7 @@ from Stripe's API. A forged dispatch can at worst trigger an empty run.
    `checkout.session.completed`. Within seconds the ops repo should show a
    "Fulfill on sale" run; the run finds no real paid session and no-ops.
    For a full rehearsal, place a $0 test order using either method in
-   [setup §7](setup.md) and watch the invite arrive in seconds.
+   [setup §8](setup.md) and watch the invite arrive in seconds.
 
 ### Threat model
 

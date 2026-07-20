@@ -49,7 +49,7 @@ they have nothing permanently, with nothing anywhere saying so.
 seven-day clock, so `scripts/renew-invites.js` re-issues one at six days, a full
 day before it would lapse. It runs as a step in the fulfillment workflow, on the
 same poll and at no extra cost in Actions minutes
-([setup.md § 6](setup.md#6-what-this-costs)). The buyer gets a fresh invitation
+([setup.md § 7](setup.md#7-what-this-costs)). The buyer gets a fresh invitation
 email and the door stays open.
 
 It is not an infinite mail loop. Three renewals is the limit, so a buyer gets
@@ -117,7 +117,7 @@ invitations, not pulls.
 
 **What the engine does about it.** Nothing is lost and nothing needs doing:
 
-- The refusal is recognised as the cap rather than as a broken order, and the
+- The refusal is recognized as the cap rather than as a broken order, and the
   buyer stays in the retry queue instead of being written off. Retries run for
   26 hours, which outlasts GitHub's own 24-hour window, so a queued buyer is
   delivered as soon as a slot frees.

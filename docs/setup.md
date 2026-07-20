@@ -1,8 +1,9 @@
 # Setup: from fork to first sale
 
-Time: ~30 minutes. Cost: $0/month. The arithmetic is in
-[§6](#6-what-this-costs), not asserted. You need a GitHub account and an
-activated Stripe account (charges enabled).
+Time: ~30 minutes, plus 10 if you add instant delivery in
+[§6](#6-instant-delivery-or-skip-it-on-purpose). Cost: $0/month. The
+arithmetic is in [§7](#7-what-this-costs), not asserted. You need a GitHub
+account and an activated Stripe account (charges enabled).
 
 ## 1. Your storefront repo
 
@@ -57,7 +58,7 @@ correctly-configured Payment Link, and wires `store.config.json` +
      coupon. `init.js` generates links with it off on purpose: a link that
      accepts typed codes plus any live 100%-off coupon is a free copy of your
      product to anyone who guesses the code. Turn it on for a campaign, turn it
-     back off when the campaign ends. Section 7 shows how to test without it.
+     back off when the campaign ends. Section 8 shows how to test without it.
 3. The link gives you two different values, and they go in two different
    places:
    - the **URL** goes in your product's `payment_link` frontmatter; that is
@@ -124,7 +125,40 @@ Keep secrets and state **out of your public repo**:
 5. Run the workflow once manually (Actions → Fulfill orders → Run workflow) and
    check the log.
 
-## 6. What this costs
+## 6. Instant delivery, or skip it on purpose
+
+With what you have built so far, a buyer's invite arrives a median of ~15
+minutes after payment, and occasionally hours when GitHub's scheduler drifts
+(the arithmetic is in [§7](#7-what-this-costs)). You have two honest options
+and neither is a compromise.
+
+**Skip this section** if a wait of minutes suits what you sell. Nothing is
+missing and nothing is degraded: the poll is the whole product working as
+designed, it needs no account beyond Stripe and GitHub, and it cannot be
+misconfigured into silence. Set the expectation at checkout ("usually within
+minutes, always within a few hours") and beat it. This is the shipped default
+and it stays on whatever else you do.
+
+**Or add webhook mode** and delivery lands in seconds. A signed Stripe webhook
+hits a small relay you deploy on a free serverless tier (Cloudflare Workers or
+Val Town, neither takes a card), which fires a GitHub `repository_dispatch`,
+and fulfillment runs immediately. The poll keeps running underneath as the
+safety net, so a relay that breaks degrades to exactly the behavior above
+rather than to no delivery at all. The engine is identical either way, so
+turning this on later changes nothing about how sales are processed.
+
+It costs about 10 minutes, one free account, one webhook signing secret and
+one more fine-grained token. Full steps, the payload, and the threat model:
+[instant-delivery.md](instant-delivery.md).
+
+Worth knowing before you choose: neither option changes GitHub's cap of 50
+repository invitations per repo per 24 hours. Webhook mode makes the 50th
+delivery instant; it does not make the 51st possible. That ceiling is lifted
+by moving the product repo into a GitHub organization, not by delivering
+faster:
+[how-it-works.md](how-it-works.md#githubs-invitation-cap-50-per-repo-per-day).
+
+## 7. What this costs
 
 $0/month, and here is the arithmetic rather than the assurance.
 
@@ -209,7 +243,7 @@ cost per *sale*, not per month, and it is the only money that leaves.
 The one edit that can put you over: tightening the poll cron. Everything else
 here scales with sales, not with time.
 
-## 7. Test the whole pipe before launch
+## 8. Test the whole pipe before launch
 
 Your generated payment link does not accept typed promotion codes (see step 2),
 so a test order goes through a coupon you apply yourself. Two ways, both $0 and
@@ -239,7 +273,7 @@ Either way you are exercising the real pipe: a `$0` order completes with
 `amount_total: 0`, which fulfillment treats as paid and logs distinctly from a
 paying customer, so your test never masquerades as revenue.
 
-## 8. Going live checklist
+## 9. Going live checklist
 
 - [ ] Payment link opens and shows your product + custom field
 - [ ] `store.config.json` fulfillment uses the `plink_` id, not the URL

@@ -211,9 +211,11 @@ function listAt(lines, start, base) {
 // filesystem in it, so the caller that KNOWS where the images live is the one
 // that measures them. Without it the markup is byte-for-byte what it was.
 // Heading anchors, using GitHub's slug rules, because that is the shape the
-// docs were already written against: setup.md has linked to
-// "#6-what-this-costs" since it was written, and nothing ever emitted an id
-// for it to land on, so the link was dead on the published page. Authors
+// docs were already written against: setup.md and how-it-works.md link to
+// headings by fragment (for example "#7-what-this-costs"), and nothing ever
+// emitted an id for those to land on, so the links were dead on the published
+// page. Section numbers move when a step is inserted, so the slug has to
+// follow the heading text rather than be maintained by hand. Authors
 // reasonably assume a markdown heading is linkable; making that true here is
 // cheaper than catching every dead fragment by review.
 //
