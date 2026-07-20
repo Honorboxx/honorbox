@@ -194,6 +194,15 @@ is why the confirmation message promises "usually within minutes, always
 within a few hours" and why webhook mode (seconds, and free) exists for
 sellers who want the wait gone.
 
+**The one limit that is not about money.** GitHub allows **50 invitations per
+repository per 24 hours**, so one product repo on a personal account can take
+on at most 50 new buyers a day. Buyers past that are queued and delivered
+automatically as the window frees, and the run tells you how many are waiting,
+so nothing is lost. But if you are planning a launch that could clear 50 sales
+in a day, move the product repo into a **GitHub organization** first:
+organizations are free, and inviting org members to an org repo has no cap.
+Details in [how-it-works.md](how-it-works.md#githubs-invitation-cap-50-per-repo-per-day).
+
 **Stripe** takes its per-transaction percentage and no monthly fee. That is a
 cost per *sale*, not per month, and it is the only money that leaves.
 

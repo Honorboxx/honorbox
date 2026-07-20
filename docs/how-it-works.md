@@ -10,17 +10,24 @@ Three repos, no servers:
 | product | private | what buyers get; buyers invited read-only |
 | ops | private | fulfillment workflow, Stripe key, state, ledger source |
 
-**No webhooks.** Fulfillment is a poll: a scheduled Action lists Stripe Checkout
+**No server.** Out of the box, fulfillment is a poll: a scheduled Action lists Stripe Checkout
 Sessions created since the last cursor (with a 25-hour overlap window, wider
 than Stripe's 24-hour default session expiry so a checkout completed a day
 after it was opened is never missed) and
 processes the ones that are `complete` and paid. Idempotency comes from a
 committed set of processed session ids, so re-runs and overlaps are safe.
 
-**Why polling beats webhooks here:** a webhook needs an always-on endpoint:
-a server, TLS, retries, signature verification, and a place for secrets
-to leak. A poll from CI needs none of that and is at most ~15 minutes behind,
-which is fine for "invite to a repo" delivery.
+**Why the default is a poll:** a webhook needs an endpoint that is always
+reachable: TLS, retries, signature verification, and one more place for a
+secret to live. A poll from CI needs none of that, needs no account beyond
+Stripe and GitHub, and is at most ~15 minutes behind, which is survivable for
+"invite to a repo" delivery.
+
+That is a floor, not a ceiling. If minutes are too slow, [webhook
+mode](instant-delivery.md) delivers in seconds on a free serverless tier, and
+the poll stays on underneath it as the safety net. The engine is the same
+either way, so turning it on later changes nothing about how sales are
+processed.
 
 ## Delivery model
 
@@ -93,6 +100,53 @@ hits a tiny serverless relay you supply (free tier) which fires a GitHub
 zero-infra default; webhook mode is the upgrade for when minutes aren't fast
 enough.
 
+## GitHub's invitation cap: 50 per repo per day
+
+This is the one ceiling on how fast a store can sell, and it is GitHub's, not
+HonorBox's. From the REST docs for
+[adding a repository collaborator](https://docs.github.com/en/rest/collaborators/collaborators#add-a-repository-collaborator):
+
+> You are limited to sending 50 invitations to a repository per 24 hour
+> period. Note there is no limit if you are inviting organization members to
+> an organization repository.
+
+So a personal-account product repo delivers at most **50 new buyers in any
+24 hours**. Sale 51 on a good day is refused by GitHub until the window frees
+a slot. Buyers who already have access are unaffected: the cap counts
+invitations, not pulls.
+
+**What the engine does about it.** Nothing is lost and nothing needs doing:
+
+- The refusal is recognised as the cap rather than as a broken order, and the
+  buyer stays in the retry queue instead of being written off. Retries run for
+  26 hours, which outlasts GitHub's own 24-hour window, so a queued buyer is
+  delivered as soon as a slot frees.
+- Once a repo reports the cap, the run stops inviting to that repo for the
+  rest of that cycle. Sixty sales in an hour deliver fifty and queue ten,
+  rather than making ten more calls GitHub has asked us not to make.
+- You are told on the run that sees it, not by the buyer:
+
+```
+WARN: you/product has reached GitHub's cap of 50 repository invitations per
+24 hours. Sales are still being recorded and NOTHING is lost: queued buyers
+are invited automatically as the cap frees up, which takes up to 24h from the
+invite that filled it. To remove the ceiling, move the repo into a GitHub
+organization and invite buyers as org members, which GitHub does not cap.
+
+WARN: 10 paid buyers are waiting behind the invitation cap on you/product.
+```
+
+**If you expect more than 50 sales in a day, move the product repo into a
+GitHub organization before you launch.** Organizations are free, the move is
+`Settings -> Transfer ownership`, and inviting org members to an org repo has
+no cap. Doing it before a launch costs ten minutes; doing it during one means
+some buyers wait a day.
+
+One honest caveat: GitHub documents that the cap exists but does not document
+which HTTP status it returns, and we cannot manufacture 50 real invitations to
+find out. The engine therefore recognises the cap by GitHub's own message
+across every status it could plausibly arrive with, rather than betting on one.
+
 ## Buyer-input safety
 
 The GitHub username is buyer-supplied text from a Stripe custom field. Before it
@@ -130,6 +184,7 @@ transparency; keeping it private is the default.
 | Buyer never accepts the invite | Renewed automatically at 6 days, up to 3 times. After that the run warns with the buyer's name and stops; email them or refund. See [Delivery model](#delivery-model) |
 | GitHub cron delayed | Delivery late by minutes to hours; confirmation message sets expectation |
 | Actions outage | Sales queue up; next run drains the backlog (poll + idempotency) |
+| More than 50 sales to one repo in 24h | GitHub's [invitation cap](#githubs-invitation-cap-50-per-repo-per-day). Buyers past the 50th are queued and delivered automatically as the window frees, and the run warns with the number waiting. Move the repo to an organization to remove the ceiling |
 | Stripe key leaked | Restricted key limits blast radius to reading checkout sessions; rotate in dashboard |
 | Refund issued | `renew-invites.js --revoke you/product:username` removes access and records it, so renewal can never re-invite them. Removing them by hand on GitHub records nothing |
 | Subscription ends | Nothing, unless you turn on [subscription enforcement](subscriptions.md); then the customer is removed after a grace period |
