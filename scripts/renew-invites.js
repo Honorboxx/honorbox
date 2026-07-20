@@ -24,21 +24,25 @@
 //       No Stripe key. Renewal never looks at money, so it never holds the key.
 //
 // Usage: node scripts/renew-invites.js --config store.config.json \
-//          --state state/invite-state.json
+//          --state state/bots-state.json
 //        node scripts/renew-invites.js --revoke owner/repo:username
 //        (add --dry-run to see what it would do without emailing anyone)
+//
+// --state is the SHARED entitlement file, not a private one. It is where the
+// subscription reconciler records the revocations this program must honour, so
+// both default to state/bots-state.json and a store running both has exactly
+// one answer to "may this person be re-invited". See loadState.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const { validUsername, REQUEST_TIMEOUT_MS } = require('./lib/fulfill-core.js');
+const { inviteKey, recordRevocation } = require('./lib/access-record.js');
 const {
   REVOKED_FIELD,
   REINVITES_FIELD,
   MAX_REINVITES,
   REINVITE_AFTER_HOURS,
-  inviteKey,
-  recordRevocation,
   planInviteActions,
   recordReinvite,
   forgetReinvites,
@@ -65,18 +69,37 @@ function writeJson(file, obj) {
   fs.writeFileSync(file, JSON.stringify(obj, null, 2) + '\n');
 }
 
-// Fresh install shape. Named through the lib's constants so the loader and the
-// planner cannot drift apart on a rename.
-function emptyState() {
-  return { [REVOKED_FIELD]: [], [REINVITES_FIELD]: [] };
-}
-
+// The state file is SHARED, and that is the point.
+//
+// `revoked_access` is the one answer to "has this person's access been
+// deliberately taken away". The subscription reconciler writes it (and on Pro so
+// does the refund guard); this program reads it and refuses to renew anybody on
+// it. Keeping a second copy of that list here would mean a lapse enforced by one
+// lane is invisible to the other, and the gap between them is a revoked customer
+// being cheerfully re-invited. So this reads and writes the same
+// state/bots-state.json the reconciler already defaults to.
+//
+// A fresh read, not a cached one. Anything else in that file belongs to another
+// program and is left exactly as found.
 function loadState(file) {
-  const state = readJson(file, emptyState());
+  const raw = readJson(file, {});
+  const state = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   for (const k of [REVOKED_FIELD, REINVITES_FIELD]) {
     if (!Array.isArray(state[k])) state[k] = [];
   }
   return state;
+}
+
+// Write back only the fields this program owns, into a freshly read copy.
+//
+// The sweep never writes the denylist, it only reads it, so the single field
+// below is the whole of what renewal owns. Writing the in-memory object back
+// wholesale would drop a revocation the reconciler recorded while this sweep was
+// running, which is the same class of bug from the other direction.
+function persist(file, state) {
+  const fresh = readJson(file, {}) || {};
+  fresh[REINVITES_FIELD] = state[REINVITES_FIELD];
+  writeJson(file, fresh);
 }
 
 async function ghRequest(method, pathname, token, body) {
@@ -209,13 +232,20 @@ async function renewInvite(state, r, token, flush) {
 // buyer who still has access and will never be auto-renewed. Recording last
 // would leave the opposite, access removed with no record, and the next poll
 // cheerfully re-inviting them.
-async function revokeAccess(state, repo, login, token, { dryRun = false } = {}) {
+async function revokeAccess(statePath, repo, login, token, { dryRun = false } = {}) {
+  const state = loadState(statePath);
   state[REVOKED_FIELD] = recordRevocation(state[REVOKED_FIELD], repo, login);
   state[REINVITES_FIELD] = forgetReinvites(state[REINVITES_FIELD], inviteKey(repo, login));
   if (dryRun) {
     console.log(`DRY RUN: would revoke ${login} from ${repo} and delete their pending invitations`);
     return;
   }
+  // This is the one place renewal writes the shared denylist, so it is also the
+  // one place that merges both fields back rather than just its own.
+  const fresh = readJson(statePath, {}) || {};
+  fresh[REVOKED_FIELD] = state[REVOKED_FIELD];
+  fresh[REINVITES_FIELD] = state[REINVITES_FIELD];
+  writeJson(statePath, fresh);
   await gh('DELETE', `/repos/${repo}/collaborators/${encodeURIComponent(login)}`, token);
   const invitations = (await gh('GET', `/repos/${repo}/invitations`, token)) || [];
   for (const inv of Array.isArray(invitations) ? invitations : []) {
@@ -243,14 +273,21 @@ function parseRevokeTarget(raw) {
   return { repo, login };
 }
 
-async function sweepRepo(state, repo, token, { now = Date.now(), dryRun = false, flush = null } = {}) {
+async function sweepRepo(statePath, repo, token, { now = Date.now(), dryRun = false } = {}) {
+  // Re-read per repo. A revocation recorded by the subscription reconciler in an
+  // earlier step of this same job has to be visible here, and a sweep that
+  // cached the denylist once at startup would not see it.
+  const state = loadState(statePath);
+  // An email that went out is a fact about the world. Get it on disk the moment
+  // it happens, so a crash on the next repo cannot make us send it twice.
+  const flush = () => persist(statePath, state);
   const invitations = (await gh('GET', `/repos/${repo}/invitations`, token)) || [];
   // If this ever stops being a list, the planner would quietly see "no
   // invitations" and report a clean sweep forever. Say so instead: a guard that
   // cannot read its input must not claim everything is fine.
   if (!Array.isArray(invitations)) {
     console.error(`WARN: renewal read a non-list of invitations for ${repo} (${typeof invitations}); nothing was renewed on this repo`);
-    return;
+    return 0;
   }
 
   const plan = planInviteActions(repo, invitations, state, { now });
@@ -287,12 +324,16 @@ async function sweepRepo(state, repo, token, { now = Date.now(), dryRun = false,
     }
   }
 
+  // Everything this repo changed, on disk before we move to the next one.
+  if (!dryRun) flush();
+
   // Inventory, not an alert: a quiet count so the log shows what is in flight
   // without waking anyone for a buyer who is simply still asleep.
   if (invitations.length) {
     const held = plan.blocked.length ? `, ${plan.blocked.length} held back (access revoked)` : '';
     console.log(`invites ${repo}: ${invitations.length} pending, renewal at ${REINVITE_AFTER_HOURS}h${held}`);
   }
+  return plan.reinvite.length;
 }
 
 async function main() {
@@ -303,7 +344,10 @@ async function main() {
   }
 
   const configPath = arg('config', 'store.config.json');
-  const statePath = arg('state', 'state/invite-state.json');
+  // Shared with the subscription reconciler on purpose: see loadState. The
+  // default matches reconcile-subs.js's --bots-state so a store running both
+  // has one denylist rather than two that disagree.
+  const statePath = arg('state', 'state/bots-state.json');
   const dryRun = flag('dry-run');
 
   const config = readJson(configPath, null);
@@ -313,32 +357,24 @@ async function main() {
   }
   const repos = [...new Set(config.fulfillment.map((g) => g && g.repo).filter(Boolean))];
 
-  const state = loadState(statePath);
-  // An email that went out is a fact about the world. Get it onto disk the
-  // moment it happens, so a crash on the next repo cannot make us send it again.
-  const flush = () => writeJson(statePath, state);
-
-  try {
-    const revoke = arg('revoke', null);
-    if (revoke) {
-      const { repo, login } = parseRevokeTarget(revoke);
-      if (!repos.includes(repo)) {
-        console.error(`WARN: ${repo} is not a product repo in ${configPath}; revoking anyway, but check the spelling`);
-      }
-      await revokeAccess(state, repo, login, token, { dryRun });
-      return;
+  const revoke = arg('revoke', null);
+  if (revoke) {
+    const { repo, login } = parseRevokeTarget(revoke);
+    if (!repos.includes(repo)) {
+      console.error(`WARN: ${repo} is not a product repo in ${configPath}; revoking anyway, but check the spelling`);
     }
-
-    for (const repo of repos) {
-      await sweepRepo(state, repo, token, { dryRun, flush });
-    }
-    console.log(`renewal done. repos=${repos.length} tracked=${state[REINVITES_FIELD].length} revoked=${state[REVOKED_FIELD].length}${dryRun ? ' (dry run)' : ''}`);
-  } finally {
-    // Always, including on the way out of a failure: state that records emails
-    // already sent and access already revoked must not be lost because a later
-    // repo threw.
-    writeJson(statePath, state);
+    await revokeAccess(statePath, repo, login, token, { dryRun });
+    return;
   }
+
+  // Each repo reads and writes the state itself, so a repo that throws cannot
+  // discard the emails already recorded against the repos before it.
+  let renewed = 0;
+  for (const repo of repos) {
+    renewed += await sweepRepo(statePath, repo, token, { dryRun });
+  }
+  const tracked = loadState(statePath)[REINVITES_FIELD].length;
+  console.log(`renewal done. repos=${repos.length} renewed=${renewed} tracked=${tracked}${dryRun ? ' (dry run)' : ''}`);
 }
 
 module.exports = { readJson, loadState, gh, ghRequest, renewInvite, revokeAccess, parseRevokeTarget, sweepRepo, main };

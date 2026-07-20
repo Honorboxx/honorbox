@@ -75,10 +75,15 @@ Those are different questions. The engine writes its ledger row the moment it
 **sends** an invite, and nothing ever goes back to check that it was accepted. A
 buyer who never clicks accept leaves every system you own reporting success:
 Stripe says paid, your ledger says delivered, the run is green. They have
-nothing. Seven days later the invitation expires, and the loss is permanent and
-still invisible. The same blind spot hides an order that matched no grant, an
-invite that never landed, a typo'd username, and a refunded buyer who kept
-access.
+nothing.
+
+The engine will not let that invitation lapse: it re-issues before GitHub's
+seven-day expiry, three times, then warns you by name. That buys the buyer about
+three and a half weeks and it is free, because a sale that never lands was never
+delivered. What it cannot tell you is which *paid order* is still sitting
+unaccepted right now, before the warning, or how much money that is. The same
+blind spot hides an order that matched no grant, an invite that never landed, a
+typo'd username, and a refunded buyer who kept access.
 
 Reconcile starts from the money, walks every paid Stripe session, and asks
 GitHub whether that specific buyer holds access to that specific repo: one

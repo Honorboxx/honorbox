@@ -5,7 +5,8 @@
 #
 # Setup (see docs/setup.md for the full walkthrough):
 #   1. Create a private ops repo and copy this file to .github/workflows/fulfill.yml
-#   2. Vendor scripts/fulfill.js + scripts/lib/ and your store.config.json into it
+#   2. Vendor scripts/fulfill.js, scripts/renew-invites.js + scripts/lib/ and
+#      your store.config.json into it
 #   3. Add secrets: STRIPE_SECRET_KEY (a restricted key is strongly recommended:
 #      only "Checkout Sessions: Read"), GH_FULFILL_TOKEN (a fine-grained PAT with
 #      admin on your private product repo(s) for collaborator invites)
@@ -58,6 +59,32 @@ jobs:
             --config store.config.json \
             --state state/fulfill-state.json \
             --ledger ledger/ledger.json
+      # GitHub expires an unaccepted invitation after seven days, and a buyer
+      # who never opened the email looks exactly like a delivered sale until it
+      # does. This re-issues before the clock runs out. It rides this job on
+      # purpose: a private-repo job is billed rounded UP to a whole minute, so a
+      # step inside a run you are already paying for is free, while a second
+      # cron would cost a minute every time it fired. See docs/setup.md § 6.
+      #
+      # No Stripe key: renewal never looks at money.
+      #
+      # --state is the SHARED entitlement file. It is where a revocation gets
+      # recorded, by `--revoke` when you refund somebody and by the subscription
+      # reconciler when it enforces a lapse, and renewal refuses to re-invite
+      # anyone on that list. One file, one answer.
+      #
+      # It runs only when the poll above succeeded, and that is deliberate. The
+      # commit step below is what makes the renewal state durable, so a step
+      # that ran after a failed poll would send emails whose record is then
+      # thrown away. Renewal has a 24-hour margin and ~48 scheduled attempts
+      # inside it; skipping the odd one costs nothing.
+      - name: Renew invitations before GitHub expires them
+        env:
+          GH_FULFILL_TOKEN: ${{ secrets.GH_FULFILL_TOKEN }}
+        run: |
+          node scripts/renew-invites.js \
+            --config store.config.json \
+            --state state/bots-state.json
       - name: Commit state and ledger
         run: |
           git config user.name "honorbox-bot"

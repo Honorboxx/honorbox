@@ -18,9 +18,16 @@
 // belongs here in the free engine, because an invitation that lapses unaccepted
 // means the sale was never delivered, and delivering the sale is the free
 // engine's entire promise. Do not run both lanes against the same product
-// repos: they keep separate state and would each renew, doubling the emails a
-// buyer gets.
+// repos: they would each renew, doubling the emails a buyer gets.
+//
+// The entitlement primitives come from access-record.js and are NOT reimplemented
+// here. That module's header explains why in full; the short version is that
+// "has this person's access been deliberately taken away" must have exactly one
+// answer, and a second copy of that record is a revocation one lane can write
+// and another cannot see.
 'use strict';
+
+const { inviteKey, findRecord, capRecords } = require('./access-record.js');
 
 // GitHub expires a repository invitation SEVEN DAYS after it is created.
 // Cited rather than remembered, because the REST reference does not state it
@@ -61,14 +68,16 @@ const MAX_REINVITES = 3;
 // allowance in an afternoon. Nothing renews twice inside a day.
 const REINVITE_COOLDOWN_HOURS = 24;
 
-// The state fields this module reads, named once, here.
+// The two state fields this module reads, named once, here.
 //
-// Both the loader in renew-invites.js and the planner below go through these
-// constants, so a rename moves both sides together. This is not fussiness. The
-// ops lane shipped a planner that destructured `revokedAccess` while the state
-// on disk said `revoked_access`; the denylist read as permanently empty and a
-// refunded buyer was re-invited. Every unit test passed, because the tests
-// handed the planner the name the planner already believed in.
+// `revoked_access` is not this program's own field. It is the shared denylist on
+// the ops state file, written by the subscription reconciler and, on Pro, by the
+// refund guard. Everything that reads or writes it goes through this constant
+// and through access-record.js, so a rename moves every side together. This is
+// not fussiness. The ops lane shipped a planner that destructured `revokedAccess`
+// while the state on disk said `revoked_access`; the denylist read as permanently
+// empty and a refunded buyer was re-invited. Every unit test passed, because each
+// one handed the planner the name the planner already believed in.
 const REVOKED_FIELD = 'revoked_access';
 const REINVITES_FIELD = 'reinvites';
 
@@ -76,44 +85,6 @@ function ageHours(inv, now) {
   const created = Date.parse(inv && inv.created_at);
   if (!Number.isFinite(created)) return null; // unparseable: the caller decides
   return (now - created) / 3_600_000;
-}
-
-// --- entitlement records ----------------------------------------------------
-//
-// One key per (repo, buyer). GitHub treats logins and repository names as
-// case-insensitive, so the key is lowercased: "Buyer" and "buyer" are the same
-// person and must not get two allowances or slip past one revocation.
-
-function inviteKey(repo, login) {
-  return `${String(repo == null ? '' : repo).toLowerCase()}#${String(login == null ? '' : login).toLowerCase()}`;
-}
-
-function findRecord(rows, key) {
-  return (Array.isArray(rows) ? rows : []).find((r) => r && r.key === key) || null;
-}
-
-// Newest-first cap, applied to both record lists. These grow one entry per
-// buyer per repo and are committed to git on every cycle, so they get the same
-// ceiling treatment as processed/failures in the fulfillment state.
-function capRecords(rows, cap = 500) {
-  const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
-  if (list.length <= cap) return list;
-  return [...list].sort((a, b) => (b.ts || b.last || 0) - (a.ts || a.last || 0)).slice(0, cap);
-}
-
-// Access was deliberately taken away from this buyer on this repo. The renewal
-// planner treats one of these as absolute.
-//
-// The record carries a timestamp rather than being a bare membership set for
-// two reasons. It lets the planner tell OUR OWN post-revocation re-invite (a
-// race it must undo) from an invitation created later by a legitimate
-// re-purchase (which it must not touch). And it is the shape a lapse/restore
-// lane needs: adding a `state` field later resolves through the same
-// latest-record-per-key rule, with no change to how collisions are settled.
-function recordRevocation(rows, repo, login, ts = Date.now()) {
-  const key = inviteKey(repo, login);
-  const kept = (Array.isArray(rows) ? rows : []).filter((r) => r && r.key !== key);
-  return capRecords([...kept, { key, ts }]);
 }
 
 // --- renewal planning -------------------------------------------------------
@@ -279,9 +250,6 @@ module.exports = {
   REVOKED_FIELD,
   REINVITES_FIELD,
   ageHours,
-  inviteKey,
-  capRecords,
-  recordRevocation,
   planInviteActions,
   recordReinvite,
   forgetReinvites,

@@ -19,7 +19,25 @@ const os = require('node:os');
 const path = require('node:path');
 
 const driver = require('../renew-invites.js');
-const { REINVITE_AFTER_HOURS, MAX_REINVITES, inviteKey } = require('../lib/invite-core.js');
+const reconciler = require('../reconcile-subs.js');
+const { REINVITE_AFTER_HOURS, MAX_REINVITES } = require('../lib/invite-core.js');
+const { inviteKey } = require('../lib/access-record.js');
+
+// Renewal defaults --state to state/bots-state.json, which in a real ops repo is
+// LIVE entitlement data. A harness bug that forgets to redirect it would write
+// test revocations into it. Assert the repository's own state/ is untouched.
+const REPO_STATE = path.join(__dirname, '..', '..', 'state');
+function repoStateFingerprint() {
+  if (!fs.existsSync(REPO_STATE)) return 'absent';
+  return fs.readdirSync(REPO_STATE).sort().map((f) => {
+    const p = path.join(REPO_STATE, f);
+    return `${f}:${fs.statSync(p).isFile() ? fs.readFileSync(p, 'utf8').length : 'dir'}`;
+  }).join('|');
+}
+const STATE_BEFORE = repoStateFingerprint();
+test.after(() => {
+  assert.equal(repoStateFingerprint(), STATE_BEFORE, 'a test wrote into the repository state/ directory');
+});
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-renew-'));
 const REPO = 'o/r';
@@ -82,7 +100,7 @@ async function runMain(dir, extraArgv = [], { fetchStub = null, config = null } 
   const savedTok = process.env.GH_FULFILL_TOKEN;
   process.argv = [savedArgv[0], 'renew-invites.js',
     '--config', cfg,
-    '--state', path.join(dir, 'state', 'invite-state.json'),
+    '--state', path.join(dir, 'state', 'bots-state.json'),
     ...extraArgv];
   process.env.GH_FULFILL_TOKEN = 'ghp_test_stub';
   try {
@@ -95,7 +113,7 @@ async function runMain(dir, extraArgv = [], { fetchStub = null, config = null } 
   }
 }
 
-const statePath = (dir) => path.join(dir, 'state', 'invite-state.json');
+const statePath = (dir) => path.join(dir, 'state', 'bots-state.json');
 const readState = (dir) => JSON.parse(fs.readFileSync(statePath(dir), 'utf8'));
 
 function captureLog() {
@@ -155,6 +173,124 @@ test('INTEGRATION: the revocation one command writes is the one the next sweep r
   // The revocation is still on file afterwards. A one-shot denylist would let
   // the next poll through.
   assert.equal(readState(dir).revoked_access.length, 1, 'the revocation must outlive the sweep that honoured it');
+});
+
+test('INTEGRATION: a subscription lapse the reconciler enforced is honoured by renewal', async () => {
+  // The cross-lane version of the same bug, and the reason renewal does not keep
+  // a denylist of its own. reconcile-subs.js revokes a lapsed customer and
+  // records it in state/bots-state.json; renewal reads that file. If renewal
+  // kept its own list, the lapsed customer's unaccepted invitation would be
+  // cheerfully re-issued by the other lane a few days later.
+  //
+  // Both halves are the real programs, wired only through the file on disk.
+  const dir = tmp();
+  const SUBREPO = 'acme/widget';
+  const lapsedLongAgo = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  const cfg = path.join(dir, 'store.config.json');
+  const config = {
+    fulfillment: [{ price: 'price_sub', product: 'Widget', repo: SUBREPO }],
+    subscriptions: { enforce: true, grace_days: 7 },
+  };
+  fs.writeFileSync(cfg, JSON.stringify(config));
+
+  // Ten customers, one cancelled: routine churn that stays under the breaker.
+  const grants = {};
+  const users = {};
+  const subs = [];
+  for (let i = 0; i < 10; i++) {
+    grants[`${SUBREPO}|u${i}`] = { sub: `sub_${i}`, repo: SUBREPO, user: `u${i}`, lapsed_since: i === 0 ? lapsedLongAgo : null };
+    users[`sub_${i}`] = `u${i}`;
+    subs.push({ id: `sub_${i}`, status: i === 0 ? 'canceled' : 'active', items: { data: [{ price: { id: 'price_sub' }, quantity: 1 }] } });
+  }
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'state', 'subscriptions.json'), JSON.stringify({
+    version: 1, cursor: 1, users, grants, breaker: { tripped_at: null, would_revoke: [] },
+  }));
+
+  // 1. The reconciler enforces the lapse for real.
+  const savedArgv = process.argv;
+  const savedEnv = { k: process.env.STRIPE_SECRET_KEY, t: process.env.GH_FULFILL_TOKEN };
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('/v1/subscriptions')) return res(200, { data: subs, has_more: false });
+    if (u.includes('/v1/checkout/sessions')) return res(200, { data: [], has_more: false });
+    if (u.includes('/invitations')) return res(200, []);
+    return res(204);
+  };
+  process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+  process.env.GH_FULFILL_TOKEN = 'ghp_x';
+  process.argv = ['node', 'reconcile-subs.js', '--config', cfg,
+    '--state', path.join(dir, 'state', 'subscriptions.json'),
+    '--bots-state', statePath(dir), '--force'];
+  const quiet = captureLog();
+  const quietErr = captureErr();
+  try {
+    await reconciler.main(async () => {});
+  } finally {
+    quietErr.restore(); quiet.restore();
+    globalThis.fetch = origFetch;
+    process.argv = savedArgv;
+    process.env.STRIPE_SECRET_KEY = savedEnv.k;
+    process.env.GH_FULFILL_TOKEN = savedEnv.t;
+  }
+  const afterReconcile = readState(dir);
+  assert.equal(afterReconcile.revoked_access.length, 1, `the reconciler recorded no revocation: ${JSON.stringify(afterReconcile)}`);
+  assert.equal(afterReconcile.revoked_access[0].key, inviteKey(SUBREPO, 'u0'));
+
+  // 2. Renewal runs against that file and must not undo it. u0's invitation is
+  //    stale enough that it would otherwise be a textbook renewal.
+  const gh = fakeGitHub([
+    { id: 1, invitee: { login: 'u0' }, created_at: stale() },
+    { id: 2, invitee: { login: 'u1' }, created_at: stale() },
+  ]);
+  const out = captureLog();
+  try {
+    await runMain(dir, [], { fetchStub: gh, config });
+  } finally { out.restore(); }
+
+  assert.deepEqual(gh.putsTo(SUBREPO), ['u1'], 'a customer the reconciler cut off must not be re-invited by renewal');
+  assert.equal(readState(dir).revoked_access.length, 1, 'and the revocation must survive the renewal pass');
+});
+
+test('a revocation written while the sweep is running survives it', async () => {
+  // bots-state.json belongs to several programs, and renewal is the slow one:
+  // it sits in a loop making network calls. If it wrote its whole in-memory copy
+  // back at the end, every revocation recorded while it ran would be erased by a
+  // program that only ever needed to add one field. That is the denylist bug
+  // again, arriving by last-write-wins instead of by a rename.
+  //
+  // So: another program revokes somebody midway through the sweep, at the moment
+  // renewal is talking to GitHub.
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(statePath(dir), JSON.stringify({
+    acked_issues: [7], refund_cursor: 1234, revoked: ['re_1'], revoked_access: [], reinvites: [],
+  }));
+
+  const gh = fakeGitHub([{ id: 1, invitee: { login: 'buyer' }, created_at: stale() }]);
+  const origFetch = globalThis.fetch;
+  let interfered = false;
+  globalThis.fetch = async (url, init = {}) => {
+    if (!interfered && (init.method || 'GET') === 'PUT') {
+      interfered = true;
+      const now = JSON.parse(fs.readFileSync(statePath(dir), 'utf8'));
+      now.revoked_access = [{ key: inviteKey('o/other', 'refunded-mid-sweep'), ts: Date.now() }];
+      now.refund_cursor = 9999;
+      fs.writeFileSync(statePath(dir), JSON.stringify(now));
+    }
+    return origFetch(url, init);
+  };
+  const out = captureLog();
+  try { await runMain(dir, [], { fetchStub: gh }); } finally { out.restore(); globalThis.fetch = origFetch; }
+
+  assert.ok(interfered, 'the test never actually interfered, so it proves nothing');
+  const after = readState(dir);
+  assert.equal(after.revoked_access.length, 1, 'a revocation recorded during the sweep was erased by it');
+  assert.equal(after.revoked_access[0].key, inviteKey('o/other', 'refunded-mid-sweep'));
+  assert.equal(after.refund_cursor, 9999, 'another program\'s progress was rolled back');
+  assert.deepEqual(after.acked_issues, [7], 'and untouched fields are still untouched');
+  assert.equal(after.reinvites.length, 1, 'while renewal\'s own field is still written');
 });
 
 test('INTEGRATION: revoking one product does not stop renewal on another the buyer still owns', async () => {
@@ -257,7 +393,7 @@ test('a corrupt state file stops the run instead of reading as an empty denylist
   fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
   fs.writeFileSync(statePath(dir), '{"revoked_access": [{"key": "o/r#refunded", tru');
   const gh = fakeGitHub([{ id: 1, invitee: { login: 'refunded' }, created_at: stale() }]);
-  await assert.rejects(() => runMain(dir, [], { fetchStub: gh }), /invite-state\.json/);
+  await assert.rejects(() => runMain(dir, [], { fetchStub: gh }), /bots-state\.json/);
   assert.deepEqual(gh.putsTo(), [], 'nothing may be renewed on a state file we could not read');
 });
 
@@ -359,7 +495,9 @@ test('--dry-run reports what it would do and touches nothing', async () => {
   try { await runMain(dir, ['--dry-run'], { fetchStub: gh }); } finally { out.restore(); }
   assert.ok(out.lines.some((l) => /DRY RUN: would renew buyer on o\/r \(attempt 1\/3\)/.test(l)), out.lines.join('\n'));
   assert.ok(!gh.calls.some((c) => c.method !== 'GET'), `a dry run must not mutate: ${JSON.stringify(gh.calls)}`);
-  assert.deepEqual(readState(dir).reinvites, [], 'and must not spend the allowance');
+  // Not even the state file. The file is shared with the subscription
+  // reconciler, so "touches nothing" has to include not writing it at all.
+  assert.ok(!fs.existsSync(statePath(dir)), 'a dry run must not write the shared state file');
 });
 
 test('renewal needs the GitHub token and nothing else', async () => {

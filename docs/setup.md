@@ -105,8 +105,9 @@ Pages serves either way.
 Keep secrets and state **out of your public repo**:
 
 1. Create a **private** repo, e.g. `you/yourstore-ops`.
-2. Copy into it: `scripts/fulfill.js`, `scripts/lib/`, your `store.config.json`,
-   and `setup/workflows/fulfill.yml.example` → `.github/workflows/fulfill.yml`.
+2. Copy into it: `scripts/fulfill.js`, `scripts/renew-invites.js`, `scripts/lib/`,
+   your `store.config.json`, and `setup/workflows/fulfill.yml.example` →
+   `.github/workflows/fulfill.yml`.
 3. Add **Actions secrets**:
    - `STRIPE_SECRET_KEY`: create a **restricted key** in Stripe (Developers →
      API keys → Create restricted key) with only **Checkout Sessions: Read**.
@@ -154,6 +155,29 @@ So the monthly cost of polling is simply its run count, and the shipped
 The 512 spare minutes are real headroom, not rounding: they cover
 sale-triggered runs (`fulfill-on-sale.yml` costs 1 minute per sale, so 512
 sales/month before the free tier binds) and any manual re-runs.
+
+**Invitation renewal costs nothing, and the rounding rule is why.** GitHub
+expires an unaccepted invitation after seven days, so `renew-invites.js`
+re-issues one before that happens (§ [how-it-works.md](how-it-works.md#delivery-model)).
+It runs as a *step inside the fulfillment job*, not on a schedule of its own,
+and the whole-minute rounding above is exactly what makes that free:
+
+| Where renewal runs | Added runs/month | Added billable minutes |
+|---|---|---|
+| **A step in `fulfill.yml` (shipped default)** | 0 | **0** |
+| Its own hourly cron | 744 | 744 (over the 512 spare) |
+| Its own `*/30` cron | 1,488 | 1,488 (~2x the whole tier with the poll) |
+
+A fulfillment run takes ~15 seconds and is billed as a full minute either way,
+so the renewal step spends the seconds already paid for. It adds one
+`GET /repos/{owner}/{repo}/invitations` per product repo per poll, plus a
+`PUT` only on the rare poll that actually renews somebody: single-digit
+seconds, nowhere near the 60 that would push the job to a second minute. A
+separate cron would have bought nothing and cost more than the headroom.
+
+This also means renewal inherits the poll's cadence, which is the margin it
+needs. Renewal fires at 6 days against a 7-day expiry, so it has 24 hours and
+~48 scheduled attempts to land even one run.
 
 If you turn on the optional heartbeat (§ [instant-delivery.md](instant-delivery.md)),
 loosen this cron to hourly: heartbeat nudges cost an ops-repo minute each, and

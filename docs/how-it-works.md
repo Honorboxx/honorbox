@@ -38,17 +38,43 @@ Stripe says paid, the ledger has a row, the run is green. If they never open the
 email, that stays true right up to the moment the invitation lapses, and then
 they have nothing permanently, with nothing anywhere saying so.
 
-The engine does not watch for this: `fulfill.js`'s job ends when GitHub accepts
-the invite. Two things make it visible and one makes it go away:
+**The engine fixes this for you.** Re-issuing an invitation restarts the
+seven-day clock, so `scripts/renew-invites.js` re-issues one at six days, a full
+day before it would lapse. It runs as a step in the fulfillment workflow, on the
+same poll and at no extra cost in Actions minutes
+([setup.md § 6](setup.md#6-what-this-costs)). The buyer gets a fresh invitation
+email and the door stays open.
+
+It is not an infinite mail loop. Three renewals is the limit, so a buyer gets
+four contacts in total across about 24 days, and then the run says so on
+stderr:
+
+```
+WARN: giving up on re-inviting octocat to you/product after 3 renewals
+(created 2026-06-26T09:14:02Z): they paid, have never accepted, and this
+invitation will now be allowed to expire; email them or refund them
+```
+
+That line is the point. The failure this replaces was silent; somebody who
+ignores four emails over three weeks needs a human, and now you are told which
+buyer and when instead of finding out never.
+
+Two things are still worth doing yourself:
 
 - Put "accept the invite" in your post-payment confirmation and receipt. Most
-  buyers who miss it simply did not realise there was a second step.
-- Watch `GET /repos/{owner}/{repo}/invitations` for anything old. Pro's
-  [ops bots](https://github.com/Honorboxx/honorbox-pro) sweep it for you, and
-  its reconciler pairs it back to the money.
-- Re-issuing an invitation restarts the seven-day clock, so an invitation can be
-  held open indefinitely. Doing it by hand from the repo's Settings page takes
-  ten seconds; the Pro sweep does it automatically before each one expires.
+  buyers who miss it simply did not realise there was a second step, and a
+  renewal three weeks later is a poor substitute for them reading the first one.
+- If you refund somebody, run `node scripts/renew-invites.js --revoke
+  you/product:theirusername`. That removes their access, deletes any pending
+  invitation, and records the revocation permanently so renewal can never hand
+  it back. Removing them by hand on GitHub does *not* record anything, and a
+  poll already in flight can re-invite them.
+
+Pro's [ops bots](https://github.com/Honorboxx/honorbox-pro) add the reporting
+around this: continuous triage of every pending invitation rather than a warning
+only when renewal gives up, revocation driven automatically off Stripe refunds
+instead of a command you remember to run, and a reconciler that pairs
+invitations back to the money.
 
 Note what "durable" costs you if you sell a subscription: removing a collaborator
 stops future `git pull`, but the clone they already have stays on their machine.
@@ -98,10 +124,10 @@ transparency; keeping it private is the default.
 | Failure | What happens |
 |---|---|
 | Buyer typos username | Order flagged `needs_attention`; fix by hand from Stripe dashboard (buyer email is there); refund if unreachable |
-| Buyer never accepts the invite | Nothing looks wrong anywhere: paid, ledgered, green run. The invitation expires after 7 days and they are left with nothing. Re-invite them (it restarts the clock), and see [Delivery model](#delivery-model) |
+| Buyer never accepts the invite | Renewed automatically at 6 days, up to 3 times. After that the run warns with the buyer's name and stops; email them or refund. See [Delivery model](#delivery-model) |
 | GitHub cron delayed | Delivery late by minutes to hours; confirmation message sets expectation |
 | Actions outage | Sales queue up; next run drains the backlog (poll + idempotency) |
 | Stripe key leaked | Restricted key limits blast radius to reading checkout sessions; rotate in dashboard |
-| Refund issued | Revoke collaborator access by hand (or leave it; your call) |
+| Refund issued | `renew-invites.js --revoke you/product:username` removes access and records it, so renewal can never re-invite them. Removing them by hand on GitHub records nothing |
 | Subscription ends | Nothing, unless you turn on [subscription enforcement](subscriptions.md); then the customer is removed after a grace period |
 | Subscriber's card fails | Nothing. `past_due` is never treated as a cancellation while Stripe is still retrying |

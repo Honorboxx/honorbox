@@ -17,14 +17,15 @@ const {
   MAX_REINVITES,
   REINVITE_COOLDOWN_HOURS,
   REVOKED_FIELD,
-  inviteKey,
-  capRecords,
-  recordRevocation,
   planInviteActions,
   recordReinvite,
   forgetReinvites,
   reinviteAlertLines,
 } = require('../lib/invite-core.js');
+// The entitlement primitives are the engine's single copy, shared with the
+// subscription reconciler. Renewal is their first reader, so the last two tests
+// in this file are also their first direct coverage.
+const { inviteKey, capRecords, recordRevocation } = require('../lib/access-record.js');
 
 const REPO = 'o/r';
 const NOW = Date.parse('2026-07-20T12:00:00Z');
