@@ -1,11 +1,16 @@
 # HonorBox Pro: production evidence (public copy)
 
 Pro is delivered as a private repo, which fairly reads as "blind purchase."
-This document is the audit surface: what every Pro module prints and how to
-read it, the license module's complete API surface, and the playbook's full
+This document is what you can check before paying: what the conformance suite,
+doctor, reconcile, the ops bots, stats and the license module each print and how
+to read it, the license module's complete API surface, and the playbook's full
 table of contents. The `terminal` theme is published whole in this repo
 (`themes/terminal/`), so the code standard is checkable before you pay for the
-rest.
+rest. The failure catalogue the suite is built from is published in full, free,
+at [docs/failure-catalogue.md](failure-catalogue.md).
+
+Themes are shown as [previews](../assets/previews/) rather than transcripts,
+because a theme has no output to reproduce.
 
 Fair question from a skeptical reviewer: *"ops bots and stats are plausible
 but I couldn't execute them without live keys."* Correct. Every module below
@@ -14,6 +19,195 @@ its real output *format* on a synthetic store: placeholder handles, a
 placeholder product, masked ids, invented amounts. Our own order counts and
 revenue are not published anywhere, which is the same discipline
 [least-privilege.md](least-privilege.md) asks of you.
+
+## audit: the standing guard, on a store that looks fine
+
+This is the largest thing Pro ships and the one that earns its keep before your
+first sale, not after it. Doctor is a preflight you run once. Reconcile is an
+autopsy that needs orders to examine. The conformance suite asks the question in
+between, on every push: which of the known ways this architecture loses money
+quietly is my setup open to right now?
+
+It matters most on day one, for an unglamorous reason. When a new store makes no
+sales, "nobody came" and "my store is silently broken" look exactly the same from
+where the seller is standing. Both are a quiet dashboard and an empty ledger. Most
+of these checks fire with zero orders in the account, so they can tell those two
+apart while there is still time to fix it.
+
+Below is a run against a synthetic store: a plausible first setup with four
+ordinary mistakes in it, none of which any link checker, uptime monitor or `curl`
+would report. The store's own site builds and deploys perfectly.
+
+```
+HonorBox audit: the known ways this architecture loses money quietly
+
+scanned /tmp/widget-store (1 source files, 1 product pages)
+config  /tmp/widget-store/store.config.json
+
+[  OK  ] A paid checkout that matches no fulfillment grant
+         shipped defect: real bug, reproduced, no victim (2026-07-20)
+         no paid sessions were ever skipped for want of a grant
+
+[EXPOSED] The checkout URL pasted where Stripe reports an id
+         shipped defect: real bug, reproduced, no victim (2026-07-19)
+         fulfillment[0] ("Widget Pro") payment_link is a checkout URL, not an id
+         -> the matcher compares against session.payment_link, which Stripe reports
+         as a plink_ id. Copy the id from the Stripe dashboard (or GET
+         /v1/payment_links). As written, every sale of this product is silently
+         skipped.
+         fulfillment[0] ("Widget Pro") can never match a sale
+         -> set payment_link (plink_...) or price (price_...). Without one of them
+         this product is unsellable and fails silently
+
+[  OK  ] A forked store still selling through the original author's checkout
+         shipped defect: real bug, reproduced, no victim (2026-07-19 / 2026-07-20)
+         no exact-string URL gates
+
+[EXPOSED] A poll cadence that outruns the free tier, then stops delivering
+         incident: happened here (2026-07-19)
+         .github/workflows/poll.yml schedule "*/2 * * * *" is ~22320 runs/month ≈ 22320 billed minutes (jobs round up to 1 min)
+         -> that is 20320 minutes over the 2000-minute Free allowance on a private
+         repo, from this workflow alone. When it runs out mid-month delivery simply
+         stops and nothing tells you. Either poll locally (launchd/systemd) and
+         keep Actions as the safety net, or widen the cron.
+
+[EXPOSED] One hung request stalling every buyer behind it
+         reasoned guard: has NOT happened here (2026-07-20)
+         scripts/fulfill.js:4 fetch() with no signal
+         -> add signal: AbortSignal.timeout(MS). Undici will wait 300s per phase
+         for a socket that accepts and never answers. If this file shares a runner
+         with fulfillment (and on a single-job runner everything does), a stall
+         here is a delivery outage for every buyer queued behind it.
+
+[  OK  ] An unstaged file halting delivery
+         incident: happened here (2026-07-19)
+         no unguarded `git pull --rebase` on the ops path
+
+[  OK  ] Production running a copy of the engine you stopped reading
+         incident: happened here (2026-07-20)
+         no divergent copies of engine modules
+
+[EXPOSED] HTTP 204 logged as if it were a fresh invitation
+         incident: happened here (2026-07-19)
+         scripts/fulfill.js accepts 201 and 204 as one outcome
+         -> log them differently: 201 is "invited", 204 is "already had access".
+         Reporting both as an invite turns your own test purchase into a phantom
+         delivery and misleads you when a buyer reports a missing invite.
+
+[  OK  ] A buyer flagged for attention that nothing ever tells
+         reasoned guard: has NOT happened here
+         no ledger rows are flagged needs_attention
+
+[  OK  ] A force-push guard that fails open on the short spelling
+         shipped defect: real bug, reproduced, no victim (2026-07-20)
+         no force-push guard that misses the refspec form
+
+Live checks skipped (--static-only): payment-link coverage, forked-checkout
+detection, dead buy buttons, advertised-price drift, coupon exposure and
+invitation expiry all need read credentials. An entry above marked OK was
+judged on its static half only, and an entry with no live-checkable half
+is not listed at all.
+
+10 entries checked: 4 exposed · 0 warn · 0 unchecked · 6 guarded
+The 4 exposed hold 5 separate findings, each listed above with its fix.
+
+Each EXPOSED line above is a specific way this store loses a sale without
+telling you. They are listed with the fix; there is no score to improve.
+
+13 catalogue entries · 5 from incidents here, 4 from defects we shipped and caught, 4 guarded before they happened.
+Known gaps we have NOT closed (1). Read audit/CATALOGUE.md:
+  - A 200 that acknowledges dispatch, not delivery: A short secondary throttle is retried in-run (30s per wait, 60s per run, 3 attempts); anything longer, including a primary rate limit, is declined by design and falls to the scheduled poll, whose real recovery time is the next run that actually fires, measured here at up to 3h08m on a quiet private repo.
+```
+
+Four findings, each with the fix attached and no score to improve. The pasted
+checkout URL alone means every sale of that product is skipped in silence: the
+money arrives, the buyer waits, and nothing in the seller's own tooling says a
+word.
+
+**What this is, precisely.** It reads the sources and config you point it at, and
+with a read-only key it asks Stripe and GitHub about the objects behind them. It
+is static analysis plus configuration checking plus read-only API reads. It does
+not execute your code, it cannot see a mistake nobody has catalogued, and it says
+`UNKNOWN` rather than `OK` when it could not check something, with the reason
+printed next to it. There is no score, because a number invites you to feel 82%
+safe and there is no such thing here.
+
+Every check is proven able to fail: `audit/test/mutation.test.js` builds a correct
+store, asserts green, then breaks the exact thing each check guards, asserts that
+check goes red, and asserts it returns to green on revert. A check that cannot be
+made to fail is decoration.
+
+The same store with those four fixed:
+
+```
+HonorBox audit: the known ways this architecture loses money quietly
+
+scanned /tmp/widget-store (1 source files, 1 product pages)
+config  /tmp/widget-store/store.config.json
+
+[  OK  ] A paid checkout that matches no fulfillment grant
+         shipped defect: real bug, reproduced, no victim (2026-07-20)
+         no paid sessions were ever skipped for want of a grant
+
+[  OK  ] The checkout URL pasted where Stripe reports an id
+         shipped defect: real bug, reproduced, no victim (2026-07-19)
+         1 grant(s) can match a session
+
+[  OK  ] A forked store still selling through the original author's checkout
+         shipped defect: real bug, reproduced, no victim (2026-07-19 / 2026-07-20)
+         no exact-string URL gates
+
+[  OK  ] A poll cadence that outruns the free tier, then stops delivering
+         incident: happened here (2026-07-19)
+         .github/workflows/poll.yml schedule "17 * * * *" is ~744 runs/month ≈ 744 billed minutes (jobs round up to 1 min)
+
+[  OK  ] One hung request stalling every buyer behind it
+         reasoned guard: has NOT happened here (2026-07-20)
+         every fetch() on the money path carries a deadline
+
+[  OK  ] An unstaged file halting delivery
+         incident: happened here (2026-07-19)
+         no unguarded `git pull --rebase` on the ops path
+
+[  OK  ] Production running a copy of the engine you stopped reading
+         incident: happened here (2026-07-20)
+         no divergent copies of engine modules
+
+[  OK  ] HTTP 204 logged as if it were a fresh invitation
+         incident: happened here (2026-07-19)
+         invite code tells 201 (invited) apart from 204 (already had access)
+
+[  OK  ] A buyer flagged for attention that nothing ever tells
+         reasoned guard: has NOT happened here
+         no ledger rows are flagged needs_attention
+
+[  OK  ] A force-push guard that fails open on the short spelling
+         shipped defect: real bug, reproduced, no victim (2026-07-20)
+         no force-push guard that misses the refspec form
+
+Live checks skipped (--static-only): payment-link coverage, forked-checkout
+detection, dead buy buttons, advertised-price drift, coupon exposure and
+invitation expiry all need read credentials. An entry above marked OK was
+judged on its static half only, and an entry with no live-checkable half
+is not listed at all.
+
+10 entries checked: 0 exposed · 0 warn · 0 unchecked · 10 guarded
+
+13 catalogue entries · 5 from incidents here, 4 from defects we shipped and caught, 4 guarded before they happened.
+Known gaps we have NOT closed (1). Read audit/CATALOGUE.md:
+  - A 200 that acknowledges dispatch, not delivery: A short secondary throttle is retried in-run (30s per wait, 60s per run, 3 attempts); anything longer, including a primary rate limit, is declined by design and falls to the scheduled poll, whose real recovery time is the next run that actually fires, measured here at up to 3h08m on a quiet private repo.
+```
+
+It exits non-zero when anything is `EXPOSED`, which is what makes it a gate
+rather than a report: `audit/workflows/conformance.yml` drops into your
+storefront repo and fails the build on the day your config drifts into a failure
+you read about a year ago and forgot.
+
+The thirteen entries behind these checks, with the incident or defect that put
+each one there, are published in full and free at
+[docs/failure-catalogue.md](failure-catalogue.md). Reading the catalogue once and
+having a gate that will not let you regress are different things, and only one of
+them keeps working after you have stopped thinking about it.
 
 ## doctor: what a clean preflight looks like
 
