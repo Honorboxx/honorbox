@@ -136,10 +136,27 @@ design, switchable with one config line:
 
 ## Free core vs Pro
 
-The free core is a **complete store**: two themes, checkout, fulfillment,
-docs. [HonorBox Pro ($29, one-time)](https://honorboxx.github.io/honorbox/honorbox-pro.html)
-adds an offline ed25519 license-key module, five premium themes, multi-product
-catalog patterns, and a commerce playbook. Buying it funds the free core.
+The free core is a **complete store**: two themes, checkout, fulfillment, docs.
+
+When a new store makes no sales, *"nobody came"* and *"my store is silently
+broken"* look exactly the same from where you are standing. Both are a quiet
+dashboard and an empty ledger.
+[HonorBox Pro](https://honorboxx.github.io/honorbox/honorbox-pro.html) is mostly
+one answer to that: a **conformance suite** that checks your store against the
+known ways this architecture loses money quietly, on every push, and fails the
+build when it finds one. Most of its checks fire with zero orders in your
+account, which is when you need them. A deactivated payment link still answers
+its URL with HTTP 200 and the ordinary checkout page, so a link checker, an
+uptime monitor and a `curl` in CI all report your dead buy button as healthy;
+the suite asks the API instead. The
+[failure catalogue behind it](docs/failure-catalogue.md) is published here in
+full, free, and is worth reading even if you never buy anything.
+
+Pro also adds a store doctor, reconcile (which pairs every paid order back to
+whether that buyer has access *right now*), a refund guard and support bot,
+tracker-free stats, four more themes, an offline ed25519 license-key module, and
+a commerce playbook. One-time: **$29** for one developer, **$99** for a team of
+up to five, **$249** for a company. Buying it funds the free core.
 
 ## Stability promise
 
