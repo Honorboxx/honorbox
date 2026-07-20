@@ -2,9 +2,9 @@
 id: honorbox-pro
 order: 1
 name: HonorBox Pro
-meta_title: HonorBox Pro ($29): license keys, 4 themes, ops bots for your Stripe + GitHub store
-description: An offline license-key module, four premium themes, ops bots, and tracker-free sales stats for your Stripe + GitHub store. $29 one-time, lifetime updates.
-tagline: An offline license-key module, four premium themes, ops bots, tracker-free sales stats, and multi-product patterns for your HonorBox store.
+meta_title: HonorBox Pro ($29): never silently lose a sale
+description: Reconcile proves every paid order reached its buyer. Plus license keys, four themes, ops bots, and a store doctor for your Stripe + GitHub store. $29 one-time.
+tagline: Your store calls a sale delivered the moment it sends an invite. Pro is what goes back and checks, plus license keys, four themes, and bots for the unattended hours.
 price: $29
 price_note: one-time · lifetime access & updates · $29 for the first 25 copies, then $39
 payment_link: https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00
@@ -25,9 +25,14 @@ features:
 ## What Pro is
 
 The free HonorBox core is a complete store, and it is the one you are standing
-in. **Pro is for the moment your stand becomes a shop**: license keys for the
-software you sell, a catalog that stays coherent as it grows, and a storefront
-that doesn't look like anyone else's.
+in. It takes the money and sends the invite. What nothing in it does is go back
+and ask whether that invite was ever accepted.
+
+**Pro is the operational half.** Reconcile answers that question for every paid
+order, the store doctor catches the setup mistakes before they cost you a
+launch, and the refund bot revokes exactly what a refund should revoke. Themes,
+license keys, and the playbook are what Pro *contains*. Not quietly losing a
+sale you already made is what it is *for*.
 
 ## What's inside
 
