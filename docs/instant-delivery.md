@@ -31,7 +31,8 @@ meanwhile the scheduled fulfill.yml keeps polling; whichever runs first
 delivers; the other is a no-op (processed-set + ledger-ref guard)
 ```
 
-The relay is one file, ~140 lines, dependency-free, in
+The relay is one file, 140 lines on Cloudflare Workers and 185 on Node,
+dependency-free, in
 [`webhook-mode/`](../webhook-mode/): a Cloudflare Workers variant and a
 Val Town / plain-Node variant. Both free tiers take no card. What it does is
 deliberately tiny:

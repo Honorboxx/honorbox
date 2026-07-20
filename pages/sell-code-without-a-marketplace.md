@@ -84,8 +84,8 @@ carrying the buyer's username. Something has to read it and send the invite:
 3. **A scheduled poll from CI** *(the section where we sell you something:
    this is what [HonorBox](https://github.com/Honorboxx/honorbox) does)*. A
    GitHub Action runs every few minutes, lists recent paid sessions, and
-   invites each buyer. The engine is MIT, 354 dependency-free lines of
-   Node, readable in ten minutes. It also builds the storefront: a static
+   invites each buyer. The engine is MIT, 766 dependency-free lines of
+   Node you can read before trusting it. It also builds the storefront: a static
    site on GitHub Pages with your products, checkout buttons, and this same
    guide layout. Delivery lands in minutes rather than seconds; an opt-in
    webhook mode gets it under a minute if you want it.
@@ -116,8 +116,11 @@ carrying the buyer's username. Something has to read it and send the invite:
 - **You never want to think about tax.** A merchant of record removes that
   job completely; [the comparison guide](./gumroad-alternatives.html) covers
   which one fits.
-- **Subscriptions and license-key volume today.** Lemon Squeezy ships both
-  out of the box; on the direct route they're extra work.
+- **You need billing machinery beyond access.** Subscriptions themselves work
+  on the direct route: HonorBox can enforce them, so a lapsed customer loses
+  repo access, and its paid tier issues offline license keys. What is not there
+  is seats per subscription, metered billing, and a hosted customer portal.
+  Lemon Squeezy ships those assembled.
 
 ## Related
 

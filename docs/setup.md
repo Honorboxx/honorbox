@@ -233,9 +233,12 @@ sellers who want the wait gone.
 repository per 24 hours**, so one product repo on a personal account can take
 on at most 50 new buyers a day. Buyers past that are queued and delivered
 automatically as the window frees, and the run tells you how many are waiting,
-so nothing is lost. But if you are planning a launch that could clear 50 sales
-in a day, move the product repo into a **GitHub organization** first:
-organizations are free, and inviting org members to an org repo has no cap.
+so nothing is lost. If you are planning a launch that could clear 50 sales in a
+day, plan around that queue rather than against it: the ceiling cannot be
+removed. Moving the product repo into a GitHub organization does not help,
+because a buyer who just paid is not yet a member and creating that membership
+is itself capped, and org membership would let every buyer list every other
+buyer.
 Details in [how-it-works.md](how-it-works.md#githubs-invitation-cap-50-per-repo-per-day).
 
 **Stripe** takes its per-transaction percentage and no monthly fee. That is a

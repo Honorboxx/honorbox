@@ -34,6 +34,18 @@ function publicSources() {
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 
+// Runs of whitespace are flattened before any claim is compared, because prose
+// wraps. Comparing raw text would mean a claim stayed "true" only until someone
+// reflowed the paragraph, which is the same class of invisible breakage this
+// file exists to catch: a line-based reader cannot see a sentence that spans
+// two lines, and half the claims here do.
+const flat = (s) => s.replace(/\s+/g, ' ');
+
+// Negation, read against the words immediately before a matched verb or noun.
+// Several guards below need it, because in every one of them denying the claim
+// is the correction rather than the offence.
+const NEGATION_BEFORE = /\b(no|not|never|cannot|can't|doesn't|don't|without)\b[^.]{0,12}$/i;
+
 // How many we have sold is nobody's business but ours. The trap is that this
 // leaks sideways rather than as a number: "$29 for the first 25 copies" is a
 // price sentence that also announces we have sold fewer than 25. It shipped
@@ -111,6 +123,57 @@ const INTERNAL_REASONING = [
   /because\s+a\s+number\s+nobody\s+can\s+audit/i,           // the exact sentence that shipped
   /\bwe\s+(decided|chose)\s+(not\s+)?to\s+(show|put|add|display)\b/i,
 ];
+
+// Where the evidence doc came from, as opposed to what it shows.
+//
+// pro-evidence.md carried a stats line reading "14 orders, gross 406.00 USD,
+// 1 refund" under the heading "rendered from the live Stripe account", and a
+// reconcile block introduced as "Real output. One edit, and only this one...
+// Nothing else is changed: not a date, not a status" above rows for
+// @ada-example and @grace-example buying a product called Widget Pro.
+//
+// Those two cannot both be well. Either the figures were ours, and we published
+// our own revenue on the page a launch links to, or they were invented, and the
+// page insisting on its own literal accuracy was the least accurate thing on
+// it. It is the audit surface for a blind purchase, so a false provenance claim
+// there costs more than the same claim anywhere else.
+//
+// The rule that removes both failure modes at once is about provenance, not
+// figures: illustrative output is how these docs should teach, so the numbers
+// stay. What may never be claimed is that any of it came from OUR live store.
+// Claim it and the sentence is either a leak or a lie.
+// "real output FORMAT" is the honest claim and has to survive, so the noun
+// after the phrase is part of what is matched. Saying we reproduce the format
+// is a promise about shape; saying we reproduce the output is a promise about
+// provenance, and only the second one can be a leak or a lie.
+const LIVE_PROVENANCE = [
+  /\b(run|ran|rendered|generated|measured|captured|taken)\s+(against|from|on)\s+(the|our)\s+live\b/i,
+  /\bagainst\s+(the\s+)?live\s+\w*\s*(store|account)\b/i,
+  /\bfrom\s+the\s+live\s+stripe\s+account\b/i,
+  /\breal\s+output\b(?!\s*\**\s*format)/i,
+  /\bour\s+(live\s+)?(stripe\s+)?account'?s?\s+(own\s+)?(data|numbers|figures|revenue)\b/i,
+];
+
+test('public copy never presents our own live data as evidence', () => {
+  const hits = [];
+  for (const f of publicSources()) {
+    flat(read(f)).split(/(?<=[.!?])\s+/).forEach((sentence) => {
+      for (const re of LIVE_PROVENANCE) {
+        const m = sentence.match(re);
+        // Denying the claim is the correction, not the offence: "it is
+        // deliberately not our account's data" has to read as safe, the same
+        // way the invitation-cap guard lets a doc rebut GitHub's wording.
+        if (!m || NEGATION_BEFORE.test(sentence.slice(0, m.index))) continue;
+        hits.push(`${f}  ${sentence.trim().slice(0, 100)}`);
+      }
+    });
+  }
+  assert.deepEqual(hits, [],
+    'this claims the output shown came from our own live store or account. If ' +
+    'it is true it publishes our operating data; if it is not it is a false ' +
+    'claim on the page buyers audit us by. Show the format on synthetic data ' +
+    'and say so:\n  ' + hits.join('\n  '));
+});
 
 test('public copy does not explain our own commercial reasoning', () => {
   const hits = [];
@@ -300,10 +363,29 @@ test('every doc link points at a heading that exists', () => {
 // scoped check reads "that ceiling is lifted by moving to an organization, NOT
 // by delivering faster" as safe, because it finds a "not" that is negating
 // something else entirely. Negation binds to a verb, so that is where to look.
+// A seller can be told the ceiling is gone in two grammatically opposite ways,
+// and the first version of this test only understood one of them. It looked for
+// a LIFTING VERB ("moving to an org lifts the cap") and treated a negation in
+// front of that verb as the rebuttal, which is right for that shape. But the
+// claim can equally be made by naming the limit and denying it: "inviting org
+// members to an org repo has no cap". There the negation is the harmful part,
+// so a test that reads "no" as a rebuttal scores the worst sentence as the
+// safest one. It shipped in docs/setup.md for exactly that reason, in a file
+// whose other section already rebutted it correctly, while this suite stayed
+// green.
+//
+// So negation is read against two vocabularies with opposite polarity:
+//   lifting verbs  (lift, remove, uncapped) are harmful when NOT negated
+//   limit nouns    (cap, limit, ceiling)    are harmful when negated
+// Both are scoped to a sentence that also tells the seller to MOVE to an
+// organization, which is what keeps GitHub's own "no limit if you are inviting
+// organization members" wording quotable in order to rebut it: that sentence
+// says "inviting", not "moving", so it never reaches either vocabulary.
+const LIFT_VERBS = /\b(lift|lifts|lifted|remove|removes|removed|uncapped?)\b/gi;
+const LIMIT_NOUNS = /\b(cap|capped|caps|limit|limits|limited|ceiling|restriction)\b/gi;
+
 test('no doc tells a seller to move to an organization to lift the cap', () => {
   const MOVE_TO_ORG = /\b(move|moving|migrate|migrating|put|putting|host)\b[^.]{0,90}\borgani[sz]ation\b/i;
-  const LIFTS = /\b(lift|lifts|lifted|remove|removes|removed|uncapped?|ceiling|limit)\b/gi;
-  const NEGATION_BEFORE_VERB = /\b(no|not|never|cannot|can't|doesn't|don't)\b[^.]{0,12}$/i;
 
   const offenders = [];
   for (const file of publicSources()) {
@@ -311,10 +393,12 @@ test('no doc tells a seller to move to an organization to lift the cap', () => {
     // alarm but never hide a real one. Table cells split on the pipe likewise.
     for (const sentence of read(file).split(/(?<=[.!?])\s+|\n\s*\n|\|/)) {
       if (!MOVE_TO_ORG.test(sentence)) continue;
-      // Every lifting verb in the sentence must carry its own negation. One
-      // asserted lift is enough to mislead, however the rest of it reads.
-      const asserted = [...sentence.matchAll(LIFTS)]
-        .filter((m) => !NEGATION_BEFORE_VERB.test(sentence.slice(0, m.index)));
+      const negated = (m) => NEGATION_BEFORE.test(sentence.slice(0, m.index));
+      // One asserted lift is enough to mislead, however the rest of it reads.
+      const asserted = [
+        ...[...sentence.matchAll(LIFT_VERBS)].filter((m) => !negated(m)),
+        ...[...sentence.matchAll(LIMIT_NOUNS)].filter((m) => negated(m)),
+      ];
       if (!asserted.length) continue;
       offenders.push(`${file}: ${sentence.trim().replace(/\s+/g, ' ').slice(0, 110)}`);
     }
@@ -325,4 +409,122 @@ test('no doc tells a seller to move to an organization to lift the cap', () => {
     'invites are capped too, and org membership lets every buyer enumerate ' +
     'every other buyer. Sending a seller to migrate costs them the work and ' +
     'their buyers the privacy:\n  ' + offenders.join('\n  '));
+});
+
+// ---------- How big we say the engine is ------------------------------------
+// The single most repeated defect in this repo. "About 170 lines" survived
+// until an outside reviewer measured it against a 359-line file, and at the
+// time this guard was written the same claim was wrong in four more places at
+// once: "under 300 lines" twice, "354 dependency-free lines" twice, and a
+// breakdown into "a 190-line driver on a 164-line pure core" whose core had
+// since grown to 407. Nobody edits a file and then goes looking for the five
+// pages that describe its size, so the number rots the moment the code moves,
+// and it rots in the direction that flatters us.
+//
+// Grep cannot police this. Two of the five read "354 dependency-free lines",
+// where an adjective sits between the number and the noun, so a line-based
+// search for a digit next to "lines" walks straight past them.
+//
+// The fix is to stop storing the number in prose at all. Every size sentence we
+// publish is BUILT here from a live `wc -l`, and the doc has to contain the
+// string this produces. A refactor that moves a line makes this test name the
+// exact file and the exact sentence to update, in the same run that CI already
+// gates the push on.
+const lineCount = (f) => {
+  const body = read(f);
+  const n = body.split('\n').length;
+  return body.endsWith('\n') ? n - 1 : n;
+};
+
+const ENGINE = {
+  driver: 'scripts/fulfill.js',
+  core: 'scripts/lib/fulfill-core.js',
+  relayWorkers: 'webhook-mode/relay-cloudflare.mjs',
+  relayNode: 'webhook-mode/relay-node.mjs',
+};
+
+// The claims we publish, each as the exact text the doc must carry. Anything
+// matching the size-claim shape that is NOT one of these fails the test below,
+// so a newly written size sentence has to be registered here before it can
+// ship, and registering it is what keeps it true afterwards.
+function sizeClaims() {
+  const driver = lineCount(ENGINE.driver);
+  const core = lineCount(ENGINE.core);
+  const workers = lineCount(ENGINE.relayWorkers);
+  const node = lineCount(ENGINE.relayNode);
+  return [
+    { file: 'README.md', text: `a ${driver}-line driver on a ${core}-line pure logic core` },
+    { file: 'docs/least-privilege.md', text: `${driver} lines, read it` },
+    { file: 'docs/instant-delivery.md', text: `${workers} lines on Cloudflare Workers and ${node} on Node` },
+    { file: 'webhook-mode/README.md', text: `${workers}-line relay (${node} lines on Node)` },
+    {
+      file: 'pages/deliver-digital-products-github.md',
+      text: `${driver + core} dependency-free lines you can read before trusting: a ${driver}-line driver on a ${core}-line pure core`,
+    },
+    { file: 'pages/sell-code-without-a-marketplace.md', text: `${driver + core} dependency-free lines of` },
+  ];
+}
+
+test('every published line count matches the file it describes', () => {
+  const wrong = sizeClaims().filter((c) => !flat(read(c.file)).includes(flat(c.text)));
+  assert.deepEqual(wrong.map((c) => `${c.file} must say: ${c.text}`), [],
+    'a file changed size and its description did not. Update the prose to the ' +
+    'measured value (this list is generated from wc -l, so it is the truth):\n  ' +
+    wrong.map((c) => `${c.file} must say: ${c.text}`).join('\n  '));
+});
+
+// The other half, and the half that matters for the NEXT one: find every
+// sentence shaped like a size claim and require it to be registered above.
+// Without this, deleting a claim from sizeClaims() and leaving the stale prose
+// in place would pass, which is precisely how a guard becomes decoration.
+//
+// A size claim is recognised grammatically rather than by pattern-matching
+// digits near the word: walk left from "line"/"lines" over at most two
+// adjective-ish words and require a number. That reads "354 dependency-free
+// lines" and "a 190-line driver" as claims, and correctly declines to read
+// "expanding line items", "the lines above are an excerpt (14 of the 18)" or
+// "that line is the one to read" as claims, because walking left from those
+// reaches a word rather than a number.
+const NUMBER_TOKEN = /^~?\d[\d,]*$/;
+const FILLER_TOKEN = /^[a-z][a-z-]*$/;
+
+function sizeClaimSpans(body) {
+  const spans = [];
+  for (const m of body.matchAll(/\b(\d[\d,]*)[- ]lines?\b/gi)) {
+    spans.push({ index: m.index, text: m[0] });
+  }
+  // The adjective case: <number> <adjective>{1,2} lines
+  for (const m of body.matchAll(/\blines?\b/gi)) {
+    const before = body.slice(Math.max(0, m.index - 60), m.index).trimEnd();
+    const tokens = before.split(/\s+/);
+    for (let back = 1; back <= 3 && back <= tokens.length; back++) {
+      const tok = tokens[tokens.length - back];
+      if (NUMBER_TOKEN.test(tok)) {
+        spans.push({ index: m.index, text: `${tok} ... ${m[0]}` });
+        break;
+      }
+      if (!FILLER_TOKEN.test(tok)) break;
+    }
+  }
+  return spans;
+}
+
+test('every size claim in public copy is one this suite pins', () => {
+  const claims = sizeClaims();
+  const unregistered = [];
+  for (const file of [...publicSources(), 'webhook-mode/README.md']) {
+    const body = read(file);
+    const pinned = claims.filter((c) => c.file === file).map((c) => c.text);
+    for (const span of sizeClaimSpans(body)) {
+      // Covered if any pinned string for this file overlaps the claim's line.
+      const line = body.slice(0, span.index).split('\n').length;
+      const context = flat(body.split('\n').slice(Math.max(0, line - 3), line + 2).join(' '));
+      if (pinned.some((p) => context.includes(flat(p)))) continue;
+      unregistered.push(`${file}:${line}  ${span.text}`);
+    }
+  }
+  assert.deepEqual(unregistered, [],
+    'this reads as a claim about how many lines we ship, and nothing derives ' +
+    'it from the file. Add it to sizeClaims() so it is rebuilt from wc -l, or ' +
+    'reword it so it states no number:\n  ' + unregistered.join('\n  '));
 });

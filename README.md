@@ -65,9 +65,9 @@ buyer ──▶ storefront (GitHub Pages, static)
                      ──▶ appends your (private) sales ledger
 ```
 
-The fulfillment engine is under 300 lines of dependency-free Node on a pure
-logic core of similar size (which is why it can be unit-tested without a
-network). Read both in ten minutes: [`scripts/fulfill.js`](scripts/fulfill.js)
+The fulfillment path is two dependency-free Node files: a 359-line driver on a
+407-line pure logic core (which is why it can be unit-tested without a
+network). Read both: [`scripts/fulfill.js`](scripts/fulfill.js)
 and [`scripts/lib/fulfill-core.js`](scripts/lib/fulfill-core.js).
 
 ## Quickstart
