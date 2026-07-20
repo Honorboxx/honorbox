@@ -17,17 +17,17 @@
       "note": "Real screenshots of this same storefront rebuilt with each HonorBox Pro theme.",
       "items": [
         {
-          "img": "./assets/previews/atrium.webp",
-          "alt": "The same storefront in the atrium theme: minimal graphite type on a plaster ground",
-          "caption": "atrium: minimal, gallery-quiet",
+          "img": "./assets/previews/terminal.webp",
+          "alt": "The same storefront in the terminal theme: phosphor green type on black",
+          "caption": "terminal: phosphor-on-black, for CLI tools",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
         },
         {
-          "img": "./assets/previews/terminal.webp",
-          "alt": "The same storefront in the terminal theme: phosphor green type on black",
-          "caption": "terminal: phosphor-on-black, for CLI tools",
+          "img": "./assets/previews/atrium.webp",
+          "alt": "The same storefront in the atrium theme: minimal graphite type on a plaster ground",
+          "caption": "atrium: minimal, gallery-quiet",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
