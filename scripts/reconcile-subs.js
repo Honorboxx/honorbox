@@ -31,6 +31,7 @@ const {
   upcomingRevocations,
   upcomingLine,
   subscriptionConfigProblems,
+  subscriptionRepos,
   grantKey,
   normalizeUser,
 } = require('./lib/subs-core.js');
@@ -119,7 +120,13 @@ function acquireLock(lockPath, now) {
       if (err.code !== 'EEXIST') throw err;
       let age;
       try { age = now - fs.statSync(lockPath).mtimeMs; } catch { continue; } // released under us, retry
-      if (age < LOCK_MAX_AGE_MS) return false;
+      // Absolute, because an mtime in the FUTURE (clock skew between two
+      // runners, a corrected clock, a restored file) gives a negative age, and
+      // a negative number is always under the limit. Read literally that means
+      // a lock stamped an hour ahead blocks every pass for an hour and the
+      // staleness rule never fires. A timestamp we cannot place relative to now
+      // is not evidence of a live pass.
+      if (Math.abs(age) < LOCK_MAX_AGE_MS) return false;
       // Read defensively and never through readJson, which throws on unparseable
       // content by design. The pid is a courtesy to whoever reads the log; a
       // truncated lock file must not be able to crash the pass that is trying to
@@ -137,7 +144,24 @@ function acquireLock(lockPath, now) {
   return false;
 }
 
+// Release ONLY our own lock.
+//
+// A pass that overran the staleness window has already had its lock broken and
+// replaced by the runner that took over. Unlinking unconditionally would then
+// delete the new owner's lock on the way out, letting a third runner start
+// alongside it: the guard would be creating the overlap it exists to prevent,
+// and only ever in the situation where a pass is already behaving strangely.
 function releaseLock(lockPath) {
+  try {
+    const held = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    if (held && held.pid !== process.pid) {
+      console.error(
+        `WARN: not releasing the reconciler lock, it now belongs to pid ${held.pid}. ` +
+          `This pass ran longer than the staleness window and another one has taken over`
+      );
+      return;
+    }
+  } catch { /* unreadable or already gone: fall through and clear it */ }
   try { fs.unlinkSync(lockPath); } catch { /* already gone, nothing to undo */ }
 }
 
@@ -387,16 +411,18 @@ async function main(sleep = defaultSleep) {
   // loop: a full enumeration of every subscription on every tick, each one
   // failing. Grace is measured in days, so backing a broken pass off by an
   // hour costs nothing and a retry storm against the payment processor does.
-  state.last_attempt = new Date(now).toISOString();
-  writeJson(statePath, state);
-
   try {
+    // Inside the try, so a failure here (read-only disk, no space) releases the
+    // lock on the way out instead of leaving it to time out.
+    state.last_attempt = new Date(now).toISOString();
+    writeJson(statePath, state);
+
     const subs = await listAllSubscriptions(stripeKey, sleep);
     const learned = await learnUsernames(state.cursor || 0, stripeKey, sleep);
     Object.assign(state.users, learned.map);
     state.cursor = Math.max(state.cursor || 0, learned.cursor || 0);
 
-    const { desired, heldSubs, heldPairs, notes } = desiredEntitlements(subs, state.users, grants);
+    const { desired, heldSubs, heldPairs, heldCustomers, heldUsers, notes } = desiredEntitlements(subs, state.users, grants);
     for (const n of notes) console.error(`WARN: subscription ${n.sub}: ${n.message}`);
 
     // Stripe's dunning can be set to leave a failed subscription past_due
@@ -417,7 +443,7 @@ async function main(sleep = defaultSleep) {
       }
     }
 
-    const diff = diffEntitlements(desired, state.grants, { graceDays, now, knownRepos, heldSubs, heldPairs });
+    const diff = diffEntitlements(desired, state.grants, { graceDays, now, knownRepos, heldSubs, heldPairs, heldCustomers });
 
     // Grants first, and never gated by the breaker. A tripped breaker means "do
     // not take anything away". It must never mean "stop letting customers in".
@@ -447,7 +473,7 @@ async function main(sleep = defaultSleep) {
           );
         }
         state.grants[grantKey(g.repo, g.user)] = {
-          sub: g.sub, repo: g.repo, user: g.user,
+          sub: g.sub, customer: g.customer, repo: g.repo, user: g.user,
           granted_at: new Date(now).toISOString(),
           invited_at: new Date(now).toISOString(),
           lapsed_since: null, suppressed: null,
@@ -468,8 +494,14 @@ async function main(sleep = defaultSleep) {
     // the one on their record. Re-point the record so later logs name the
     // subscription the seller can actually look up.
     for (const r of diff.refresh) {
+      const had = state.grants[r.key].sub;
       state.grants[r.key].sub = r.sub;
-      console.log(`re-pointed ${r.user} on ${r.repo}: now entitled by ${r.sub} (was ${r.from})`);
+      // Backfills too: records written before customer ids were stored have
+      // none, and the customer is the protection that survives a username we
+      // never learned. Filling it in on the first pass that can is what turns
+      // an old record into a protected one.
+      if (r.customer) state.grants[r.key].customer = r.customer;
+      if (had !== r.sub) console.log(`re-pointed ${r.user} on ${r.repo}: now entitled by ${r.sub} (was ${had})`);
     }
 
     // Start or continue the grace clock. Nothing is removed here.
@@ -482,6 +514,13 @@ async function main(sleep = defaultSleep) {
         // never cause a revocation spike, and losing this state file entirely
         // degrades to "too generous" rather than "locked out".
         state.grants[l.key].lapsed_since = new Date(now).toISOString();
+        // The plan entries are SNAPSHOTS taken before this loop, so the clock
+        // has to be written to both. Updating only the state leaves the
+        // upcoming-revocations line reading a null date off the snapshot and
+        // reporting "never (its lapse date is unreadable)" for every customer
+        // whose grace starts on this pass, which is the commonest case there is
+        // and the line the docs tell a seller to read before arming.
+        l.lapsed_since = state.grants[l.key].lapsed_since;
         console.log(`lapsing ${l.user} on ${l.repo}: grace of ${graceDays} days starts now`);
       }
     }
@@ -497,6 +536,10 @@ async function main(sleep = defaultSleep) {
       percent: subsConfig.revoke_limit_percent,
       floor: subsConfig.revoke_limit_floor,
       enumeratedSubs: subs.length,
+      // How many of them carry a price this store actually sells. Zero, with
+      // people to revoke, means we are looking at somebody else's customers.
+      recognizedSubs: subs.filter((s) => subscriptionRepos(s, grants).length > 0).length,
+      heldUsers,
       override,
     });
 
@@ -570,7 +613,10 @@ async function main(sleep = defaultSleep) {
   }
 }
 
-module.exports = { readJson, stripeGet, listAllSubscriptions, learnUsernames, invite, revoke, main };
+module.exports = {
+  readJson, stripeGet, listAllSubscriptions, learnUsernames, invite, revoke, main,
+  acquireLock, releaseLock, lockPathFor, LOCK_MAX_AGE_MS,
+};
 
 if (require.main === module) {
   main().catch((err) => {

@@ -93,8 +93,11 @@ async function runMain(dir, routes, config, stateSeed, extraArgs = []) {
   // real state file. That happened once: it polluted live ops state with a
   // revocation for a repo that does not exist.
   const botsStatePath = path.join(dir, 'state', 'bots-state.json');
+  // --force is on by default so tests are not gated by the 60m interval. A test
+  // that wants to exercise the interval itself passes --no-force to drop it.
+  const forced = extraArgs.includes('--no-force') ? [] : ['--force'];
   process.argv = ['node', 'reconcile-subs.js', '--config', cfg, '--state', statePath,
-    '--bots-state', botsStatePath, '--force', ...extraArgs];
+    '--bots-state', botsStatePath, ...forced, ...extraArgs.filter((a) => a !== '--no-force')];
   const f = stubFetch(routes);
   try {
     await driver.main(async () => {});
@@ -240,6 +243,122 @@ test('customers already in grace are reported every pass, not only on the day th
   assert.match(logs, /would be removed if enforcement were on/);
   // Soonest first: alice has served five of seven days, carol only one.
   assert.match(logs, /Soonest: alice@acme\/widget in 2d, bob@acme\/widget in 4d, carol@acme\/widget in 6d/);
+});
+
+test('the grace line is right on the pass where the clock starts', async () => {
+  const dir = tmpdir();
+  // The commonest case of all: somebody cancelled and this is the first pass to
+  // notice. The plan entries are snapshots taken before the clock is written,
+  // so reading the date off the snapshot reported every brand new lapse as
+  // "never (its lapse date is unreadable)" while the state file was correct.
+  const { logs, state } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: [subscription('sub_a', 'canceled')], has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: false, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_a: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_a', repo: 'acme/widget', user: 'alice', lapsed_since: null } },
+      breaker: {},
+    }
+  );
+  assert.match(logs, /Soonest: alice@acme\/widget in 7d/);
+  assert.doesNotMatch(logs, /unreadable/);
+  assert.ok(state.grants['acme/widget|alice'].lapsed_since, 'and the clock really did start');
+});
+
+test('customers mid-dunning are counted as the subscribers they are', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  // Eight past_due and two genuine cancellations. past_due customers are
+  // deliberately absent from `desired`, so counting only what is entitled told
+  // the seller this pass "leaves NOBODY entitled on this store", on a store
+  // with eight subscribers whose cards Stripe is still retrying.
+  const grants = {};
+  const users = {};
+  const subs = [];
+  for (let i = 0; i < 10; i++) {
+    const dunning = i < 8;
+    grants[`acme/widget|u${i}`] = {
+      sub: `sub_${i}`, customer: `cus_${i}`, repo: 'acme/widget', user: `u${i}`,
+      lapsed_since: dunning ? null : long_ago,
+    };
+    users[`sub_${i}`] = `u${i}`;
+    subs.push({
+      id: `sub_${i}`, status: dunning ? 'past_due' : 'canceled', customer: `cus_${i}`,
+      items: { data: [{ price: { id: 'price_sub' } }] },
+    });
+  }
+  const { logs } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: subs, has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/invitations', res: () => jsonRes([]) },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    { version: 1, cursor: 1, users, grants, breaker: {} }
+  );
+  assert.doesNotMatch(logs, /leaves NOBODY entitled/,
+    'eight subscribers mid-dunning are not nobody');
+});
+
+test('a re-subscribed customer has their record re-pointed at the live subscription', async () => {
+  const dir = tmpdir();
+  // Nothing covered diff.refresh. Without it a record keeps a dead subscription
+  // id for good and every later log line names one the seller cannot look up.
+  const { logs, state } = await runMain(
+    dir,
+    [
+      {
+        match: '/v1/subscriptions',
+        res: () => jsonRes({
+          data: [
+            { id: 'sub_old', status: 'canceled', customer: 'cus_alice', items: { data: [{ price: { id: 'price_sub' } }] } },
+            { id: 'sub_new', status: 'active', customer: 'cus_alice', items: { data: [{ price: { id: 'price_sub' } }] } },
+          ],
+          has_more: false,
+        }),
+      },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_old: 'alice', sub_new: 'alice' },
+      // No customer id on the record: written before they were stored.
+      grants: { 'acme/widget|alice': { sub: 'sub_old', repo: 'acme/widget', user: 'alice', lapsed_since: null } },
+      breaker: {},
+    }
+  );
+  assert.match(logs, /re-pointed alice on acme\/widget: now entitled by sub_new \(was sub_old\)/);
+  assert.equal(state.grants['acme/widget|alice'].sub, 'sub_new');
+  assert.equal(state.grants['acme/widget|alice'].customer, 'cus_alice',
+    'and the customer id is backfilled, which is what protects them next time');
+});
+
+test('a pass that failed still holds the scheduler off', async () => {
+  const dir = tmpdir();
+  // Every other test passes --force, so the interval gate was never exercised
+  // and would have passed even if it ignored last_attempt entirely.
+  const statePath = path.join(dir, 'state', 'subscriptions.json');
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  fs.writeFileSync(statePath, JSON.stringify({
+    version: 1, cursor: 1, users: {}, grants: {}, breaker: {},
+    last_pass: null,
+    last_attempt: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // failed 5m ago
+  }));
+  const { calls, logs } = await runMain(
+    dir,
+    [], // any network call fails the test
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true } },
+    null,
+    ['--no-force'] // placeholder arg; the point is that --force is absent
+  );
+  assert.equal(calls.length, 0, 'a pass that failed minutes ago must not immediately enumerate Stripe again');
+  assert.match(logs, /skipping \(min interval/);
 });
 
 // --- the page boundary -------------------------------------------------------
@@ -455,6 +574,72 @@ test('zero subscriptions from Stripe is refused and cannot be overridden', async
   assert.doesNotMatch(logs, /--allow-mass-revocation/);
 });
 
+test('a key for the wrong Stripe account cannot empty a store', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  // The nastiest shape of this failure. The key is valid and the account is
+  // busy, so Stripe returns plenty of subscriptions and the zero guard never
+  // fires. None of them are ours: they carry prices this store does not sell,
+  // so nothing protects our grants and every customer looks cancelled.
+  //
+  // With three subscribers the percentage breaker gives no protection either,
+  // because the floor of 3 exists so that small stores can enforce at all. That
+  // combination is the one case where a single wrong environment variable could
+  // remove every paying customer, and it needs a guard of its own.
+  const otherAccountSubs = Array.from({ length: 8 }, (_, i) => ({
+    id: `sub_stranger_${i}`,
+    status: 'active',
+    items: { data: [{ price: { id: 'price_someone_elses_product' }, quantity: 1 }] },
+  }));
+  const grants = {};
+  const users = {};
+  for (let i = 0; i < 3; i++) {
+    grants[`acme/widget|u${i}`] = { sub: `sub_${i}`, repo: 'acme/widget', user: `u${i}`, lapsed_since: long_ago };
+    users[`sub_${i}`] = `u${i}`;
+  }
+  const { calls, logs } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: otherAccountSubs, has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/invitations', res: () => jsonRes([]) },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    { version: 1, cursor: 1, users, grants, breaker: { tripped_at: null, would_revoke: [] } }
+  );
+  assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0,
+    'not one customer may be removed on a subscription list that contains nothing this store sells');
+  assert.match(logs, /price this store sells/);
+});
+
+test('the wrong-account guard cannot be waved through with the override', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  const otherAccountSubs = Array.from({ length: 8 }, (_, i) => ({
+    id: `sub_stranger_${i}`, status: 'active',
+    items: { data: [{ price: { id: 'price_someone_elses_product' }, quantity: 1 }] },
+  }));
+  const { calls } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: otherAccountSubs, has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/invitations', res: () => jsonRes([]) },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_0: 'u0' },
+      grants: { 'acme/widget|u0': { sub: 'sub_0', repo: 'acme/widget', user: 'u0', lapsed_since: long_ago } },
+      breaker: {},
+    },
+    ['--allow-mass-revocation']
+  );
+  assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0,
+    'deciding one exodus is real is not deciding to trust a response you never saw');
+});
+
 test('a real mass cancellation can be enforced, once, on purpose', async () => {
   const dir = tmpdir();
   const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
@@ -658,6 +843,85 @@ test('an invitation list that cannot be read is reported, not read as empty', as
   assert.match(logs, /could not read its invitation list/);
 });
 
+// Holding by (repo, user) pair closes the case where the new subscription
+// resolves. It cannot close the cases where it does not, and a subscription can
+// fail to resolve while being perfectly alive and paid for. In both of these
+// the customer is ACTIVE, not past_due: they are paying right now.
+for (const [label, newSub, users] of [
+  [
+    'whose username we have not learned yet',
+    { id: 'sub_new', status: 'active', customer: 'cus_alice', items: { data: [{ price: { id: 'price_sub' } }] } },
+    { sub_old: 'alice' }, // sub_new is missing: created outside Checkout, or the custom field was blank
+  ],
+  [
+    'whose price the config no longer names',
+    { id: 'sub_new', status: 'active', customer: 'cus_alice', items: { data: [{ price: { id: 'price_rotated' } }] } },
+    { sub_old: 'alice', sub_new: 'alice' },
+  ],
+]) {
+  test(`an active customer ${label} is not revoked over an old subscription`, async () => {
+    const dir = tmpdir();
+    const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+    const { calls, logs } = await runMain(
+      dir,
+      [
+        {
+          match: '/v1/subscriptions',
+          res: () => jsonRes({
+            data: [
+              { id: 'sub_old', status: 'canceled', customer: 'cus_alice', items: { data: [{ price: { id: 'price_sub' } }] } },
+              newSub,
+            ],
+            has_more: false,
+          }),
+        },
+        { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+        { match: '/invitations', res: () => jsonRes([]) },
+        { match: '/collaborators/', res: () => jsonRes({}, 204) },
+      ],
+      { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+      {
+        version: 1, cursor: 1, users,
+        grants: {
+          'acme/widget|alice': {
+            sub: 'sub_old', customer: 'cus_alice', repo: 'acme/widget', user: 'alice', lapsed_since: long_ago,
+          },
+        },
+        breaker: {},
+      }
+    );
+    assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0,
+      'this customer is ACTIVE and paying, and a name we failed to resolve is not evidence they left');
+    assert.doesNotMatch(logs, /REVOKED alice/);
+  });
+}
+
+test('a grant record with no customer id still falls back to the older protections', async () => {
+  const dir = tmpdir();
+  // Records written before customer ids were stored carry none. Absence must
+  // not be read as "no live customer", and it must not crash the pass either.
+  const { calls } = await runMain(
+    dir,
+    [
+      {
+        match: '/v1/subscriptions',
+        res: () => jsonRes({
+          data: [{ id: 'sub_a', status: 'past_due', customer: 'cus_alice', items: { data: [{ price: { id: 'price_sub' } }] } }],
+          has_more: false,
+        }),
+      },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_a: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_a', repo: 'acme/widget', user: 'alice', lapsed_since: null } },
+      breaker: {},
+    }
+  );
+  assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0);
+});
+
 test('a revocation GitHub could not confirm is not reported as done', async () => {
   const dir = tmpdir();
   const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
@@ -700,4 +964,46 @@ test('a past_due customer is neither granted nor revoked', async () => {
   );
   assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0);
   assert.equal(state.grants['acme/widget|alice'].lapsed_since, null, 'no grace clock may start for past_due');
+});
+
+// --- the lock primitives, directly ------------------------------------------
+// These two failure modes cannot be reached through main(): one needs a pass
+// that overran the staleness window, the other needs a clock that disagrees
+// with the file system. Both are real and both silently defeat the guard, so
+// they are exercised against the functions themselves.
+
+test('a runner never releases a lock that now belongs to somebody else', async () => {
+  const dir = tmpdir();
+  const lock = path.join(dir, 'x.lock');
+  // Runner A overran, runner B broke its lock and took its own. A now finishes
+  // and must not delete B's: that would let a third runner start alongside B,
+  // creating the exact overlap the lock exists to prevent.
+  fs.writeFileSync(lock, JSON.stringify({ pid: process.pid + 1, at: new Date().toISOString() }));
+  const errs = [];
+  const saved = console.error;
+  console.error = (...a) => errs.push(a.join(' '));
+  try { driver.releaseLock(lock); } finally { console.error = saved; }
+  assert.equal(fs.existsSync(lock), true, "another runner's lock must survive our release");
+  assert.match(errs.join('\n'), /now belongs to pid/);
+
+  fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }));
+  driver.releaseLock(lock);
+  assert.equal(fs.existsSync(lock), false, 'but our own lock is cleared normally');
+});
+
+test('a lock dated in the future does not wedge enforcement shut', async () => {
+  const dir = tmpdir();
+  const lock = path.join(dir, 'y.lock');
+  fs.writeFileSync(lock, JSON.stringify({ pid: 999, at: new Date().toISOString() }));
+  // Clock skew between two runners, or a corrected clock. A negative age is
+  // always below the limit, so read literally the lock never goes stale.
+  const future = (Date.now() + 6 * 3600 * 1000) / 1000;
+  fs.utimesSync(lock, future, future);
+  const errs = [];
+  const saved = console.error;
+  console.error = (...a) => errs.push(a.join(' '));
+  let got;
+  try { got = driver.acquireLock(lock, Date.now()); } finally { console.error = saved; }
+  assert.equal(got, true, 'a timestamp we cannot place relative to now is not evidence of a live pass');
+  driver.releaseLock(lock);
 });

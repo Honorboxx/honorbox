@@ -122,6 +122,16 @@ function grantKey(repo, user) {
   return `${String(repo).toLowerCase()}|${normalizeUser(user)}`;
 }
 
+// --- identity, continued ----------------------------------------------------
+// The Stripe customer a subscription belongs to. Normally a bare id string on
+// our pinned version; tolerant of an expanded object because a caller that adds
+// `expand` should not silently lose the strongest protection in this file.
+function subscriptionCustomer(sub) {
+  const c = sub && sub.customer;
+  if (typeof c === 'string') return c || null;
+  return c && typeof c.id === 'string' ? c.id : null;
+}
+
 // --- seats ------------------------------------------------------------------
 // A team subscription is one purchase and N GitHub usernames. Multi-seat
 // BEHAVIOUR is not built yet, but the shape is a list from the first commit so
@@ -173,9 +183,11 @@ function subscriptionRepos(sub, grants) {
 // Protection is carried TWICE, by subscription id and by (repo, user) pair,
 // because neither covers the other. See the two comments inside.
 function desiredEntitlements(subs, subUsers, grants) {
-  const desired = new Map(); // grantKey -> { repo, user, sub, reason }
+  const desired = new Map(); // grantKey -> { repo, user, sub, customer, reason }
   const heldSubs = new Set(); // subscription ids that must not lapse
   const heldPairs = new Set(); // grantKeys that must not lapse
+  const heldCustomers = new Set(); // Stripe customer ids that must not lapse
+  const heldUsers = new Set(); // people with a live subscription, for reporting
   const notes = [];
   for (const sub of Array.isArray(subs) ? subs : []) {
     if (!sub || !sub.id) continue;
@@ -194,8 +206,23 @@ function desiredEntitlements(subs, subUsers, grants) {
     // A subscription that is not lapsed protects its grants, full stop.
     heldSubs.add(sub.id);
 
+    // And by CUSTOMER, which is the only one of the three that cannot fail to
+    // resolve. Both of the others are derived: the username is learned from a
+    // Checkout Session that may not exist (a subscription created in the Stripe
+    // dashboard, by API, or through a billing portal never had one), and the
+    // repo list comes from a price the config may have stopped naming. Either
+    // failure leaves an ACTIVE, paid subscription protecting nobody, and if the
+    // customer's grant record happens to name an older subscription then
+    // heldSubs misses too and a paying customer is revoked. The customer id is
+    // on the subscription object itself, so it is there whenever the
+    // subscription is, and it is stable across every re-subscription and plan
+    // change that gives someone a new subscription id.
+    const customer = subscriptionCustomer(sub);
+    if (customer) heldCustomers.add(customer);
+
     const repos = subscriptionRepos(sub, grants);
     const users = seatUsernames(subUsers[sub.id]);
+    for (const user of users) heldUsers.add(user);
 
     // And protection is ALSO recorded per pair, for the case the id cannot
     // reach. A grant record names the one subscription it was written from, and
@@ -219,11 +246,11 @@ function desiredEntitlements(subs, subUsers, grants) {
     }
     for (const repo of repos) {
       for (const user of users) {
-        desired.set(grantKey(repo, user), { repo, user, sub: sub.id, reason });
+        desired.set(grantKey(repo, user), { repo, user, sub: sub.id, customer, reason });
       }
     }
   }
-  return { desired, heldSubs, heldPairs, notes };
+  return { desired, heldSubs, heldPairs, heldCustomers, heldUsers, notes };
 }
 
 // --- grace ------------------------------------------------------------------
@@ -260,14 +287,16 @@ function graceExpired(lapsedSince, graceDays, now) {
 //              one. Without this a record keeps a dead id for good, and every
 //              log line about that customer names a subscription the seller
 //              will not find in their dashboard.
-function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null, heldPairs = null } = {}) {
+function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null, heldPairs = null, heldCustomers = null } = {}) {
   const out = { grants: [], lapsing: [], due: [], keep: [], refresh: [] };
 
   for (const [key, want] of desired) {
     const rec = records[key];
     if (!rec) { out.grants.push(want); continue; }
     if (rec.lapsed_since) out.keep.push({ key, ...rec });
-    if (rec.sub !== want.sub) out.refresh.push({ key, from: rec.sub, sub: want.sub, repo: want.repo, user: want.user });
+    if (rec.sub !== want.sub || (want.customer && rec.customer !== want.customer)) {
+      out.refresh.push({ key, from: rec.sub, sub: want.sub, customer: want.customer, repo: want.repo, user: want.user });
+    }
   }
 
   for (const [key, rec] of Object.entries(records || {})) {
@@ -285,6 +314,12 @@ function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, no
     // The same protection reached by name rather than by id, for the customer
     // whose live subscription is not the one on their record.
     if (heldPairs && heldPairs.has(key)) continue;
+    // And reached by Stripe customer, which survives a username we never learned
+    // and a price the config stopped naming. `rec.customer` is checked for
+    // presence first: a record written before customer ids were stored has none,
+    // and a missing id must fall through to the guards above rather than match
+    // anything. Absence is not evidence here either.
+    if (heldCustomers && rec.customer && heldCustomers.has(rec.customer)) continue;
     // A repo that has left the config is OUT OF SCOPE, not a mass cancellation.
     // "The seller removed a product from config" and "the seller wants every
     // customer of that product kicked out" are indistinguishable from here, and
@@ -377,10 +412,49 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
     };
   }
 
+  // The same class of evidence as the guard above, and the nastier version of
+  // it. A key for the WRONG STRIPE ACCOUNT is valid, and if that account is
+  // busy Stripe returns plenty of subscriptions, so the zero check never fires.
+  // None of them are ours, so nothing protects our grants, every customer looks
+  // cancelled, and a store small enough to sit under the floor loses all of
+  // them. One wrong environment variable, every paying customer gone.
+  //
+  // A store that sells subscriptions and has anyone to revoke must be able to
+  // see at least ONE subscription carrying a price it actually sells. Zero is
+  // not a small store, it is the wrong account, or a price id that changed in
+  // the config while live subscriptions still run on the old one. Both want the
+  // same answer: stop, and let a human look.
+  //
+  // Not overridable, for the same reason as the zero guard. Deciding that one
+  // exodus is real is not deciding to trust a customer list you never saw.
+  if (opts.recognizedSubs === 0) {
+    return {
+      allowed: false,
+      people,
+      limit: 0,
+      sweep: false,
+      overridable: false,
+      reason:
+        `none of the ${opts.enumeratedSubs} subscriptions Stripe returned carry a price this store sells. ` +
+        'That is a key for a different Stripe account, or price ids that changed in your config while ' +
+        'customers are still subscribed to the old ones, not every customer leaving at once',
+    };
+  }
+
   const entitledSet = distinctUserSet(entitledPairs);
   const entitled = entitledSet.size;
+  // The LIMIT stays on the entitled count alone. Counting held customers here
+  // would raise the ceiling and let more revocations through, and a breaker
+  // should only ever be loosened deliberately.
   const limit = Math.max(floor, Math.floor((entitled * percent) / 100));
-  const sweep = entitled === 0;
+  // The REPORTING counts them, because a held customer is still a subscriber.
+  // Without this, a store with eight customers mid-dunning and two real
+  // cancellations is told the pass "leaves NOBODY entitled", which is alarming,
+  // wrong, and on the loudest line the program prints. held is passed in
+  // separately rather than derived, because a past_due customer is deliberately
+  // absent from `desired` and there is nothing here to infer them from.
+  const held = opts.heldUsers instanceof Set ? opts.heldUsers : new Set();
+  const sweep = entitled === 0 && held.size === 0;
   // The population this pass started from, counted as a union rather than a
   // sum: somebody entitled on one repo and lapsed on another is one person, and
   // adding the two counts would report more subscribers than the store has.
@@ -389,7 +463,7 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
   // lapsed the entitled count is zero, and "would revoke 12 of 0 subscribers"
   // is a sentence that makes a worried seller trust the tool less, which is the
   // opposite of what the most important line in this program should do.
-  const total = new Set([...entitledSet, ...dueSet]).size;
+  const total = new Set([...entitledSet, ...held, ...dueSet]).size;
   if (people > limit) {
     if (opts.override) {
       return {
@@ -580,6 +654,7 @@ module.exports = {
   grantKey,
   seatUsernames,
   subscriptionRepos,
+  subscriptionCustomer,
   desiredEntitlements,
   graceExpired,
   diffEntitlements,

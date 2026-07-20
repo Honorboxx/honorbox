@@ -288,14 +288,33 @@ A customer who cancels and resubscribes, or who you move to a different price,
 ends up with a **different** subscription in Stripe. The old one is cancelled and
 a new one takes over.
 
-They are protected by name as well as by subscription, so the moment any live
-subscription of theirs covers a repo, their access to it is safe, whichever
-subscription we happened to record when we first let them in. This matters most
-when the new subscription is `past_due`: their card failed on the first renewal
-after the change, Stripe is still retrying, and they must not be removed for it.
+They are protected three ways, and the third is the one that always works:
+
+- by the subscription we recorded when we let them in
+- by their GitHub username, if we can work out which repos the new subscription
+  covers
+- **by their Stripe customer**, which does not depend on working anything out
+
+That last one matters more than it sounds. The first two can both come up empty
+for a subscription that is perfectly healthy: we learn a customer's GitHub
+username from their checkout, so a subscription created any other way (in the
+Stripe dashboard, through the API, through a billing portal) has no username
+attached to it, and a subscription on a price you have not added to your config
+yet resolves to no repo. Either of those, combined with a record naming their
+previous subscription, used to be enough to remove somebody who was actively
+paying. The Stripe customer is on the subscription itself, so it is there
+whenever the subscription is.
+
+This matters most when the new subscription is `past_due`: their card failed on
+the first renewal after the change, Stripe is still retrying, and they must not
+be removed for it.
 
 If you have two prices that grant the same repo, a customer moving between them
 never loses access at the changeover.
+
+Grants recorded before this existed carry no customer id. They are filled in
+automatically on the first run that can see the customer, and until then they
+keep the older protections.
 
 ## What we do not do
 

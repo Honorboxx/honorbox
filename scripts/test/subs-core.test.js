@@ -65,9 +65,13 @@ test('every Stripe subscription status maps to its documented action', () => {
 //
 // This list is the `status` enum of the Subscription object, read from Stripe's
 // published OpenAPI schema (stripe/openapi, components.schemas.subscription).
-// It is deliberately written out rather than derived, so that a status being
-// added upstream shows up as a decision someone has to make here rather than as
-// a silently passing test.
+//
+// Be clear about what this can and cannot catch. It is a regression guard: if
+// somebody deletes a status from ENTITLED, LAPSED or HELD, this goes red. It
+// CANNOT notice a status Stripe adds upstream, because nothing here talks to
+// Stripe. That gap is covered by the forward-compatibility branch instead,
+// which holds access and warns on anything unrecognised, and by the opt-in
+// integration test in subs-stripe-integration.test.js.
 //
 // `all` and `ended` are NOT in this list on purpose. Stripe accepts both as
 // filter values on GET /v1/subscriptions, which makes them easy to mistake for
