@@ -12,6 +12,7 @@ features:
   - License-key module: ed25519 keys signed in CI, verified offline in your app (JS + Python)
   - 4 premium storefront themes; the terminal theme is published in the free repo as a full code sample
   - Store doctor: preflight your config, payment links, and fulfillment permissions before launch
+  - Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't
   - Ops bots: auto-acknowledge new support issues, auto-revoke repo access when Stripe refunds
   - Stats: tracker-free sales analytics rendered from your Stripe data, one command
   - Commerce playbook: pricing, the first ten sales, EU VAT, multi-product catalogs (table of contents is public)
@@ -53,6 +54,30 @@ type and dark-mode awareness: `terminal` (phosphor-on-black for CLI tools),
 config shape, the pasted-URL-instead-of-id mistake, whether your payment links
 are live, whether your fulfillment token can actually invite buyers, whether
 your product repo is accidentally public. Run it before launch; sleep after.
+
+**Reconcile.** Doctor checks that your store is set up right, which you ask once.
+Reconcile answers the question that only starts costing money after launch: for
+every order you were *paid* for, does that buyer have the product *right now*?
+
+Those are different questions. The engine writes its ledger row the moment it
+**sends** an invite, and nothing ever goes back to check that it was accepted. A
+buyer who never clicks accept leaves every system you own reporting success —
+Stripe says paid, your ledger says delivered, the run is green — while they have
+nothing. Seven days later the invitation expires, and the loss is permanent and
+still invisible. The same blind spot hides an order that matched no grant, an
+invite that never landed, a typo'd username, and a refunded buyer who kept
+access.
+
+Reconcile starts from the money, walks every paid Stripe session, and asks
+GitHub whether that specific buyer holds access to that specific repo — one
+verdict per sale, non-zero exit when anything is lost, so you can schedule it
+instead of remembering it. Read-only.
+
+It also separates revenue from fulfillments. Run against our own store it
+reported `0 USD across 0 paid orders` for a ledger that says four sales, because
+all four were $0 tests — the
+[full transcript](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md)
+is public.
 
 **Ops bots.** Two workflows for the unattended hours. One acknowledges and
 labels every new support issue within minutes. The other watches Stripe for
