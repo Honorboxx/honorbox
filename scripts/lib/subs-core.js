@@ -62,17 +62,28 @@ const HELD = new Set(['past_due', 'incomplete']);
 // revenue and is visible in the warning. Given ambiguous evidence, take the
 // recoverable error and surface it for a human.
 //
-// The cost of that choice, stated so nobody is surprised by it: on 2024-06-20
-// `status_details` may be absent entirely, so a genuinely fizzled trial can land
-// in the undeterminable branch and be held rather than lapsed. The seller gets a
-// WARN naming the subscription and can revoke by hand. That is the recoverable
-// direction, which is the point.
+// NOW MEASURED, so read this before assuming the split does anything. On
+// 2024-06-20 `status_details` is not merely sometimes absent, it is not on the
+// Subscription schema at all, and a real paused subscription driven on a test
+// clock returns no `status_details` and a null `pause_collection`. The
+// cause-splitting branch below is therefore UNREACHABLE on the version this
+// engine pins, and every paused subscription in production takes the final
+// hold-and-warn branch.
+//
+// That is the safe direction and it is why the branch stays: it is forward
+// compatibility, not live logic. The honest description of today's behaviour is
+// "a paused subscription keeps access and asks a human to look", and a seller
+// whose trial fizzles must remove that collaborator by hand. The integration
+// test asserts the absence, so if a future API version starts returning
+// `status_details` it goes red and whoever sees it can turn this on knowing it
+// will actually fire.
 function pausedAction(sub) {
   // pause_collection is the classic, seller-initiated pause and exists on our
   // pinned version. Its presence is an explicit statement of intent.
   if (sub && sub.pause_collection) {
     return { action: HOLD, reason: 'paused: seller set pause_collection, keeping access' };
   }
+  // Unreachable on 2024-06-20; see above. Kept for the version that supplies it.
   const type =
     sub && sub.status_details && sub.status_details.paused && sub.status_details.paused.subscription
       ? sub.status_details.paused.subscription.type

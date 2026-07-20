@@ -154,8 +154,17 @@ test('real subscriptions carry the shape and statuses this engine reads', { time
 
     // --- a paying customer: trialing, then active ---------------------------
     const payer = await stripe('POST', '/v1/customers', { test_clock: clockId, email: 'payer@example.com' });
-    await stripe('POST', '/v1/payment_methods/pm_card_visa/attach', { customer: payer.id });
-    await stripe('POST', `/v1/customers/${payer.id}`, { invoice_settings: { default_payment_method: 'pm_card_visa' } });
+    // Attaching a magic test PaymentMethod MINTS a concrete one and returns it.
+    // The magic id is a factory, not a handle: naming it again produces a
+    // second, unattached PaymentMethod, and setting that as the default fails
+    // with "the payment method must be attached to the customer". Use what the
+    // attach call handed back. Stripe's Billing testing guide says exactly this:
+    // "With the resulting Payment Method ID, create the subscription or invoice
+    // with this ID as the default_payment_method."
+    const card = await stripe('POST', '/v1/payment_methods/pm_card_visa/attach', { customer: payer.id });
+    assert.match(card.id, /^pm_/);
+    assert.notEqual(card.id, 'pm_card_visa', 'the attach call returns a concrete PaymentMethod, not the magic id');
+    await stripe('POST', `/v1/customers/${payer.id}`, { invoice_settings: { default_payment_method: card.id } });
 
     let paid = await stripe('POST', '/v1/subscriptions', {
       customer: payer.id,
@@ -173,6 +182,9 @@ test('real subscriptions carry the shape and statuses this engine reads', { time
     assert.ok(paid.trial_end, 'a trialing subscription must carry trial_end');
 
     assert.equal(subscriptionAction(paid).action, GRANT, 'a running trial is entitled while it runs');
+    t.diagnostic(`shape: customer=${typeof paid.customer} price at items.data[0].price.id=${paid.items.data[0].price.id === price.id} ` +
+      `trial_end=${!!paid.trial_end} current_period_end=${!!paid.current_period_end}`);
+    t.diagnostic(`trialing -> action ${subscriptionAction(paid).action}`);
     {
       const { desired, heldSubs, heldCustomers } = desiredEntitlements([paid], { [paid.id]: USER }, grants);
       assert.equal(desired.size, 1, 'a real trialing subscription resolves to one entitlement');
@@ -210,11 +222,13 @@ test('real subscriptions carry the shape and statuses this engine reads', { time
     paid = await waitForStatus(paid.id, 'active');
     assert.equal(subscriptionAction(paid).action, GRANT, 'a paid subscription is entitled');
     assert.ok(paid.current_period_end, 'the pinned version must still return current_period_end on the subscription');
+    t.diagnostic(`active -> action ${subscriptionAction(paid).action}`);
 
     dunning = await waitForStatus(dunning.id, 'past_due');
     // The single most important assertion in this file. Stripe is still
     // retrying, so this customer has not left and must not start a grace clock.
     assert.equal(subscriptionAction(dunning).action, HOLD, 'past_due must be a HOLD, never a lapse');
+    t.diagnostic(`past_due -> action ${subscriptionAction(dunning).action} (reason ${JSON.stringify(subscriptionAction(dunning).reason)})`);
     {
       const { desired, heldSubs, heldCustomers } = desiredEntitlements([dunning], { [dunning.id]: USER }, grants);
       assert.equal(desired.size, 0, 'a past_due subscription grants nothing new');
@@ -234,13 +248,24 @@ test('real subscriptions carry the shape and statuses this engine reads', { time
     // way to know which branch production actually takes.
     const pausedVerdict = subscriptionAction(paused);
     assert.equal(pausedVerdict.action, HOLD, 'an ambiguous pause keeps access');
-    t.diagnostic(`paused subscription: status_details ${paused.status_details ? 'PRESENT' : 'absent'}, ` +
-      `pause_collection ${paused.pause_collection ? 'set' : 'null'}, warn=${!!pausedVerdict.warn}`);
+    // Pinned as an assertion because the mapping's shape depends on it. If a
+    // future API version starts returning status_details, this goes red and
+    // whoever sees it can enable the cause-splitting branch that is currently
+    // unreachable. That is the good direction for this to fail in.
+    assert.equal(paused.status_details, undefined,
+      'status_details is absent on 2024-06-20, which is why the paused cause cannot be determined');
+    assert.equal(paused.pause_collection, null,
+      'a trial that fizzled sets no pause_collection, so it cannot be told from a seller pause');
+    assert.equal(pausedVerdict.warn, true, 'so it holds access and asks a human to look');
+    t.diagnostic(`paused -> action ${pausedVerdict.action}, warn=${pausedVerdict.warn}, ` +
+      `status_details ${paused.status_details === undefined ? 'ABSENT' : 'PRESENT'}, ` +
+      `pause_collection ${paused.pause_collection === null ? 'null' : 'set'}`);
 
     // --- canceled ------------------------------------------------------------
     const cancelled = await stripe('DELETE', `/v1/subscriptions/${paid.id}`);
     assert.equal(cancelled.status, 'canceled');
     assert.equal(subscriptionAction(cancelled).action, LAPSE, 'a cancelled subscription is a lapse');
+    t.diagnostic(`canceled -> action ${subscriptionAction(cancelled).action}`);
     {
       const { desired, heldSubs, heldCustomers } = desiredEntitlements([cancelled], { [cancelled.id]: USER }, grants);
       assert.equal(heldSubs.has(cancelled.id), false, 'a cancelled subscription protects nothing');
@@ -261,6 +286,7 @@ test('real subscriptions carry the shape and statuses this engine reads', { time
     assert.equal(incomplete.status, 'incomplete');
     assert.equal(subscriptionAction(incomplete).action, HOLD,
       'incomplete is inside the first-payment window: nothing to grant, nothing to take away');
+    t.diagnostic(`incomplete -> action ${subscriptionAction(incomplete).action}`);
 
     // --- status=all, which is what makes a cancellation visible at all -------
     //
@@ -286,11 +312,18 @@ test('real subscriptions carry the shape and statuses this engine reads', { time
   } finally {
     // The clock takes its customers and subscriptions with it. The product and
     // price are not attached to a clock, so they would otherwise pile up one
-    // pair per run; prices cannot be deleted, only deactivated.
+    // pair per run; prices cannot be deleted, only archived.
+    //
+    // ORDER MATTERS. Creating a price with `product_data` makes it that
+    // product's default_price, and Stripe refuses to archive a price while it
+    // holds that role: "This price cannot be archived because it is the default
+    // price of its product." Archiving the PRODUCT first releases it. Verified
+    // against the real test API, in that order, on the residue of the run that
+    // first hit this.
     for (const [method, pathname, params] of [
       ['DELETE', clockId && `/v1/test_helpers/test_clocks/${clockId}`, null],
-      ['POST', priceId && `/v1/prices/${priceId}`, { active: false }],
       ['POST', productId && `/v1/products/${productId}`, { active: false }],
+      ['POST', priceId && `/v1/prices/${priceId}`, { active: false }],
     ]) {
       if (!pathname) continue;
       try {

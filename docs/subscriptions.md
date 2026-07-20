@@ -102,7 +102,7 @@ customer's access, in plain terms.
 | `incomplete` | Nothing | Their first payment has not gone through yet. |
 | `unpaid` | Start the grace clock | Stripe retried and gave up. They can still pay and come back. |
 | `canceled` | Start the grace clock | They cancelled, or Stripe cancelled for them. |
-| `paused` | Depends on why | A paused trial lapses. A pause you asked for keeps access. |
+| `paused` | **Keep access**, and tell you | We cannot tell why it paused, so we never guess. See below. |
 | Anything unfamiliar | Keep access, and tell you | We never remove someone on a status we do not recognise. |
 
 ### `past_due` is not a cancellation, and we treat it that way
@@ -128,6 +128,25 @@ past-due". If you pick the third one, subscriptions stay `past_due` forever, and
 since we never remove anyone for `past_due`, **nothing will ever be enforced.**
 The reconciler notices this and warns you, but it is easier to just pick one of
 the first two.
+
+### A paused subscription always keeps access
+
+A subscription can end up `paused` for opposite reasons. You might have paused a
+customer deliberately, in which case you want them to keep access. Or a free
+trial you configured ended with no payment method on file, in which case nobody
+is paying.
+
+Stripe does not tell us which, on the API version this engine uses. We checked
+this against real paused subscriptions rather than assuming: the field that
+would carry the reason is not returned at all.
+
+So we do the recoverable thing. **A paused subscription keeps access and the
+reconciler warns you, naming it.** If it was a trial that fizzled, remove that
+collaborator by hand.
+
+If you are running trials, the cleaner fix is in your Stripe settings: set the
+trial's "missing payment method" behaviour to **cancel** rather than **pause**.
+A cancelled subscription is unambiguous, and this engine handles it normally.
 
 ## The grace period
 
