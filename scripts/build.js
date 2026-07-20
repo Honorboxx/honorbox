@@ -309,6 +309,24 @@ function isUpstreamStore(config) {
   );
 }
 
+
+// A fork rarely keeps our link byte-for-byte either. Appending a utm
+// parameter, a fragment, or a trailing slash, or pasting it back in a
+// different case, all used to walk straight past an exact-string Set — and the
+// resulting build was GREEN, so nothing told the forker their Buy button was
+// still paying HonorBox. Compare on a normalized key instead: query and
+// fragment removed (they change nothing about which checkout is opened),
+// trailing slashes dropped, case folded. Folding case can only make the guard
+// refuse MORE, and a seller whose own link differs from ours only by case does
+// not exist.
+function checkoutKey(v) {
+  return String(v).trim().toLowerCase().replace(/[?#].*$/, '').replace(/\/+$/, '');
+}
+const UPSTREAM_CHECKOUT_KEYS = new Set([...UPSTREAM_CHECKOUT].map(checkoutKey));
+// Our plink_/price_ ids are also caught anywhere inside a longer string, so
+// pasting the id into a url (or a url into the id field) is still refused.
+const UPSTREAM_CHECKOUT_IDS = [...UPSTREAM_CHECKOUT].filter((v) => /^(?:plink|price)_/.test(v)).map(checkoutKey);
+
 function templateProblems(config, products) {
   if (isUpstreamStore(config)) return [];
   const out = [];
@@ -317,7 +335,14 @@ function templateProblems(config, products) {
   if (!config.repo || config.repo === UPSTREAM_REPO) {
     out.push('store.config.json: "repo" is still HonorBox\'s ("' + (config.repo || '') + '"). Set it to YOUR storefront repo (owner/name) — it is how this build knows the store is yours.');
   }
-  const owned = (v) => typeof v === 'string' && UPSTREAM_CHECKOUT.has(v.trim());
+  const owned = (v) => {
+    if (typeof v !== 'string') return false;
+    // The id search runs on the whole lowercased value, NOT on checkoutKey's
+    // output: the key drops everything from "?" onward, which would throw away
+    // the very id we are looking for in ".../x?pl=plink_…".
+    const lower = v.trim().toLowerCase();
+    return UPSTREAM_CHECKOUT_KEYS.has(checkoutKey(v)) || UPSTREAM_CHECKOUT_IDS.some((id) => lower.includes(id));
+  };
   for (const p of products) {
     if (owned(p.payment_link)) {
       out.push(`products/${p.id}.md: payment_link is HonorBox's own checkout, so this store would sell HonorBox's product and the money would land in HonorBox's Stripe account. Replace it with your own payment link.`);
