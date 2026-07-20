@@ -29,11 +29,27 @@ escalation paths to the others. Designed as one system, so the reviewer knows
 what the debugger owns, and the verification skill knows what "done" means for
 both.
 
-The bar for every file: would a staff engineer who reads prompts for a living
-say *"this is engineered"*? No filler methodology, no repeated boilerplate,
-at least one non-obvious insight each. Read the
-[free tier](https://github.com/Honorboxx/crew) and judge the bar yourself.
-The three free agents are the same files the paid pack ships, at full length.
+## Check it before you pay
+
+A prompt pack is the one kind of product you cannot evaluate through the box,
+so we opened it.
+[SAMPLES.md](https://github.com/Honorboxx/crew/blob/main/SAMPLES.md) publishes
+the complete text of one paid agent and one paid skill, the `description` of
+all eighteen paid-only files, and the exact `diff` between the six free files
+and their paid counterparts. That diff is six inserted cross-references and
+nothing else, which means the [free tier](https://github.com/Honorboxx/crew)
+is an honest sample of the writing: judge the bar on the three free agents and
+you have judged it on the files you have not read.
+
+The same page carries a recorded run of the free reviewer and a paid agent
+against the same public commit of this store's engine. They overlapped on one
+observation out of sixteen and disposed of it differently, which is the only
+honest way to show that a roster stays in its lanes. The free reviewer also
+found a real bug on a money path in our own code, and that finding is
+published intact rather than edited out of the transcript.
+
+It also names the three files we think are the weakest in the pack, with the
+reasons. You would find them a day after paying anyway.
 
 ## What's inside
 
