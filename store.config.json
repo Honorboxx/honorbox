@@ -17,13 +17,13 @@
     },
     {
       "type": "showcase",
-      "title": "Five premium themes, one config line",
-      "note": "Real screenshots of this same storefront rebuilt with each HonorBox Pro theme.",
+      "title": "Five themes, one config line",
+      "note": "Real screenshots of this same storefront rebuilt with each theme. Terminal is in the free repo as a full code sample, so Pro adds the other four.",
       "items": [
         {
           "img": "./assets/previews/terminal.webp",
           "alt": "The same storefront in the terminal theme: phosphor green type on black",
-          "caption": "terminal: phosphor-on-black, for CLI tools",
+          "caption": "terminal: phosphor-on-black, for CLI tools (free)",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
