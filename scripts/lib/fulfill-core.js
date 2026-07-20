@@ -91,6 +91,21 @@ function pickNewPaidSessions(sessions, processedIds, grants) {
   );
 }
 
+// The one failure the engine used to swallow whole: a session the buyer PAID
+// for that matches no grant. pickNewPaidSessions drops it, so the run prints
+// "new_paid=0", exits 0, and looks perfectly healthy while the money sits in
+// the account and the buyer waits for access that is never coming. grantProblems
+// catches a grant that is malformed; this catches a grant that is merely wrong
+// (right shape, wrong id) or absent. Warn once per session — the caller
+// remembers which ids it has already reported, so a permanently unmatchable
+// session doesn't re-alert on every poll forever.
+function unmatchedPaidSessions(sessions, warnedIds, grants) {
+  const seen = new Set(warnedIds);
+  return sessions.filter(
+    (s) => isPaidComplete(s) && !seen.has(s.id) && matchGrant(s, grants) === null
+  );
+}
+
 // Public-safe ledger row: no names, no emails, no session ids in the clear.
 function ledgerRow(session, grant) {
   return {
@@ -159,6 +174,7 @@ module.exports = {
   isPaidComplete,
   matchGrant,
   pickNewPaidSessions,
+  unmatchedPaidSessions,
   ledgerRow,
   nextCursor,
 };

@@ -27,6 +27,7 @@ const {
   nextCursor,
   isRepoOwner,
   grantProblems,
+  unmatchedPaidSessions,
 } = require('./lib/fulfill-core.js');
 
 function arg(name, fallback) {
@@ -118,6 +119,20 @@ async function main() {
   const sessions = await listSessionsSince(since, stripeKey);
   const fresh = pickNewPaidSessions(sessions, state.processed, config.fulfillment);
   console.log(`sessions scanned=${sessions.length} new_paid=${fresh.length}`);
+
+  // Money came in that this store cannot deliver on. Say so on the run that
+  // sees it, once, in the shape the watchdog already greps for ("WARN:").
+  state.unmatched = Array.isArray(state.unmatched) ? state.unmatched : [];
+  for (const s of unmatchedPaidSessions(sessions, state.unmatched, config.fulfillment)) {
+    const paid = `${((s.amount_total ?? 0) / 100).toFixed(2)} ${(s.currency || '').toUpperCase()}`;
+    console.error(
+      `WARN: paid session ${s.id} (${paid}) matches no fulfillment grant — nothing was delivered. ` +
+        `Check the payment_link/price ids in the config. (Expected once per sale if this Stripe ` +
+        `account also sells products this store does not fulfill.)`
+    );
+    state.unmatched.push(s.id);
+  }
+  if (state.unmatched.length > 5000) state.unmatched = state.unmatched.slice(-5000);
 
   // Ledger dedup key: two runners (local 2-min + Actions safety net) can overlap;
   // the processed-set stops sequential re-processing, but a same-window collision

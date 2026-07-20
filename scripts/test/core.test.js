@@ -129,6 +129,28 @@ test('picks only new, paid, complete, grant-matched sessions', () => {
   assert.deepEqual(picked.map((s) => s.id), ['cs_test_abc123']);
 });
 
+test('a paid session no grant matches is picked out for a warning, not just dropped', () => {
+  // pickNewPaidSessions and unmatchedPaidSessions must partition the paid
+  // sessions between them: whatever the first one refuses to deliver, the
+  // second one has to hand to the operator. Anything falling between the two
+  // is a sale that disappears with a green log.
+  const { unmatchedPaidSessions } = require('../lib/fulfill-core.js');
+  const good = session();
+  const orphan = session({ id: 'cs_orphan', payment_link: 'plink_gone' });
+  const unpaid = session({ id: 'cs_unpaid', payment_link: 'plink_gone', payment_status: 'unpaid' });
+  const all = [good, orphan, unpaid];
+
+  assert.deepEqual(unmatchedPaidSessions(all, [], GRANTS).map((s) => s.id), ['cs_orphan']);
+  const delivered = pickNewPaidSessions(all, [], GRANTS).map((s) => s.id);
+  const warned = unmatchedPaidSessions(all, [], GRANTS).map((s) => s.id);
+  const paidIds = all.filter((s) => s.status === 'complete' && s.payment_status === 'paid').map((s) => s.id);
+  assert.deepEqual([...delivered, ...warned].sort(), paidIds.sort(), 'no paid session falls between the two');
+
+  // Already-warned ids drop out, so a permanently orphaned session does not
+  // re-alert on every poll for the rest of the store's life.
+  assert.deepEqual(unmatchedPaidSessions(all, ['cs_orphan'], GRANTS), []);
+});
+
 test('free (100%-off) completed sessions still count as fulfillable', () => {
   // Depending on Stripe's handling, a fully-discounted checkout reports either
   // "paid" (amount 0) or "no_payment_required". Both must fulfill.

@@ -87,6 +87,15 @@ function captureLog() {
   return { lines, restore: () => { console.log = orig; } };
 }
 
+// Same, for the loud channel. The watchdog greps this stream for FAILED and
+// WARN:, so "did it warn" is a testable property, not a matter of taste.
+function captureErr() {
+  const lines = [];
+  const orig = console.error;
+  console.error = (...a) => lines.push(a.join(' '));
+  return { lines, restore: () => { console.error = orig; } };
+}
+
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-fulfill-'));
 
 test('stripe requests pin Stripe-Version 2024-06-20', async () => {
@@ -241,4 +250,131 @@ test('the log distinguishes a real invite from an account that already had acces
   assert.ok(line204, cap2.lines.join('\n'));
   assert.match(line204, /octocat already had access to o\/r \(HTTP 204\)/);
   assert.ok(!/invited/.test(line204), `204 must not claim an invite: ${line204}`);
+});
+
+test('a paid session that matches no grant is reported, not swallowed', async () => {
+  // The worst shape of failure on the money path: the buyer paid, the grant
+  // ids are wrong or missing, pickNewPaidSessions drops the session, and the
+  // run prints new_paid=0 and exits 0. Nothing in the log said a sale had
+  // been lost. It must warn — once, on the loud channel the watchdog reads.
+  const dir = tmp();
+  const s = paidSession('cs_orphan_1', 1_700_000_000, { payment_link: 'plink_NOT_IN_CONFIG' });
+  const stripe = { match: 'api.stripe.com', res: () => jsonRes({ data: [s], has_more: false }) };
+  const github = { match: 'api.github.com', res: () => jsonRes({}, 201) };
+
+  const err1 = captureErr();
+  let first;
+  try { first = await runMain(dir, [stripe, github]); } finally { err1.restore(); }
+
+  const warn = err1.lines.find((l) => l.includes('cs_orphan_1'));
+  assert.ok(warn, `expected a warning, got:\n${err1.lines.join('\n')}`);
+  assert.match(warn, /^WARN:/, 'the watchdog greps for "WARN:" — the prefix is load-bearing');
+  assert.match(warn, /matches no fulfillment grant/);
+  assert.match(warn, /29\.00 USD/, 'the operator needs to know how much went undelivered');
+  assert.ok(!first.calls.some((c) => c.url.includes('api.github.com')), 'nothing to deliver, so no invite');
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+  assert.equal(ledger.rows.length, 0, 'an undeliverable session is not a sale');
+
+  // Second poll, same session: already reported. A session that can never
+  // match would otherwise re-alert every 2 minutes forever.
+  const err2 = captureErr();
+  try { await runMain(dir, [stripe, github]); } finally { err2.restore(); }
+  assert.ok(
+    !err2.lines.some((l) => l.includes('cs_orphan_1')),
+    `warned twice about the same session:\n${err2.lines.join('\n')}`
+  );
+});
+
+test('a burst of checkouts in one poll window all get delivered', async () => {
+  // HN traffic arrives in clumps: several sessions complete inside a single
+  // 120s poll. Every one of them must be invited, ledgered, and processed —
+  // the loop must not stop at the first, and the cursor must land on the
+  // newest session seen, not the last one iterated.
+  const dir = tmp();
+  const names = ['alice', 'bob', 'carol', 'dave', 'erin'];
+  const sessions = names.map((n, i) =>
+    paidSession(`cs_burst_${i}`, 1_700_000_000 + i, {
+      custom_fields: [{ key: 'github_username', text: { value: n } }],
+    })
+  );
+  const { calls, readState } = await runMain(dir, [
+    { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+    { match: 'api.github.com', res: () => jsonRes({}, 201) },
+  ]);
+
+  const invited = calls
+    .filter((c) => c.url.includes('api.github.com'))
+    .map((c) => c.url.split('/').pop());
+  assert.deepEqual(invited, names, 'every buyer in the burst gets exactly one invite');
+  const state = readState('fulfill-state.json');
+  assert.deepEqual(state.processed, sessions.map((s) => s.id));
+  assert.equal(state.failures.length, 0);
+  assert.equal(state.cursor, 1_700_000_004, 'cursor lands on the newest session in the burst');
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+  assert.equal(ledger.rows.length, 5);
+  assert.equal(ledger.total_sales, 5);
+  assert.equal(new Set(ledger.rows.map((r) => r.ref)).size, 5, 'one distinct ledger ref per sale');
+  assert.deepEqual(readState('new-sales.json'), names);
+});
+
+test('one undeliverable buyer in a burst does not block the buyers behind them', async () => {
+  // A single typo'd username 404s. If that aborted the loop — or quietly ate
+  // the rest — the buyers after it in the same poll would pay and get
+  // nothing, and the log would show one failure instead of four deliveries.
+  const dir = tmp();
+  const names = ['alice', 'ghost-user', 'carol'];
+  const sessions = names.map((n, i) =>
+    paidSession(`cs_mixed_${i}`, 1_700_000_000 + i, {
+      custom_fields: [{ key: 'github_username', text: { value: n } }],
+    })
+  );
+  const err = captureErr();
+  let run;
+  try {
+    run = await runMain(dir, [
+      { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+      {
+        match: 'api.github.com',
+        res: (url) =>
+          url.endsWith('/ghost-user')
+            ? jsonRes({ message: 'Not Found' }, 404)
+            : jsonRes({}, 201),
+      },
+    ]);
+  } finally { err.restore(); }
+
+  const state = run.readState('fulfill-state.json');
+  assert.deepEqual(state.processed, sessions.map((s) => s.id), 'all three are accounted for');
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+  assert.equal(ledger.rows.length, 3);
+  assert.equal(ledger.total_sales, 2, 'the failed one must not inflate the sales count');
+  const flagged = ledger.rows.filter((r) => r.needs_attention);
+  assert.equal(flagged.length, 1);
+  const loud = err.lines.find((l) => l.includes('cs_mixed_1'));
+  assert.ok(loud, `the failure must be loud:\n${err.lines.join('\n')}`);
+  assert.match(loud, /FAILED/);
+  assert.match(loud, /no such GitHub user/);
+  assert.deepEqual(run.readState('new-sales.json'), ['alice', 'carol']);
+});
+
+test('buyers type their username dirty: @, case, and profile URLs still reach GitHub', async () => {
+  // Whatever the buyer pastes into the Stripe field, the invite has to go to
+  // the right account. GitHub matches usernames case-insensitively, so case
+  // is passed through untouched rather than guessed at.
+  const dir = tmp();
+  const typed = ['@octocat', '  OctoCat  ', 'https://github.com/Octo-Cat', 'github.com/octocat/'];
+  const sessions = typed.map((v, i) =>
+    paidSession(`cs_dirty_${i}`, 1_700_000_000 + i, {
+      custom_fields: [{ key: 'github_username', text: { value: v } }],
+    })
+  );
+  const { calls, readState } = await runMain(dir, [
+    { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+    { match: 'api.github.com', res: () => jsonRes({}, 201) },
+  ]);
+  const invited = calls
+    .filter((c) => c.url.includes('api.github.com'))
+    .map((c) => c.url.split('/').pop());
+  assert.deepEqual(invited, ['octocat', 'OctoCat', 'Octo-Cat', 'octocat']);
+  assert.equal(readState('fulfill-state.json').failures.length, 0);
 });
