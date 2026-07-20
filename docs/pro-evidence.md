@@ -107,7 +107,7 @@ there pins that GitHub's own `expired` flag decides expiry, never our clock.
 ## ops bots: real issue, real ack
 
 Issue [Honorboxx/honorbox#1](https://github.com/Honorboxx/honorbox/issues/1)
-(public; verify yourself): opened as a delivery-problem test, auto-acknowledged
+is public, so you can verify this one yourself: it was auto-acknowledged
 and labeled `support` by `bots.js` on the next cycle:
 
 ```
