@@ -13,7 +13,7 @@ const {
 const { parseFrontmatter } = require('../lib/fm.js');
 const { renderMarkdown, excerpt, firstRasterImage } = require('../lib/md.js');
 const {
-  section, buyButton, productCard, productProblems, configProblems, slugProblems, templateProblems,
+  section, buyButton, productCard, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
 } = require('../build.js');
@@ -831,16 +831,34 @@ test('templateProblems: a fork cannot silently sell HonorBox products', () => {
   // This repo is both the live store and the template. A seller who re-homes
   // the storefront but keeps the shipped links gets Buy buttons that take
   // their buyers' money into HonorBox's Stripe balance and deliver nothing.
-  const ours = { repo: 'Honorboxx/honorbox' };
+  const ours = { repo: 'Honorboxx/honorbox', name: 'HonorBox', url: 'https://honorboxx.github.io/honorbox' };
   const products = [
     { id: 'crew', payment_link: 'https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03' },
     { id: 'honorbox-pro', payment_link: 'https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00' },
   ];
   // HonorBox's own build, and any contributor building locally, sees nothing.
   assert.deepEqual(templateProblems(ours, products), []);
-  assert.deepEqual(templateProblems({}, products), [], 'no repo set yet is not a fork');
+  assert.ok(isUpstreamStore(ours));
+  // A trailing slash on the URL is the same store, not a fork.
+  assert.deepEqual(templateProblems({ ...ours, url: `${ours.url}/` }, products), []);
 
-  const fork = { repo: 'janedev/tools' };
+  // The seller this guard exists for: they edited exactly the fields
+  // docs/setup.md lists (name, url, seller, copy) and never touched `repo`,
+  // because `repo` is not in that list. This used to return [] — the build
+  // exited 0 and shipped a storefront whose hero button sold HonorBox Pro into
+  // HonorBox's Stripe account. It must never be silent again.
+  const followedTheDocs = { ...ours, name: 'Widget Works', url: 'https://alice.github.io/widgets' };
+  const missed = templateProblems(followedTheDocs, products);
+  assert.ok(!isUpstreamStore(followedTheDocs));
+  assert.ok(missed.length >= 3, JSON.stringify(missed));
+  assert.ok(missed.some((o) => /"repo" is still HonorBox/.test(o)), 'names the unset field');
+  assert.ok(missed.some((o) => o.includes('products/honorbox-pro.md')), 'names the product file to delete');
+
+  // An untouched checkout of the template is still our store: no false alarm
+  // for a contributor who has changed nothing at all.
+  assert.deepEqual(templateProblems({ ...ours }, products), []);
+
+  const fork = { repo: 'janedev/tools', name: 'Jane', url: 'https://janedev.github.io/tools' };
   const out = templateProblems(fork, products);
   assert.equal(out.length, 2, JSON.stringify(out));
   for (const o of out) assert.match(o, /HonorBox's Stripe account/);

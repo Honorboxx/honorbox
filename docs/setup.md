@@ -13,6 +13,10 @@ activated Stripe account (charges enabled).
    - `url`: `https://<user>.github.io/<repo>` (or your custom domain later).
    - `seller`: who the merchant is. Use your real name or entity; it builds
      trust and it's the law in most places.
+   - `repo`: **your** storefront repo, as `owner/name`. This one is not
+     cosmetic — it is how the build knows the store is yours rather than a
+     copy of HonorBox's, and leaving it unset is what used to let a store
+     ship with HonorBox's Buy buttons still live.
    - `sections`: keep, edit, or delete the marketing sections. They're plain
      JSON; the `compare` and `faq` types cover most needs.
 3. Delete the shipped product files (`products/honorbox-pro.md` and
@@ -20,7 +24,8 @@ activated Stripe account (charges enabled).
    frontmatter shape. Both ship with HonorBox's real `payment_link`, so a
    store that keeps them sends its buyers to HonorBox's checkout and the
    money lands in HonorBox's Stripe account. The build refuses to produce
-   that store once `repo` is yours, and names the files to fix.
+   that store as soon as any of `name`, `url`, or `repo` is yours, and names
+   every file and field to fix.
 4. `node scripts/build.js` locally and open `dist/index.html` to preview.
 
 ## 2. Stripe

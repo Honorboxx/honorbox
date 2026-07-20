@@ -49,13 +49,18 @@ buyer ──▶ storefront (GitHub Pages, static)
                      ──▶ appends your (private) sales ledger
 ```
 
-The fulfillment engine is 190 lines of dependency-free Node on a 164-line pure
+The fulfillment engine is 229 lines of dependency-free Node on a 223-line pure
 logic core (which is why it can be unit-tested without a network). Read both in
 ten minutes: [`scripts/fulfill.js`](scripts/fulfill.js).
 
 ## Quickstart
 
-1. **Use this template**, edit `store.config.json` (name, copy, your URLs).
+1. **Use this template**, edit `store.config.json` — name, copy, your URLs, and
+   `repo` (your own `owner/name`). Then delete `products/honorbox-pro.md` and
+   `products/crew.md` and write your own: they carry HonorBox's real checkout
+   links, and a store that keeps them sells *our* product into *our* Stripe
+   account. The build stops you and names every leftover, but it is faster to
+   just delete them now.
 2. **One command creates your product on Stripe**: Product, Price, and a
    Payment Link with the delivery field, wired straight into your config:
 

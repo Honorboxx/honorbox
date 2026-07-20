@@ -17,12 +17,33 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 
+// Both spellings, because half the world types --price=2900 and the other half
+// types --price 2900. Accepting only the second produced the worst possible
+// error: `--price=2900` was parsed as an unknown token, `--price` came back
+// undefined, and init died with "--price is required" at a user who had just
+// supplied it. An error that contradicts what the operator can see on their own
+// command line sends them hunting through the wrong file.
 function arg(name, fallback) {
+  const eq = process.argv.find((a) => a.startsWith(`--${name}=`));
+  if (eq) return eq.slice(name.length + 3);
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
     ? process.argv[i + 1] : fallback;
 }
 const has = (name) => process.argv.includes(`--${name}`);
+
+const KNOWN_FLAGS = ['name', 'price', 'currency', 'repo', 'id', 'config', 'products', 'dry-run', 'yes', 'help'];
+
+// A typo'd flag used to be discarded in silence, so `--reppo you/x` died with
+// "--repo is required" — technically true and completely unhelpful. Worse, a
+// typo'd --repo on a real run would have created live Stripe objects pointing
+// at nothing. Name the token we did not understand.
+function unknownFlags(argv) {
+  return argv
+    .filter((a) => a.startsWith('--'))
+    .map((a) => a.slice(2).split('=')[0])
+    .filter((f) => !KNOWN_FLAGS.includes(f));
+}
 
 const SK = process.env.STRIPE_SECRET_KEY;
 const name = arg('name');
@@ -77,6 +98,14 @@ function paymentLinkParams(priceId, repo) {
 
 async function confirm(question) {
   if (has('yes')) return true;
+  // Non-interactive stdin — a pipe, CI, a devcontainer task, `| tee init.log` —
+  // never delivers an answer. readline's callback simply never fires, the event
+  // loop drains, and node exits 0 having created nothing and said nothing. A
+  // scripted caller reads that exit 0 as success and carries on. Refuse loudly
+  // rather than appearing to ask a question nobody can answer.
+  if (!process.stdin.isTTY) {
+    die('stdin is not a terminal, so nothing can answer this prompt. Re-run with --yes to create the objects, or --dry-run to see them without creating anything.');
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise((r) => rl.question(`${question} [y/N] `, r));
   rl.close();
@@ -86,7 +115,14 @@ async function confirm(question) {
 const created = []; // Stripe objects made so far, reported if a later step dies
 
 async function main() {
-  if (!SK) die('set STRIPE_SECRET_KEY (a restricted key with write on Products, Prices, Payment Links works)');
+  const unknown = unknownFlags(process.argv.slice(2));
+  if (unknown.length) {
+    die(`unknown flag${unknown.length > 1 ? 's' : ''} ${unknown.map((f) => `--${f}`).join(', ')}. Known flags: ${KNOWN_FLAGS.map((f) => `--${f}`).join(' ')}`);
+  }
+  // --dry-run touches nothing, so demanding a key for it turns away the most
+  // sensible first move a stranger can make: seeing what this would do before
+  // handing it credentials.
+  if (!SK && !has('dry-run')) die('set STRIPE_SECRET_KEY (a restricted key with write on Products and Payment Links; prices are created under Products)');
   if (!name) die('--name is required');
   if (!Number.isInteger(priceCents) || priceCents < 100) die('--price is required, in cents (e.g. 2900 = $29.00)');
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) die('--repo owner/private-product-repo is required');
@@ -154,13 +190,31 @@ account to the private repository — usually within 30 minutes. You keep
 access permanently; updates land in the same repo.
 `);
     console.log(`scaffolded: ${mdPath}`);
+  } else {
+    // The template ships products/honorbox-pro.md and products/crew.md. A
+    // seller whose --name derives one of those ids had their write skipped in
+    // silence and was then told to "edit" a page whose Buy button still charges
+    // into HonorBox's Stripe account.
+    const current = /payment_link:\s*(\S+)/.exec(fs.readFileSync(mdPath, 'utf8'));
+    console.log(`NOT scaffolded: ${mdPath} already exists, so it was left untouched.`);
+    if (current && current[1] !== link.url) {
+      console.log(`  WARNING: that page's payment_link is ${current[1]}`);
+      console.log(`  which is NOT the link just created. Until you replace it, this page sells somebody else's product.`);
+      console.log(`  Replace it with: ${link.url}`);
+    }
   }
 
   console.log(`\nDone. Next:
   1. Make ${repo} a private repo containing what buyers get
   2. Edit ${mdPath} (tagline, features, pitch)
-  3. node scripts/build.js && deploy — the buy button is already wired
-  4. Set up the fulfillment cron (docs/setup.md §5) if you haven't\n
+  3. Delete every products/*.md you are not selling, and set "repo" in
+     ${configPath} to your own storefront repo. The build refuses to publish a
+     store that still carries HonorBox's checkout links, and will list them.
+  4. Copy the updated ${configPath} into your private ops repo — the fulfillment
+     engine reads its grants from THAT copy, so a grant added here is not live
+     until it is copied across
+  5. node scripts/build.js && deploy
+  6. Set up the fulfillment cron (docs/setup.md §5) if you haven't\n
 Checkout URL: ${link.url}`);
 }
 

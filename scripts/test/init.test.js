@@ -99,3 +99,50 @@ test('init: payment link still carries the github_username field and the price',
     /you\/my-tool-access/
   );
 });
+
+test('init: --flag=value is accepted, not silently discarded', () => {
+  // `--price=2900` used to parse as an unknown token, so --price came back
+  // undefined and init died with "--price is required" at someone who had just
+  // supplied it. An error that contradicts the user's own command line is worse
+  // than no error: it sends them looking in the wrong place.
+  const dir = tmp();
+  const cfg = path.join(dir, 'store.config.json');
+  fs.writeFileSync(cfg, JSON.stringify({ name: 'S', url: 'https://s.io', fulfillment: [] }, null, 2));
+  const res = runInit([`--name=My Tool`, '--price=2900', '--repo=o/r', `--config=${cfg}`,
+    `--products=${path.join(dir, 'products')}`, '--dry-run']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(res.stdout, /\$29 one-time/);
+  assert.match(res.stdout, /My Tool/);
+});
+
+test('init: a typo\'d flag is named, instead of blamed on the flag it hid', () => {
+  const res = runInit(['--name', 'T', '--price', '2900', '--reppo', 'o/r', '--dry-run']);
+  assert.equal(res.status, 2, res.stdout + res.stderr);
+  assert.match(res.stderr, /--reppo/, res.stderr);
+  assert.doesNotMatch(res.stderr, /--repo owner\/private-product-repo is required/, res.stderr);
+});
+
+test('init: non-interactive stdin refuses loudly instead of exiting 0 having done nothing', () => {
+  // spawnSync gives the child a pipe, not a TTY — the same shape as CI, a
+  // devcontainer task, or `| tee init.log`. readline's callback never fires
+  // there, so this used to print the prompt and exit 0 with nothing created,
+  // which a scripted caller reads as success.
+  const dir = tmp();
+  const cfg = path.join(dir, 'store.config.json');
+  fs.writeFileSync(cfg, JSON.stringify({ name: 'S', url: 'https://s.io', fulfillment: [] }, null, 2));
+  const res = runInit(['--name', 'My Tool', '--price', '2900', '--repo', 'o/r',
+    '--config', cfg, '--products', path.join(dir, 'products')]);
+  assert.equal(res.status, 2, `expected a loud refusal, got ${res.status}: ${res.stdout}${res.stderr}`);
+  assert.match(res.stderr, /--yes|--dry-run/, res.stderr);
+});
+
+test('init: --dry-run does not demand a Stripe key it will never use', () => {
+  const dir = tmp();
+  const cfg = path.join(dir, 'store.config.json');
+  fs.writeFileSync(cfg, JSON.stringify({ name: 'S', url: 'https://s.io', fulfillment: [] }, null, 2));
+  const res = runInit(['--name', 'My Tool', '--price', '2900', '--repo', 'o/r',
+    '--config', cfg, '--products', path.join(dir, 'products'), '--dry-run'],
+    { STRIPE_SECRET_KEY: '' });
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(res.stdout, /dry run/);
+});

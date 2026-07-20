@@ -283,12 +283,40 @@ const UPSTREAM_CHECKOUT = new Set([
   'price_1TudkyE9zX2nUu1OTQhtZq8Q', // HonorBox Pro
 ]);
 
-// Nothing fires while `repo` is still HonorBox's, so this repo's own build and
-// a contributor's local build are untouched. A seller must set `repo` to their
-// own to deploy, which is exactly when the leftover links become dangerous.
+// Is this HonorBox's own storefront, or somebody's copy of it? The question is
+// unavoidable because this repo is at once the live store and the template of
+// itself: the shipped config carries REAL, live checkout links into HonorBox's
+// Stripe account.
+//
+// The gate used to key on `repo` alone, which left it silent for the one person
+// it most needed to stop. `repo` is not in the field list in docs/setup.md, so a
+// seller who edited exactly what the docs told them to — name, url, seller, the
+// copy — kept `repo` at its shipped value, the guard returned [], the build
+// exited 0, and their storefront's hero button read "Buy HonorBox Pro · $29"
+// pointed at our checkout. Their buyers' money would have landed in our balance.
+//
+// Identity is the honest signal. If ANY of name/url/repo has been made theirs,
+// this is no longer our store and our checkout links have no business in it.
+const UPSTREAM_NAME = 'HonorBox';
+const UPSTREAM_URL = 'https://honorboxx.github.io/honorbox';
+const trimSlash = (v) => String(v || '').replace(/\/$/, '');
+
+function isUpstreamStore(config) {
+  return (
+    config.repo === UPSTREAM_REPO &&
+    config.name === UPSTREAM_NAME &&
+    trimSlash(config.url) === UPSTREAM_URL
+  );
+}
+
 function templateProblems(config, products) {
-  if (!config.repo || config.repo === UPSTREAM_REPO) return [];
+  if (isUpstreamStore(config)) return [];
   const out = [];
+  // Say the quiet part first: the field nobody was told to set is the field
+  // that decides where the fulfillment engine tries to invite buyers.
+  if (!config.repo || config.repo === UPSTREAM_REPO) {
+    out.push('store.config.json: "repo" is still HonorBox\'s ("' + (config.repo || '') + '"). Set it to YOUR storefront repo (owner/name) — it is how this build knows the store is yours.');
+  }
   const owned = (v) => typeof v === 'string' && UPSTREAM_CHECKOUT.has(v.trim());
   for (const p of products) {
     if (owned(p.payment_link)) {
@@ -718,7 +746,7 @@ files that ship in the repo.</p>
 }
 
 module.exports = {
-  escapeHtml, buyButton, productCard, productProblems, configProblems, slugProblems, templateProblems, section,
+  escapeHtml, buyButton, productCard, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore, section,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
   PUBLISHED_DOCS, docTitle, rewriteDocLinks,
