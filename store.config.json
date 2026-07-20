@@ -17,17 +17,17 @@
       "note": "Real screenshots of this same storefront rebuilt with each HonorBox Pro theme.",
       "items": [
         {
-          "img": "./assets/previews/terminal.webp",
-          "alt": "The same storefront in the terminal theme: phosphor green type on black",
-          "caption": "terminal: phosphor-on-black, for CLI tools",
+          "img": "./assets/previews/atrium.webp",
+          "alt": "The same storefront in the atrium theme: minimal graphite type on a plaster ground",
+          "caption": "atrium: minimal, gallery-quiet",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
         },
         {
-          "img": "./assets/previews/editorial.webp",
-          "alt": "The same storefront in the editorial theme: serif type on book white",
-          "caption": "editorial: serif, book-calm",
+          "img": "./assets/previews/terminal.webp",
+          "alt": "The same storefront in the terminal theme: phosphor green type on black",
+          "caption": "terminal: phosphor-on-black, for CLI tools",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
@@ -41,17 +41,17 @@
           "height": 504
         },
         {
-          "img": "./assets/previews/midnight.webp",
-          "alt": "The same storefront in the midnight theme: deep indigo with a single amber accent",
-          "caption": "midnight: indigo night, one lamp",
+          "img": "./assets/previews/editorial.webp",
+          "alt": "The same storefront in the editorial theme: serif type on book white",
+          "caption": "editorial: serif, book-calm",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
         },
         {
-          "img": "./assets/previews/atrium.webp",
-          "alt": "The same storefront in the atrium theme: minimal graphite type on a plaster ground",
-          "caption": "atrium: minimal, gallery-quiet",
+          "img": "./assets/previews/midnight.webp",
+          "alt": "The same storefront in the midnight theme: deep indigo with a single amber accent",
+          "caption": "midnight: indigo night, one lamp",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
