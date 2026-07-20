@@ -661,7 +661,13 @@ for (const status of [403, 422]) {
     assert.equal(warns.length, 2, 'one warning that the cap is in force, one for what it is costing');
     assert.match(warns[0], /reached GitHub's cap of 50 repository invitations per 24 hours/);
     assert.match(warns[0], /NOTHING is lost/);
-    assert.match(warns[0], /organization/, 'the warning must name the way out of the cap');
+    // There is no way out of this cap, and we used to promise one. GitHub's
+    // "no limit for org members" note covers people who are ALREADY members;
+    // creating that membership for a buyer is itself capped. So the warning
+    // must not send a seller off to do a pre-launch migration that buys them
+    // nothing, and must not hide that the org path leaks the buyer list.
+    assert.match(warns[0], /cannot be removed/, 'the warning must not promise a fix that does not exist');
+    assert.doesNotMatch(warns[0], /To remove the ceiling/, 'the old false advice must not come back');
     assert.match(warns[1], /3 paid buyers are waiting behind the invitation cap on o\/r/);
     // The queued ones say so plainly, and do not read as failures.
     assert.equal(out.lines.filter((l) => /^queued cs_burst_/.test(l)).length, 2);

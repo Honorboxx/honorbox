@@ -136,11 +136,23 @@ organization and invite buyers as org members, which GitHub does not cap.
 WARN: 10 paid buyers are waiting behind the invitation cap on you/product.
 ```
 
-**If you expect more than 50 sales in a day, move the product repo into a
-GitHub organization before you launch.** Organizations are free, the move is
-`Settings -> Transfer ownership`, and inviting org members to an org repo has
-no cap. Doing it before a launch costs ten minutes; doing it during one means
-some buyers wait a day.
+**There is no way to remove this ceiling, so plan around it rather than
+against it.** GitHub's note that inviting organization members to an
+organization repository is uncapped applies to people who are *already* members.
+A buyer who just paid is not, so creating that membership is itself capped: 50
+new organization invitations per 24 hours, rising to 500 once the organization
+is over a month old or on a paid plan. That moves the ceiling from per repo to
+per organization, which is worse if you sell several products from one
+organization, and worse again during your first month.
+
+Inviting buyers as organization members also lets every buyer list every other
+buyer, because GitHub returns concealed members to anyone inside the
+organization. Your customer list becomes readable by your customers. HonorBox
+invites buyers as outside collaborators for that reason and will keep doing so.
+
+What the cap actually costs you is a delay, not a sale. Buyers past the fiftieth
+are queued and invited automatically as it frees up, and you are told they are
+waiting.
 
 One honest caveat: GitHub documents that the cap exists but does not document
 which HTTP status it returns, and we cannot manufacture 50 real invitations to

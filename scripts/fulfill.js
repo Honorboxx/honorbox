@@ -298,8 +298,9 @@ async function main(sleep = defaultSleep) {
           `WARN: ${grant.repo} has reached GitHub's cap of ${INVITE_CAP_PER_REPO_PER_DAY} repository ` +
             `invitations per 24 hours. Sales are still being recorded and NOTHING is lost: queued buyers ` +
             `are invited automatically as the cap frees up, which takes up to 24h from the invite that ` +
-            `filled it. To remove the ceiling, move the repo into a GitHub organization and invite buyers ` +
-            `as org members, which GitHub does not cap.`
+            `filled it. This ceiling cannot be removed: inviting buyers as org members is capped too ` +
+            `(50/day for a new org, 500 once it is over a month old) and it lets every buyer list every ` +
+            `other buyer.`
         );
       }
       const attempt = inviteAttempts(state.failures, s.id) + 1;
