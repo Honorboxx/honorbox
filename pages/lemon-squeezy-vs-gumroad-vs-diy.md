@@ -90,8 +90,10 @@ fee is cheaper than your time.
   or refund, and is a merchant of record. Its free tier is 5% + 50¢
   ([fees](https://polar.sh/docs/merchant-of-record/fees), checked July 20,
   2026). If that's your shape, it's the better tool and you should use it.
-- **Subscriptions and license keys at volume.** You can build both on plain
-  Stripe, but Lemon Squeezy ships them today.
+- **Seats, metered billing, or a hosted customer portal.** Subscription access
+  control and offline license keys do exist on the direct route (HonorBox
+  enforces the first, its paid tier issues the second). Per-seat plans, usage
+  billing and a portal are what Lemon Squeezy ships and this does not.
 - **You want instant-download delivery** and won't deploy anything: platforms
   hand you a hosted download; DIY makes delivery your problem.
 

@@ -1,61 +1,67 @@
 # HonorBox Pro: production evidence (public copy)
 
 Pro is delivered as a private repo, which fairly reads as "blind purchase."
-This document is the audit surface: transcripts of every Pro module running
-against the live store, the license module's complete API surface, and the
-playbook's full table of contents. The `terminal` theme is published whole in
-this repo (`themes/terminal/`), so the code standard is checkable before you
-pay for the rest.
-
+This document is the audit surface: what every Pro module prints and how to
+read it, the license module's complete API surface, and the playbook's full
+table of contents. The `terminal` theme is published whole in this repo
+(`themes/terminal/`), so the code standard is checkable before you pay for the
+rest.
 
 Fair question from a skeptical reviewer: *"ops bots and stats are plausible
-but I couldn't execute them without live keys."* Correct, so here is the
-evidence from the store this repo funds, which runs every module below in
-production. Sanitized only where buyer privacy requires.
+but I couldn't execute them without live keys."* Correct. Every module below
+runs in production on the store this repo funds, and what is reproduced here is
+its real output *format* on a synthetic store: placeholder handles, a
+placeholder product, masked ids, invented amounts. Our own order counts and
+revenue are not published anywhere, which is the same discipline
+[least-privilege.md](least-privilege.md) asks of you.
 
-## doctor: run against the live HonorBox store (2026-07-18)
+## doctor: what a clean preflight looks like
 
 ```
 [ OK ] config: parses
-[ OK ] config: has name / url / theme
+[ OK ] config: has name
+[ OK ] config: has url
+[ OK ] config: has theme
 [ OK ] config: fulfillment[] present
 [ OK ] fulfillment[0]: repo is owner/name
 [ OK ] fulfillment[0]: payment_link is a plink_ id
 [ OK ] products: at least one
-[ OK ] product honorbox-pro.md: frontmatter / id/name/price / checkout URL
-[ OK ] stripe: plink_… exists (HTTP 200)
+[ OK ] product widget-pro.md: frontmatter
+[ OK ] product widget-pro.md: id/name/price
+[ OK ] product widget-pro.md: payment_link is checkout URL
+[ OK ] stripe: plink_… exists
 [ OK ] stripe: plink_… active
-[ OK ] stripe: price_… exists (HTTP 200)
-[ OK ] github: product repo reachable
-[ OK ] github: product repo is private
-[ OK ] github: token can admin product repo
-[ OK ] site: config.url reachable (HTTP 200)
+[ OK ] stripe: price_… exists
+[ OK ] github: you/widget-pro-access reachable
+[ OK ] github: you/widget-pro-access is private
+[ OK ] github: token can admin you/widget-pro-access
+[ OK ] site: config.url reachable
 
 18 checks, 0 failing
 ```
 
-Two caveats so the numbers line up: the lines above are an excerpt (14 of the
-18), and the run predates Crew, so it covers a single product and a single
-fulfillment entry. The store sells two products today, and a current run
-covers both. All three tiers are exercised either way: offline config checks,
-live Stripe API, GitHub token permissions.
+That is one product and one fulfillment entry; the per-product and
+per-fulfillment checks repeat, so a bigger catalogue prints more rows. All
+three tiers are exercised: offline config checks, live Stripe API, GitHub token
+permissions. Without keys the six live checks collapse into two `[WARN]` lines
+telling you which variable to set, and the run still exits 0.
 
-## reconcile: run against the live HonorBox store (2026-07-20)
+## reconcile: what a run tells you
 
-Real output. One edit, and only this one: Stripe Checkout session ids are cut to
-their first 20 characters. Nothing else is changed: not a date, not a status,
-not the LOST row further down.
+Below is reconcile's output format, on a synthetic store: placeholder handles, a
+placeholder product, and masked session ids. The verdicts, the counts line, the
+revenue line and the exit code are exactly what the module prints.
 
-Cutting them costs a reader nothing, because a session id is not something you
-could have checked anyway: retrieving one needs this account's secret key
+It is deliberately not our account's data. Publishing that would model the
+opposite of what [least-privilege.md](least-privilege.md) asks of you, and what
+you need in order to judge this module is the shape of the answer it gives, not
+our numbers. Session ids are masked for the same reason they would be worth
+nothing unmasked: retrieving one needs the account's secret key
 (`/v1/checkout/sessions/…` answers 401 without it), and the hosted checkout URL
-returns a byte-identical page for a fabricated id as for a real one. The full
-string is unverifiable decoration. Publishing it would also model the opposite
-of what [least-privilege.md](least-privilege.md) asks of you; your sessions,
-unlike these four $0 self-tests, will belong to real buyers.
+returns a byte-identical page for a fabricated id as for a real one.
 
 ```
-Your store: last 90 days
+HonorBox reconcile: last 90 days
 
 [ OK ] 2026-05-14 Widget Pro    29.00 USD  @ada-example      delivered
        cs_live_XXXXXXXXXXXX…
@@ -101,7 +107,7 @@ there pins that GitHub's own `expired` flag decides expiry, never our clock.
 ## ops bots: real issue, real ack
 
 Issue [Honorboxx/honorbox#1](https://github.com/Honorboxx/honorbox/issues/1)
-(public; verify yourself): opened as a delivery-problem test, auto-acknowledged
+is public, so you can verify this one yourself: it was auto-acknowledged
 and labeled `support` by `bots.js` on the next cycle:
 
 ```
@@ -114,15 +120,15 @@ the same GitHub API calls you can read in `ops-bots/bots.js`, and it scopes
 each revocation to the repos that purchase granted, matched by payment link,
 so a buyer who owns two products and refunds one keeps the other.
 
-## stats: rendered from the live Stripe account
+## stats: what the command prints
 
 ```
-report -> report.html  (14 orders, gross 406.00 USD, 1 refund)
+report -> report.html  (2 orders, gross 29.00 USD, 0 refunds)
 ```
 
-(The store was hours old at that run; one $0 end-to-end test order. The
-point is the pipeline: sessions + refunds paginated from the live API,
-report rendered, no trackers anywhere.)
+Synthetic figures, matching the example store above. The point is the pipeline:
+sessions and refunds paginated from the Stripe API, the report rendered to one
+offline HTML file, and no tracker anywhere.
 
 ## license module: sign/verify round-trip (2026-07-18)
 

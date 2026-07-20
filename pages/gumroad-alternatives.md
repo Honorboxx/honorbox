@@ -104,7 +104,8 @@ want it on principle. It is not worth making at ten sales a month.
   costs more than that in time alone. Polar or Lemon Squeezy.
 - Selling **through GitHub and you want tax handled** → Polar. Native repo
   access, instant, revoked on refund, and they are the merchant of record.
-- Selling **software with licenses and real volume** → Lemon Squeezy or Paddle.
+- Selling software that needs **seats, metered billing, or a hosted customer
+  portal** → Lemon Squeezy or Paddle.
 - Selling **code, templates, boilerplates, courses, or tools** to people who
   have GitHub accounts, at enough volume that the percentage beats the
   paperwork, or because you want the Stripe account and the customer to be

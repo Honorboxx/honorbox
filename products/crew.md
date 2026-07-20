@@ -12,7 +12,7 @@ payment_link: https://buy.stripe.com/8x29AT8J9d7xdqc8hma7C03
 features:
   - 10 specialist agents: reviewer, debugger, planner, tester, security, perf, refactorer, docs, simplifier, captain
   - 14 discipline skills: TDD, verification-before-done, PR authoring, accurate changelogs, safe shipping
-  - Safety hooks: git guard, secret shield, post-edit format (commented, auditable shell)
+  - Six safety hooks: git, shell, exfil, scope and secret guards, plus post-edit format (commented, auditable shell, with test suites)
   - CLAUDE.md starter templates for solo and team repos
   - One-command installer with dry-run, conflict detection, and clean uninstall
   - Free tier on GitHub: 3 agents + 3 skills, MIT, try before buying
@@ -43,7 +43,7 @@ you have judged it on the files you have not read.
 
 The same page carries a recorded run of the free reviewer and a paid agent
 against the same public commit of this store's engine. They overlapped on one
-observation out of sixteen and disposed of it differently, which is the only
+observation out of fifteen and disposed of it differently, which is the only
 honest way to show that a roster stays in its lanes. The free reviewer also
 found a real bug on a money path in our own code, and that finding is
 published intact rather than edited out of the transcript.
@@ -65,9 +65,10 @@ test-driven development, verification before claiming done, PR authoring,
 accurate changelogs, safe shipping checklists, structured handoffs between
 sessions.
 
-**Hooks and templates.** Auditable shell hooks (block force-pushes to main,
-stop secrets from entering files, format-on-edit) and CLAUDE.md starters for
-solo and team repositories.
+**Hooks and templates.** Six auditable shell hooks and CLAUDE.md starters for
+solo and team repositories. Five are guards that block: force-pushes to main,
+destructive shell commands, exfiltration, out-of-scope edits, and secrets
+entering files. The sixth, format-on-edit, is a convenience that fails open.
 
 **The installer.** POSIX sh, zero dependencies: `--dry-run` narrates before
 touching anything, checksum-based conflict detection refuses to clobber your

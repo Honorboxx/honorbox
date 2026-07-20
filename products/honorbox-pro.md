@@ -142,8 +142,9 @@ shipped in this repo), the license module's
 [full API surface](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md#the-license-module-api-surface)
 with the key format and both verify snippets, the playbook's complete table of
 contents, and
-[transcripts](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md)
-of every module run against the live store.
+[what every module prints](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md),
+in its real format, so you can see the answer each one gives before you pay for
+the code behind it.
 
 **Skip Pro if** you're selling one PDF or template. The free core is already a
 complete store, and Pro adds little you'd use. Skip it too if you're happy in
