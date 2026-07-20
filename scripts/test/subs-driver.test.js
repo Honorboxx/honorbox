@@ -207,6 +207,68 @@ test('an armed reconciler within the limit does revoke, loudly', async () => {
   assert.ok(state.grants['acme/widget|u1'], 'and the active customers are untouched');
 });
 
+// --- two runners, and a pass that dies halfway -------------------------------
+
+test('a second runner does not start while the first is mid-pass', async () => {
+  const dir = tmpdir();
+  const statePath = path.join(dir, 'state', 'subscriptions.json');
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  // A lock left by a pass that is still running. The second runner must not
+  // reconcile: two passes acting on the same state both write the shared
+  // revocation record, and the loser's entry is overwritten, which leaves a
+  // person removed with nothing on record saying so.
+  fs.writeFileSync(`${statePath}.lock`, JSON.stringify({ pid: 4242, at: new Date().toISOString() }) + '\n');
+  const { calls, logs } = await runMain(
+    dir,
+    [], // every route throws: touching the network at all fails this test
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true } },
+    { version: 1, cursor: 1, users: {}, grants: {}, breaker: {} }
+  );
+  assert.equal(calls.length, 0, 'a locked-out runner must make no calls at all');
+  assert.match(logs, /another reconciler pass is already running/);
+});
+
+test('a lock left by a killed pass is broken rather than wedging enforcement shut', async () => {
+  const dir = tmpdir();
+  const statePath = path.join(dir, 'state', 'subscriptions.json');
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  const lockPath = `${statePath}.lock`;
+  // Deliberately corrupt AND old. Age is read from mtime, so a lock whose
+  // contents cannot be parsed still expires: a store must never stop enforcing
+  // forever because a file got truncated.
+  fs.writeFileSync(lockPath, '{ this is not json');
+  const old = Date.now() - 45 * 60 * 1000;
+  fs.utimesSync(lockPath, old / 1000, old / 1000);
+  const { logs } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true } },
+    { version: 1, cursor: 1, users: {}, grants: {}, breaker: {} }
+  );
+  assert.match(logs, /breaking a subscription reconciler lock/);
+  assert.match(logs, /subscriptions done/, 'and the pass then runs normally');
+  assert.equal(fs.existsSync(lockPath), false, 'the lock is released when the pass finishes');
+});
+
+test('a pass that throws still releases its lock and still backs off', async () => {
+  const dir = tmpdir();
+  const statePath = path.join(dir, 'state', 'subscriptions.json');
+  await assert.rejects(runMain(
+    dir,
+    [{ match: '/v1/subscriptions', res: () => jsonRes({ error: 'boom' }, 500) }],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true } },
+    { version: 1, cursor: 1, users: {}, grants: {}, breaker: {} }
+  ));
+  assert.equal(fs.existsSync(`${statePath}.lock`), false,
+    'a crashed pass must not leave a lock that blocks the next one');
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  assert.ok(state.last_attempt,
+    'the attempt is recorded, or a permanently failing pass enumerates Stripe on every scheduler tick');
+});
+
 // --- the breaker under adversarial conditions --------------------------------
 // These run at the driver level on purpose. The unit tests hand breakerVerdict
 // a denominator directly; here the denominator is whatever the real pass
