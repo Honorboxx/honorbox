@@ -95,6 +95,20 @@ function writeJson(file, obj) {
 // the shared revocation record, not a wrong decision.
 const LOCK_MAX_AGE_MS = 30 * 60 * 1000;
 
+// Beside the state file, as a dotfile, and it MUST NOT be committed.
+//
+// Ops runners commit `state/` wholesale every cycle, which would sweep a lock
+// file into git and push it to every other runner. That is worse than untidy:
+// git does not preserve mtimes, so a checkout stamps a long-dead lock with the
+// current time, and the staleness rule that is supposed to break it instead
+// reads it as a pass that started seconds ago. Enforcement would then be wedged
+// on that machine for the full window, on the strength of a lock nobody holds.
+// run-fulfill.sh already learned this and gitignores its own lock; both repos
+// ignore `state/*.lock` for this one.
+function lockPathFor(statePath) {
+  return path.join(path.dirname(statePath), `.${path.basename(statePath)}.lock`);
+}
+
 function acquireLock(lockPath, now) {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -361,7 +375,7 @@ async function main(sleep = defaultSleep) {
   }
 
   // Nothing below this point may run twice at once. See acquireLock.
-  const lockPath = `${statePath}.lock`;
+  const lockPath = lockPathFor(statePath);
   if (!acquireLock(lockPath, now)) {
     console.log('subscriptions: another reconciler pass is already running, skipping this one');
     return;

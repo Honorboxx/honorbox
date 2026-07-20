@@ -2,3 +2,8 @@ dist/
 .DS_Store
 node_modules/
 .claude/
+
+# The subscription reconciler's single-instance lock. A committed lock file
+# would be pushed to other runners, and git does not preserve mtimes, so a dead
+# lock would arrive looking freshly taken and block enforcement there.
+state/*.lock

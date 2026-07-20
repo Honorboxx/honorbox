@@ -14,6 +14,11 @@ const path = require('node:path');
 
 const driver = require('../reconcile-subs.js');
 
+// The lock lives beside the state file as a dotfile so ops runners that commit
+// state/ wholesale cannot sweep it into git. Tests derive it the same way.
+const lockPathFor = (statePath) =>
+  path.join(path.dirname(statePath), `.${path.basename(statePath)}.lock`);
+
 // A test must never write into the repository's own state/. The reconciler
 // defaults --state and --bots-state to paths under the working directory, so a
 // harness that forgets to redirect them silently commits test data, or worse,
@@ -291,7 +296,7 @@ test('a second runner does not start while the first is mid-pass', async () => {
   // reconcile: two passes acting on the same state both write the shared
   // revocation record, and the loser's entry is overwritten, which leaves a
   // person removed with nothing on record saying so.
-  fs.writeFileSync(`${statePath}.lock`, JSON.stringify({ pid: 4242, at: new Date().toISOString() }) + '\n');
+  fs.writeFileSync(lockPathFor(statePath), JSON.stringify({ pid: 4242, at: new Date().toISOString() }) + '\n');
   const { calls, logs } = await runMain(
     dir,
     [], // every route throws: touching the network at all fails this test
@@ -306,7 +311,7 @@ test('a lock left by a killed pass is broken rather than wedging enforcement shu
   const dir = tmpdir();
   const statePath = path.join(dir, 'state', 'subscriptions.json');
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  const lockPath = `${statePath}.lock`;
+  const lockPath = lockPathFor(statePath);
   // Deliberately corrupt AND old. Age is read from mtime, so a lock whose
   // contents cannot be parsed still expires: a store must never stop enforcing
   // forever because a file got truncated.
@@ -336,7 +341,7 @@ test('a pass that throws still releases its lock and still backs off', async () 
     { fulfillment: FULFILLMENT, subscriptions: { enforce: true } },
     { version: 1, cursor: 1, users: {}, grants: {}, breaker: {} }
   ));
-  assert.equal(fs.existsSync(`${statePath}.lock`), false,
+  assert.equal(fs.existsSync(lockPathFor(statePath)), false,
     'a crashed pass must not leave a lock that blocks the next one');
   const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
   assert.ok(state.last_attempt,
