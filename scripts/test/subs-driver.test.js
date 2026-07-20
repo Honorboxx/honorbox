@@ -65,7 +65,7 @@ function tmpdir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hb-subs-'));
 }
 
-async function runMain(dir, routes, config, stateSeed) {
+async function runMain(dir, routes, config, stateSeed, extraArgs = []) {
   const cfg = path.join(dir, 'store.config.json');
   fs.writeFileSync(cfg, JSON.stringify(config));
   const statePath = path.join(dir, 'state', 'subscriptions.json');
@@ -89,7 +89,7 @@ async function runMain(dir, routes, config, stateSeed) {
   // revocation for a repo that does not exist.
   const botsStatePath = path.join(dir, 'state', 'bots-state.json');
   process.argv = ['node', 'reconcile-subs.js', '--config', cfg, '--state', statePath,
-    '--bots-state', botsStatePath, '--force'];
+    '--bots-state', botsStatePath, '--force', ...extraArgs];
   const f = stubFetch(routes);
   try {
     await driver.main(async () => {});
@@ -205,6 +205,146 @@ test('an armed reconciler within the limit does revoke, loudly', async () => {
   assert.match(logs, /Undo: gh api -X PUT/);
   assert.equal(state.grants['acme/widget|u0'], undefined, 'the record is cleared');
   assert.ok(state.grants['acme/widget|u1'], 'and the active customers are untouched');
+});
+
+// --- the breaker under adversarial conditions --------------------------------
+// These run at the driver level on purpose. The unit tests hand breakerVerdict
+// a denominator directly; here the denominator is whatever the real pass
+// computed, which is the number that actually gates a revocation. The two are
+// not the same: people who are due are by definition no longer entitled, so a
+// store losing everybody has a denominator of ZERO, not of its former size.
+
+// Whole-store cancellation at each size that straddles the floor. This is the
+// documented cost of having a floor at all, and it is asserted rather than
+// assumed so that nobody changes the floor without seeing what it permits.
+for (const [size, allowed] of [[1, true], [2, true], [3, true], [4, false]]) {
+  test(`a store of ${size} losing every subscriber is ${allowed ? 'allowed under the floor' : 'refused'}`, async () => {
+    const dir = tmpdir();
+    const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+    const grants = {};
+    const users = {};
+    const subs = [];
+    for (let i = 0; i < size; i++) {
+      grants[`acme/widget|u${i}`] = { sub: `sub_${i}`, repo: 'acme/widget', user: `u${i}`, lapsed_since: long_ago };
+      users[`sub_${i}`] = `u${i}`;
+      subs.push(subscription(`sub_${i}`, 'canceled'));
+    }
+    const { calls, logs } = await runMain(
+      dir,
+      [
+        { match: '/v1/subscriptions', res: () => jsonRes({ data: subs, has_more: false }) },
+        { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+        { match: '/invitations', res: () => jsonRes([]) },
+        { match: '/collaborators/', res: () => jsonRes({}, 204) },
+      ],
+      { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+      { version: 1, cursor: 1, users, grants, breaker: { tripped_at: null, would_revoke: [] } }
+    );
+    const deletes = calls.filter((c) => c.method === 'DELETE' && c.url.includes('/collaborators/'));
+    assert.equal(deletes.length, allowed ? size : 0);
+    if (allowed) {
+      // Permitted, and never quietly: emptying the store is the most
+      // consequential thing this program can do at any size.
+      assert.match(logs, /leaves NOBODY entitled on this store/);
+    } else {
+      assert.match(logs, /REVOCATION REFUSED/);
+    }
+  });
+}
+
+test('an entitled set emptied by a Stripe error can never reach the breaker', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  const grants = {};
+  const users = {};
+  for (let i = 0; i < 40; i++) {
+    grants[`acme/widget|u${i}`] = { sub: `sub_${i}`, repo: 'acme/widget', user: `u${i}`, lapsed_since: long_ago };
+    users[`sub_${i}`] = `u${i}`;
+  }
+  // The failure is on the SECOND page. The first page succeeded, so a pager
+  // that returned what it had would hand the breaker a plausible-looking
+  // partial set rather than an obviously empty one, and forty people would be
+  // measured against a denominator built from half the truth.
+  let page = 0;
+  await assert.rejects(
+    runMain(
+      dir,
+      [
+        {
+          match: '/v1/subscriptions',
+          res: () => (page++ === 0
+            ? jsonRes({ data: [subscription('sub_0', 'active')], has_more: true })
+            : jsonRes({ error: { message: 'gateway' } }, 500)),
+        },
+        { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      ],
+      { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+      { version: 1, cursor: 1, users, grants, breaker: { tripped_at: null, would_revoke: [] } }
+    ),
+    /Stripe \/v1\/subscriptions/,
+    'a half-read customer list must abort the pass, not be reconciled against'
+  );
+});
+
+test('zero subscriptions from Stripe is refused and cannot be overridden', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  const savedArgv = process.argv;
+  const { calls, logs } = await runMain(
+    dir,
+    [
+      // A well-formed empty list: the signature of a wrong key or wrong
+      // account, not of every customer leaving in the same hour.
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_a: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_a', repo: 'acme/widget', user: 'alice', lapsed_since: long_ago } },
+      breaker: { tripped_at: null, would_revoke: [] },
+    },
+    ['--allow-mass-revocation']
+  );
+  process.argv = savedArgv;
+  assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0);
+  assert.match(logs, /ZERO subscriptions/);
+  // The override must not even be advertised here: this guard is never wrong.
+  assert.doesNotMatch(logs, /--allow-mass-revocation/);
+});
+
+test('a real mass cancellation can be enforced, once, on purpose', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  const grants = {};
+  const users = {};
+  const subs = [];
+  for (let i = 0; i < 10; i++) {
+    grants[`acme/widget|u${i}`] = { sub: `sub_${i}`, repo: 'acme/widget', user: `u${i}`, lapsed_since: long_ago };
+    users[`sub_${i}`] = `u${i}`;
+    subs.push(subscription(`sub_${i}`, 'canceled'));
+  }
+  const routes = [
+    { match: '/v1/subscriptions', res: () => jsonRes({ data: subs, has_more: false }) },
+    { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+    { match: '/invitations', res: () => jsonRes([]) },
+    { match: '/collaborators/', res: () => jsonRes({}, 204) },
+  ];
+  const config = { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } };
+  const seed = () => ({ version: 1, cursor: 1, users, grants: JSON.parse(JSON.stringify(grants)), breaker: {} });
+
+  // Refused by default, and the refusal tells the seller how to proceed.
+  const refused = await runMain(dir, routes, config, seed());
+  assert.equal(refused.calls.filter((c) => c.method === 'DELETE').length, 0);
+  assert.match(refused.logs, /re-run once with --allow-mass-revocation/);
+
+  // Asked for explicitly, it goes through, and still says what it did.
+  const forced = await runMain(tmpdir(), routes, config, seed(), ['--allow-mass-revocation']);
+  const deletes = forced.calls.filter((c) => c.method === 'DELETE' && c.url.includes('/collaborators/'));
+  assert.equal(deletes.length, 10, 'the seller asked for this one');
+  assert.match(forced.logs, /leaves NOBODY entitled on this store/);
+  assert.match(forced.logs, /allowed for this run only/);
 });
 
 // --- the enumeration contract -----------------------------------------------
@@ -351,6 +491,30 @@ test('a customer whose new subscription is past_due is not revoked over their ol
     'a customer with a live past_due subscription must never be revoked');
   assert.doesNotMatch(logs, /REVOKED alice/);
   assert.ok(state.grants['acme/widget|alice'], 'and her grant record survives');
+});
+
+test('an invitation list that cannot be read is reported, not read as empty', async () => {
+  const dir = tmpdir();
+  const long_ago = new Date(Date.now() - 99 * 86_400_000).toISOString();
+  // The collaborator was removed but the invitation list 500s. Treating that
+  // failure as "no invitations pending" leaves a live invitation the customer
+  // can still accept, and reports a clean revocation over the top of it.
+  const { logs } = await runMain(
+    dir,
+    [
+      { match: '/v1/subscriptions', res: () => jsonRes({ data: [subscription('sub_a', 'canceled')], has_more: false }) },
+      { match: '/v1/checkout/sessions', res: () => jsonRes({ data: [], has_more: false }) },
+      { match: '/invitations', res: () => jsonRes({ message: 'server error' }, 500) },
+      { match: '/collaborators/', res: () => jsonRes({}, 204) },
+    ],
+    { fulfillment: FULFILLMENT, subscriptions: { enforce: true, grace_days: 7 } },
+    {
+      version: 1, cursor: 1, users: { sub_a: 'alice' },
+      grants: { 'acme/widget|alice': { sub: 'sub_a', repo: 'acme/widget', user: 'alice', lapsed_since: long_ago } },
+      breaker: { tripped_at: null, would_revoke: [] },
+    }
+  );
+  assert.match(logs, /could not read its invitation list/);
 });
 
 test('a revocation GitHub could not confirm is not reported as done', async () => {

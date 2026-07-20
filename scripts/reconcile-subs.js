@@ -27,6 +27,7 @@ const {
   breakerVerdict,
   revokeLine,
   breakerLine,
+  sweepLine,
   subscriptionConfigProblems,
   grantKey,
   normalizeUser,
@@ -363,16 +364,31 @@ async function main(sleep = defaultSleep) {
 
   // Revocations, gated.
   const entitledPairs = [...desired.values()];
+  // Deliberately a command-line flag and never a config key. A seller who has
+  // decided that one particular exodus is real has decided it about that pass,
+  // not about every pass from now on; a config key would be set once during an
+  // incident and left on, quietly disarming the breaker for good.
+  const override = process.argv.includes('--allow-mass-revocation');
   const verdict = breakerVerdict(diff.due, entitledPairs, {
     percent: subsConfig.revoke_limit_percent,
     floor: subsConfig.revoke_limit_floor,
     enumeratedSubs: subs.length,
+    override,
   });
 
   if (!verdict.allowed) {
     console.error(breakerLine(verdict, diff.due));
     state.breaker = { tripped_at: new Date(now).toISOString(), would_revoke: diff.due.map((p) => p.key) };
   } else {
+    // An overridden breaker always announces itself, sweep or not. The whole
+    // value of the control is that going past it leaves a mark in the log.
+    if (verdict.overridden) {
+      console.error(
+        `WARN: SAFETY LIMIT OVERRIDDEN by --allow-mass-revocation: ${verdict.reason}. ` +
+          `This flag applies to this run only and is not remembered`
+      );
+    }
+    if (verdict.sweep && verdict.people > 0) console.error(sweepLine(verdict));
     state.breaker = { tripped_at: null, would_revoke: [] };
     for (const p of diff.due) {
       if (!enforce) { console.error(revokeLine(p, { dryRun: true })); continue; }

@@ -336,11 +336,23 @@ function distinctUsers(pairs) {
 // suspected bug is mass revocation in slow motion, each pass taking its three,
 // alarming, and draining the store over a day while looking like it is
 // behaving. Refuse the entire pass.
+//
+// `opts.override` is the seller saying "this mass cancellation is real, do it".
+// It relaxes the size limit and NOTHING ELSE: the zero-subscriptions guard
+// below is not overridable by anything, because "Stripe returned nothing" is
+// never what a genuine mass cancellation looks like, it is what a broken key
+// looks like, and a seller who has decided to enforce a real exodus has not
+// thereby decided to trust a response they never saw.
+//
+// Returns `sweep` when a pass leaves nobody entitled at all. That can be
+// perfectly correct for a small store under the floor, and it is still the
+// single most consequential thing this program can do, so it is flagged for the
+// caller to say out loud rather than performed in the same tone as routine churn.
 function breakerVerdict(due, entitledPairs, opts = {}) {
   const percent = Number.isFinite(opts.percent) ? opts.percent : DEFAULT_REVOKE_LIMIT_PERCENT;
   const floor = Number.isFinite(opts.floor) ? opts.floor : DEFAULT_REVOKE_LIMIT_FLOOR;
   const people = distinctUsers(due);
-  if (people === 0) return { allowed: true, people, limit: 0, reason: 'nothing to revoke' };
+  if (people === 0) return { allowed: true, people, limit: 0, sweep: false, reason: 'nothing to revoke' };
 
   // Independent guard, checked first because its CAUSE is different and the
   // operator should be told which of the two happened. Stripe returning zero
@@ -352,6 +364,8 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
       allowed: false,
       people,
       limit: 0,
+      sweep: false,
+      overridable: false,
       reason:
         'Stripe returned ZERO subscriptions while this store still holds active grants. That is a ' +
         'wrong API key, the wrong account, or a changed API response, not every customer leaving at once',
@@ -360,17 +374,30 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
 
   const entitled = distinctUsers(entitledPairs);
   const limit = Math.max(floor, Math.floor((entitled * percent) / 100));
+  const sweep = entitled === 0;
   if (people > limit) {
+    if (opts.override) {
+      return {
+        allowed: true,
+        people,
+        limit,
+        sweep,
+        overridden: true,
+        reason: `${people} of ${entitled + people} subscribers, over the safety limit of ${limit}, allowed for this run only`,
+      };
+    }
     return {
       allowed: false,
       people,
       limit,
+      sweep,
+      overridable: true,
       reason:
         `this pass would revoke ${people} of ${entitled} subscribers, over the safety limit of ${limit} ` +
         `(the larger of ${floor} people or ${percent}% of subscribers)`,
     };
   }
-  return { allowed: true, people, limit, reason: 'within the safety limit' };
+  return { allowed: true, people, limit, sweep, reason: 'within the safety limit' };
 }
 
 // --- logging ----------------------------------------------------------------
@@ -404,10 +431,30 @@ function revokeLine(pair, { dryRun = false, confirmed = true } = {}) {
 
 function breakerLine(verdict, due) {
   const who = due.map((p) => `${p.user}@${p.repo}`).join(', ');
-    return (
+  // Only a size refusal can be overridden, so only a size refusal is told about
+  // the flag. Naming it on the zero-subscriptions refusal would invite a seller
+  // to force their way past the one guard that is never wrong.
+  const next = verdict.overridable
+    ? `Check the store config and the Stripe key first. If this really is a mass cancellation and you ` +
+      `want it enforced, re-run once with --allow-mass-revocation.`
+    : `Check the store config and the Stripe key, then re-run.`;
+  return (
     `WARN: REVOCATION REFUSED, nothing was changed. ${verdict.reason}. ` +
-    `Held back: ${who}. Check the store config and the Stripe key, then re-run. ` +
+    `Held back: ${who}. ${next} ` +
     `This is the safety limit doing its job, not a delivery failure`
+  );
+}
+
+// Said before a pass that empties the store, whether it got there under the
+// floor or under an explicit override. A seller should never discover that
+// their last subscriber was removed by noticing nobody is left.
+function sweepLine(verdict) {
+  return (
+    `WARN: this pass removes ${verdict.people} subscriber(s) and leaves NOBODY entitled on this store. ` +
+    (verdict.overridden
+      ? 'It was allowed because --allow-mass-revocation was passed for this run.'
+      : 'It was allowed because the store is small enough to sit under the safety floor.') +
+    ' If that is not what you expected, check the Stripe key and the store config now'
   );
 }
 
@@ -467,5 +514,6 @@ module.exports = {
   breakerVerdict,
   revokeLine,
   breakerLine,
+  sweepLine,
   subscriptionConfigProblems,
 };
