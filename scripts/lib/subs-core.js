@@ -122,6 +122,16 @@ function grantKey(repo, user) {
   return `${String(repo).toLowerCase()}|${normalizeUser(user)}`;
 }
 
+// --- identity, continued ----------------------------------------------------
+// The Stripe customer a subscription belongs to. Normally a bare id string on
+// our pinned version; tolerant of an expanded object because a caller that adds
+// `expand` should not silently lose the strongest protection in this file.
+function subscriptionCustomer(sub) {
+  const c = sub && sub.customer;
+  if (typeof c === 'string') return c || null;
+  return c && typeof c.id === 'string' ? c.id : null;
+}
+
 // --- seats ------------------------------------------------------------------
 // A team subscription is one purchase and N GitHub usernames. Multi-seat
 // BEHAVIOUR is not built yet, but the shape is a list from the first commit so
@@ -169,9 +179,15 @@ function subscriptionRepos(sub, grants) {
 //             a grace clock and eventually be revoked. That is the exact
 //             failure this whole design exists to prevent, so HOLD is carried
 //             explicitly rather than inferred from an absence.
+//
+// Protection is carried TWICE, by subscription id and by (repo, user) pair,
+// because neither covers the other. See the two comments inside.
 function desiredEntitlements(subs, subUsers, grants) {
-  const desired = new Map(); // grantKey -> { repo, user, sub, reason }
+  const desired = new Map(); // grantKey -> { repo, user, sub, customer, reason }
   const heldSubs = new Set(); // subscription ids that must not lapse
+  const heldPairs = new Set(); // grantKeys that must not lapse
+  const heldCustomers = new Set(); // Stripe customer ids that must not lapse
+  const heldUsers = new Set(); // people with a live subscription, for reporting
   const notes = [];
   for (const sub of Array.isArray(subs) ? subs : []) {
     if (!sub || !sub.id) continue;
@@ -182,32 +198,59 @@ function desiredEntitlements(subs, subUsers, grants) {
     // Protection is recorded per SUBSCRIPTION, before anything else can go
     // wrong, and this is deliberate. Everything below can fail to resolve: the
     // username may not be known yet, the price may have moved to a plan this
-    // config does not name. If protection were recorded per (repo, user) pair,
-    // every one of those failures would leave an existing grant looking
+    // config does not name. If protection were recorded ONLY per (repo, user)
+    // pair, every one of those failures would leave an existing grant looking
     // unwanted, and an unwanted grant lapses and is eventually revoked. That
     // would mean a paying customer loses access because WE lost track of their
     // username, which is precisely the failure this file exists to prevent.
     // A subscription that is not lapsed protects its grants, full stop.
     heldSubs.add(sub.id);
 
-    if (action !== GRANT) continue;
+    // And by CUSTOMER, which is the only one of the three that cannot fail to
+    // resolve. Both of the others are derived: the username is learned from a
+    // Checkout Session that may not exist (a subscription created in the Stripe
+    // dashboard, by API, or through a billing portal never had one), and the
+    // repo list comes from a price the config may have stopped naming. Either
+    // failure leaves an ACTIVE, paid subscription protecting nobody, and if the
+    // customer's grant record happens to name an older subscription then
+    // heldSubs misses too and a paying customer is revoked. The customer id is
+    // on the subscription object itself, so it is there whenever the
+    // subscription is, and it is stable across every re-subscription and plan
+    // change that gives someone a new subscription id.
+    const customer = subscriptionCustomer(sub);
+    if (customer) heldCustomers.add(customer);
+
     const repos = subscriptionRepos(sub, grants);
+    const users = seatUsernames(subUsers[sub.id]);
+    for (const user of users) heldUsers.add(user);
+
+    // And protection is ALSO recorded per pair, for the case the id cannot
+    // reach. A grant record names the one subscription it was written from, and
+    // nothing refreshes it. When a customer re-subscribes, Stripe cancels the
+    // old subscription and opens a new one, so the id on the record is dead and
+    // a hold on the live subscription never finds their grant. Held pairs close
+    // that gap: whoever a non-lapsed subscription resolves to is protected by
+    // name, whichever subscription happened to be recorded. This is computed
+    // for every non-lapsed subscription and not only for granting ones, because
+    // past_due is precisely the status that must protect without granting.
+    for (const repo of repos) for (const user of users) heldPairs.add(grantKey(repo, user));
+
+    if (action !== GRANT) continue;
     if (repos.length === 0) {
       notes.push({ sub: sub.id, message: `is ${reason} but its price matches no configured product, so it cannot be granted` });
       continue;
     }
-    const users = seatUsernames(subUsers[sub.id]);
     if (users.length === 0) {
       notes.push({ sub: sub.id, message: `is ${reason} but no GitHub username is known for it, so it cannot be granted` });
       continue;
     }
     for (const repo of repos) {
       for (const user of users) {
-        desired.set(grantKey(repo, user), { repo, user, sub: sub.id, reason });
+        desired.set(grantKey(repo, user), { repo, user, sub: sub.id, customer, reason });
       }
     }
   }
-  return { desired, heldSubs, notes };
+  return { desired, heldSubs, heldPairs, heldCustomers, heldUsers, notes };
 }
 
 // --- grace ------------------------------------------------------------------
@@ -239,12 +282,21 @@ function graceExpired(lapsedSince, graceDays, now) {
 //   lapsing  - pairs whose grace clock should start (or keep running).
 //   due      - pairs whose grace has expired and which may now be revoked.
 //   keep     - pairs still entitled, whose clock must be cleared.
-function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null } = {}) {
-  const out = { grants: [], lapsing: [], due: [], keep: [] };
+//   refresh  - pairs whose record names a subscription that is no longer the
+//              one entitling them, so the record can be re-pointed at the live
+//              one. Without this a record keeps a dead id for good, and every
+//              log line about that customer names a subscription the seller
+//              will not find in their dashboard.
+function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, now = Date.now(), knownRepos = null, heldSubs = null, heldPairs = null, heldCustomers = null } = {}) {
+  const out = { grants: [], lapsing: [], due: [], keep: [], refresh: [] };
 
   for (const [key, want] of desired) {
-    if (!records[key]) out.grants.push(want);
-    else if (records[key].lapsed_since) out.keep.push({ key, ...records[key] });
+    const rec = records[key];
+    if (!rec) { out.grants.push(want); continue; }
+    if (rec.lapsed_since) out.keep.push({ key, ...rec });
+    if (rec.sub !== want.sub || (want.customer && rec.customer !== want.customer)) {
+      out.refresh.push({ key, from: rec.sub, sub: want.sub, customer: want.customer, repo: want.repo, user: want.user });
+    }
   }
 
   for (const [key, rec] of Object.entries(records || {})) {
@@ -259,6 +311,15 @@ function diffEntitlements(desired, records, { graceDays = DEFAULT_GRACE_DAYS, no
     // most, and it must not even START a clock, because Stripe is still
     // retrying the card and this person has not left.
     if (heldSubs && heldSubs.has(rec.sub)) continue;
+    // The same protection reached by name rather than by id, for the customer
+    // whose live subscription is not the one on their record.
+    if (heldPairs && heldPairs.has(key)) continue;
+    // And reached by Stripe customer, which survives a username we never learned
+    // and a price the config stopped naming. `rec.customer` is checked for
+    // presence first: a record written before customer ids were stored has none,
+    // and a missing id must fall through to the guards above rather than match
+    // anything. Absence is not evidence here either.
+    if (heldCustomers && rec.customer && heldCustomers.has(rec.customer)) continue;
     // A repo that has left the config is OUT OF SCOPE, not a mass cancellation.
     // "The seller removed a product from config" and "the seller wants every
     // customer of that product kicked out" are indistinguishable from here, and
@@ -301,8 +362,12 @@ const DEFAULT_REVOKE_LIMIT_PERCENT = 10;
 // human being told about it is the right outcome anyway.
 const DEFAULT_REVOKE_LIMIT_FLOOR = 3;
 
+function distinctUserSet(pairs) {
+  return new Set((pairs || []).map((p) => normalizeUser(p.user)));
+}
+
 function distinctUsers(pairs) {
-  return new Set((pairs || []).map((p) => normalizeUser(p.user))).size;
+  return distinctUserSet(pairs).size;
 }
 
 // Verdict on whether this pass may revoke at all. All or nothing: the breaker
@@ -310,11 +375,24 @@ function distinctUsers(pairs) {
 // suspected bug is mass revocation in slow motion, each pass taking its three,
 // alarming, and draining the store over a day while looking like it is
 // behaving. Refuse the entire pass.
+//
+// `opts.override` is the seller saying "this mass cancellation is real, do it".
+// It relaxes the size limit and NOTHING ELSE: the zero-subscriptions guard
+// below is not overridable by anything, because "Stripe returned nothing" is
+// never what a genuine mass cancellation looks like, it is what a broken key
+// looks like, and a seller who has decided to enforce a real exodus has not
+// thereby decided to trust a response they never saw.
+//
+// Returns `sweep` when a pass leaves nobody entitled at all. That can be
+// perfectly correct for a small store under the floor, and it is still the
+// single most consequential thing this program can do, so it is flagged for the
+// caller to say out loud rather than performed in the same tone as routine churn.
 function breakerVerdict(due, entitledPairs, opts = {}) {
   const percent = Number.isFinite(opts.percent) ? opts.percent : DEFAULT_REVOKE_LIMIT_PERCENT;
   const floor = Number.isFinite(opts.floor) ? opts.floor : DEFAULT_REVOKE_LIMIT_FLOOR;
-  const people = distinctUsers(due);
-  if (people === 0) return { allowed: true, people, limit: 0, reason: 'nothing to revoke' };
+  const dueSet = distinctUserSet(due);
+  const people = dueSet.size;
+  if (people === 0) return { allowed: true, people, limit: 0, sweep: false, reason: 'nothing to revoke' };
 
   // Independent guard, checked first because its CAUSE is different and the
   // operator should be told which of the two happened. Stripe returning zero
@@ -326,25 +404,91 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
       allowed: false,
       people,
       limit: 0,
+      sweep: false,
+      overridable: false,
       reason:
         'Stripe returned ZERO subscriptions while this store still holds active grants. That is a ' +
         'wrong API key, the wrong account, or a changed API response, not every customer leaving at once',
     };
   }
 
-  const entitled = distinctUsers(entitledPairs);
+  // The same class of evidence as the guard above, and the nastier version of
+  // it. A key for the WRONG STRIPE ACCOUNT is valid, and if that account is
+  // busy Stripe returns plenty of subscriptions, so the zero check never fires.
+  // None of them are ours, so nothing protects our grants, every customer looks
+  // cancelled, and a store small enough to sit under the floor loses all of
+  // them. One wrong environment variable, every paying customer gone.
+  //
+  // A store that sells subscriptions and has anyone to revoke must be able to
+  // see at least ONE subscription carrying a price it actually sells. Zero is
+  // not a small store, it is the wrong account, or a price id that changed in
+  // the config while live subscriptions still run on the old one. Both want the
+  // same answer: stop, and let a human look.
+  //
+  // Not overridable, for the same reason as the zero guard. Deciding that one
+  // exodus is real is not deciding to trust a customer list you never saw.
+  if (opts.recognizedSubs === 0) {
+    return {
+      allowed: false,
+      people,
+      limit: 0,
+      sweep: false,
+      overridable: false,
+      reason:
+        `none of the ${opts.enumeratedSubs} subscriptions Stripe returned carry a price this store sells. ` +
+        'That is a key for a different Stripe account, or price ids that changed in your config while ' +
+        'customers are still subscribed to the old ones, not every customer leaving at once',
+    };
+  }
+
+  const entitledSet = distinctUserSet(entitledPairs);
+  const entitled = entitledSet.size;
+  // The LIMIT stays on the entitled count alone. Counting held customers here
+  // would raise the ceiling and let more revocations through, and a breaker
+  // should only ever be loosened deliberately.
   const limit = Math.max(floor, Math.floor((entitled * percent) / 100));
+  // The REPORTING counts them, because a held customer is still a subscriber.
+  // Without this, a store with eight customers mid-dunning and two real
+  // cancellations is told the pass "leaves NOBODY entitled", which is alarming,
+  // wrong, and on the loudest line the program prints. held is passed in
+  // separately rather than derived, because a past_due customer is deliberately
+  // absent from `desired` and there is nothing here to infer them from.
+  const held = opts.heldUsers instanceof Set ? opts.heldUsers : new Set();
+  const sweep = entitled === 0 && held.size === 0;
+  // The population this pass started from, counted as a union rather than a
+  // sum: somebody entitled on one repo and lapsed on another is one person, and
+  // adding the two counts would report more subscribers than the store has.
+  //
+  // Reported as "N of TOTAL" and never "N of entitled". Once everyone has
+  // lapsed the entitled count is zero, and "would revoke 12 of 0 subscribers"
+  // is a sentence that makes a worried seller trust the tool less, which is the
+  // opposite of what the most important line in this program should do.
+  const total = new Set([...entitledSet, ...held, ...dueSet]).size;
   if (people > limit) {
+    if (opts.override) {
+      return {
+        allowed: true,
+        people,
+        limit,
+        total,
+        sweep,
+        overridden: true,
+        reason: `${people} of ${total} subscribers, over the safety limit of ${limit}, allowed for this run only`,
+      };
+    }
     return {
       allowed: false,
       people,
       limit,
+      total,
+      sweep,
+      overridable: true,
       reason:
-        `this pass would revoke ${people} of ${entitled} subscribers, over the safety limit of ${limit} ` +
+        `this pass would revoke ${people} of ${total} subscribers, over the safety limit of ${limit} ` +
         `(the larger of ${floor} people or ${percent}% of subscribers)`,
     };
   }
-  return { allowed: true, people, limit, reason: 'within the safety limit' };
+  return { allowed: true, people, limit, total, sweep, reason: 'within the safety limit' };
 }
 
 // --- logging ----------------------------------------------------------------
@@ -353,21 +497,111 @@ function breakerVerdict(due, entitledPairs, opts = {}) {
 // and carries everything needed to undo it by hand in seconds, including the
 // literal command. A seller reading this at 3am should not have to work
 // anything out.
-function revokeLine(pair, { dryRun = false } = {}) {
-  const verb = dryRun ? 'WOULD REVOKE (reporting only, nothing was changed)' : 'REVOKED';
+// `confirmed` is false when GitHub answered 404: the account is not a
+// collaborator under THAT name, which is usually because it never was, but is
+// also what a renamed GitHub account looks like. Saying "REVOKED" there would
+// report that access was taken away when possibly nothing was, so the two cases
+// get different words and the uncertain one says what to check.
+function revokeLine(pair, { dryRun = false, confirmed = true } = {}) {
+  const verb = dryRun
+    ? 'WOULD REVOKE (reporting only, nothing was changed)'
+    : confirmed
+      ? 'REVOKED'
+      : 'REVOKED, UNCONFIRMED:';
+  const tail = confirmed || dryRun
+    ? `Undo: gh api -X PUT repos/${pair.repo}/collaborators/${pair.user} -f permission=pull`
+    : `GitHub answered 404, so nobody by that name is a collaborator and the removal could not be ` +
+      `confirmed. If they renamed their GitHub account they may still have access under the new name. ` +
+      `Check: gh api repos/${pair.repo}/collaborators`;
   return (
     `WARN: ${verb} ${pair.user} from ${pair.repo} ` +
     `(subscription ${pair.sub} ${pair.reason || 'lapsed'}, grace expired; lapsed since ${pair.lapsed_since}). ` +
-    `Undo: gh api -X PUT repos/${pair.repo}/collaborators/${pair.user} -f permission=pull`
+    tail
   );
 }
 
+// Capped, because the whole point of this line is that it gets read. A store
+// that loses two hundred people at once produces two hundred names, and a wall
+// of text is skimmed exactly as fast as no text at all. The state file keeps the
+// full list in `breaker.would_revoke` for anyone who needs every name.
+const HELD_BACK_SHOWN = 10;
+
 function breakerLine(verdict, due) {
-  const who = due.map((p) => `${p.user}@${p.repo}`).join(', ');
-    return (
+  const names = due.map((p) => `${p.user}@${p.repo}`);
+  const who = names.length > HELD_BACK_SHOWN
+    ? `${names.slice(0, HELD_BACK_SHOWN).join(', ')}, and ${names.length - HELD_BACK_SHOWN} more`
+    : names.join(', ');
+  // Only a size refusal can be overridden, so only a size refusal is told about
+  // the flag. Naming it on the zero-subscriptions refusal would invite a seller
+  // to force their way past the one guard that is never wrong.
+  const next = verdict.overridable
+    ? `Check the store config and the Stripe key first. If this really is a mass cancellation and you ` +
+      `want it enforced, re-run once with --allow-mass-revocation.`
+    : `Check the store config and the Stripe key, then re-run.`;
+  return (
     `WARN: REVOCATION REFUSED, nothing was changed. ${verdict.reason}. ` +
-    `Held back: ${who}. Check the store config and the Stripe key, then re-run. ` +
+    `Held back: ${who}. ${next} ` +
     `This is the safety limit doing its job, not a delivery failure`
+  );
+}
+
+// Said before a pass that empties the store, whether it got there under the
+// floor or under an explicit override. A seller should never discover that
+// their last subscriber was removed by noticing nobody is left.
+function sweepLine(verdict) {
+  return (
+    `WARN: this pass removes ${verdict.people} subscriber(s) and leaves NOBODY entitled on this store. ` +
+    (verdict.overridden
+      ? 'It was allowed because --allow-mass-revocation was passed for this run.'
+      : 'It was allowed because the store is small enough to sit under the safety floor.') +
+    ' If that is not what you expected, check the Stripe key and the store config now'
+  );
+}
+
+// --- what is about to happen -------------------------------------------------
+// The question a seller actually has before arming enforcement is not "what did
+// this pass do", it is "what is this about to do to my customers". Nothing
+// answered that. A person three days into a seven day grace produces no output
+// at all: their clock started on an earlier pass, the start was logged then, and
+// nothing is printed again until the day they are removed. A seller reading a
+// quiet log would reasonably conclude there was nothing pending, arm
+// enforcement, and be surprised.
+//
+// Sorted soonest first, because the only one that needs a decision today is the
+// one at the top.
+function upcomingRevocations(lapsing, graceDays, now) {
+  return (Array.isArray(lapsing) ? lapsing : [])
+    .map((p) => {
+      const started = Date.parse(p.lapsed_since);
+      const dueAt = Number.isFinite(started) ? started + graceDays * 86_400_000 : null;
+      return {
+        user: p.user,
+        repo: p.repo,
+        sub: p.sub,
+        dueAt,
+        // Rounded up, so "in 1 day" never means "in a few minutes".
+        days: dueAt == null ? null : Math.max(0, Math.ceil((dueAt - now) / 86_400_000)),
+      };
+    })
+    .sort((a, b) => (a.dueAt == null ? Infinity : a.dueAt) - (b.dueAt == null ? Infinity : b.dueAt));
+}
+
+// One line, capped. A store with two hundred people in grace must not print two
+// hundred lines nobody reads; the soonest few and a count carry the same
+// decision.
+const UPCOMING_SHOWN = 5;
+
+function upcomingLine(rows, { enforce = false } = {}) {
+  if (!rows || rows.length === 0) return null;
+  const shown = rows
+    .slice(0, UPCOMING_SHOWN)
+    .map((r) => (r.days == null ? `${r.user}@${r.repo} never (its lapse date is unreadable)` : `${r.user}@${r.repo} in ${r.days}d`))
+    .join(', ');
+  const more = rows.length > UPCOMING_SHOWN ? `, and ${rows.length - UPCOMING_SHOWN} more` : '';
+  return (
+    `subscriptions: ${rows.length} customer(s) in grace, ` +
+    `${enforce ? 'and will be removed when it runs out' : 'and would be removed if enforcement were on'}. ` +
+    `Soonest: ${shown}${more}`
   );
 }
 
@@ -420,6 +654,7 @@ module.exports = {
   grantKey,
   seatUsernames,
   subscriptionRepos,
+  subscriptionCustomer,
   desiredEntitlements,
   graceExpired,
   diffEntitlements,
@@ -427,5 +662,8 @@ module.exports = {
   breakerVerdict,
   revokeLine,
   breakerLine,
+  sweepLine,
+  upcomingRevocations,
+  upcomingLine,
   subscriptionConfigProblems,
 };

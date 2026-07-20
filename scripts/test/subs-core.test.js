@@ -57,6 +57,40 @@ test('every Stripe subscription status maps to its documented action', () => {
   }
 });
 
+// The table above is only worth anything if it is COMPLETE. A status this
+// engine has never heard of falls through to the forward-compatibility branch,
+// which holds access and warns: correct as a backstop, wrong as the everyday
+// treatment of a status Stripe has always had, because it means a seller gets a
+// warning on every pass forever and no cancellation is ever enforced.
+//
+// This list is the `status` enum of the Subscription object, read from Stripe's
+// published OpenAPI schema (stripe/openapi, components.schemas.subscription).
+//
+// Be clear about what this can and cannot catch. It is a regression guard: if
+// somebody deletes a status from ENTITLED, LAPSED or HELD, this goes red. It
+// CANNOT notice a status Stripe adds upstream, because nothing here talks to
+// Stripe. That gap is covered by the forward-compatibility branch instead,
+// which holds access and warns on anything unrecognised, and by the opt-in
+// integration test in subs-stripe-integration.test.js.
+//
+// `all` and `ended` are NOT in this list on purpose. Stripe accepts both as
+// filter values on GET /v1/subscriptions, which makes them easy to mistake for
+// statuses, but no Subscription object ever carries either one.
+const STRIPE_SUBSCRIPTION_STATUSES = [
+  'active', 'canceled', 'incomplete', 'incomplete_expired',
+  'past_due', 'paused', 'trialing', 'unpaid',
+];
+
+test('every status Stripe can actually set is classified, not merely tolerated', () => {
+  for (const status of STRIPE_SUBSCRIPTION_STATUSES) {
+    const a = subscriptionAction(sub({ status }));
+    assert.ok(
+      !/unrecognized/.test(a.reason || ''),
+      `${status} is a real Stripe subscription status but this engine does not classify it`
+    );
+  }
+});
+
 test('past_due is NEVER a lapse, however long it lasts', () => {
   // The single most important assertion in this file. Stripe retries failed
   // cards for weeks; treating that window as a cancellation locks out a
@@ -426,6 +460,37 @@ test('an empty Stripe response is refused on its own terms', () => {
   assert.equal(v.allowed, false);
   assert.match(v.reason, /ZERO subscriptions/);
   assert.match(v.reason, /wrong API key|wrong account/);
+});
+
+test('the refusal counts against the store, not against who is left', () => {
+  // Once everybody has lapsed the entitled count is zero, and a denominator of
+  // zero produced "would revoke 12 of 0 subscribers". A seller reading that
+  // during an incident trusts the tool less, which is the opposite of what the
+  // most important line in this program is for.
+  const due = Array.from({ length: 12 }, (_, i) => ({ user: `u${i}`, repo: 'a/r' }));
+  const v = breakerVerdict(due, [], { enumeratedSubs: 12 });
+  assert.equal(v.allowed, false);
+  assert.equal(v.total, 12);
+  assert.match(v.reason, /12 of 12 subscribers/);
+  assert.doesNotMatch(v.reason, /of 0 subscribers/);
+});
+
+test('one person entitled here and lapsed there is counted once', () => {
+  // Union, not sum: adding the entitled count to the due count would report a
+  // store as having more subscribers than it has.
+  const v = breakerVerdict(
+    [{ user: 'alice', repo: 'a/two' }],
+    [{ user: 'alice', repo: 'a/one' }],
+    { enumeratedSubs: 1 }
+  );
+  assert.equal(v.total, 1, 'alice is one person, not two');
+});
+
+test('a held-back list stays readable when a whole store trips the breaker', () => {
+  const due = Array.from({ length: 200 }, (_, i) => ({ user: `u${i}`, repo: 'a/r' }));
+  const line = breakerLine(breakerVerdict(due, [], { enumeratedSubs: 200 }), due);
+  assert.match(line, /and 190 more/);
+  assert.ok(line.length < 800, `the line a seller must read is ${line.length} characters`);
 });
 
 test('a pass with nothing to revoke is always allowed', () => {

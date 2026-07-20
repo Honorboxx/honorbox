@@ -67,6 +67,28 @@ Nobody should have to trust software with their customers' access on its first
 run. Reporting mode costs you a few days and removes the entire category of
 "I switched it on and it emptied my repo".
 
+Every run also tells you who is part-way through their grace period, so you can
+see what is coming rather than only what just happened:
+
+```
+subscriptions: 2 customer(s) in grace, and would be removed if enforcement were
+on. Soonest: alice@acme/widget in 2d, bob@acme/widget in 5d
+```
+
+That line is the one to read before you set `enforce` to `true`. If it names
+somebody who should not be there, do not arm it yet.
+
+### Run it once at a time
+
+The reconciler takes a lock next to its state file, so if a run is still going
+when the next one is due, the second one exits and says so. You do not need to
+do anything about this; it exists so that two overlapping runs cannot both write
+the removal list and lose one of each other's entries. A lock left behind by a
+run that was killed is ignored after 30 minutes.
+
+It also refuses to run more than once an hour unless you pass `--force`.
+Removals are never urgent, because grace is measured in days.
+
 ## What happens for each subscription state
 
 Stripe gives every subscription a status. Here is what each one means for your
@@ -134,6 +156,44 @@ arrive all at once. The limit tells those apart.
 If it ever trips, nothing has been taken from anyone. Read the warning, fix what
 it points at, and run it again.
 
+### When the mass cancellation is real
+
+Sometimes it is not a bug. You retired a product, or you moved everybody to a
+new price and the old subscriptions really did all end. In that case the limit
+would refuse the same removals every run for ever, so there is a way to say
+"yes, I mean it":
+
+```
+node scripts/reconcile-subs.js ... --allow-mass-revocation
+```
+
+That applies to **that one run** and is not remembered. It is a flag rather than
+a config setting on purpose: a setting added during a bad afternoon stays added,
+and then the limit is not protecting you any more.
+
+It does not override everything. If Stripe returns **no subscriptions at all**
+while you still have customers on record, the run refuses no matter what you
+pass. An empty answer from Stripe is what a wrong API key looks like, not what
+an exodus looks like, and there is no version of that where removing everybody
+is the right move.
+
+### If your store is very small
+
+The limit is "the larger of 3 people or 10%", and the floor of 3 is there so
+that a store with five subscribers can still enforce anything at all. The
+consequence, stated plainly: **a store with three or fewer subscribers can lose
+all of them in a single run.** For a store that size a human being told about it
+is the right outcome anyway, and you are told, loudly:
+
+```
+WARN: this pass removes 3 subscriber(s) and leaves NOBODY entitled on this
+store. It was allowed because the store is small enough to sit under the
+safety floor.
+```
+
+If you would rather that never happen automatically, raise
+`revoke_limit_floor` in your config and handle those removals by hand.
+
 ## Undoing a removal
 
 Every removal is printed with the exact command to reverse it:
@@ -149,6 +209,28 @@ Copy the `Undo:` line and run it. The customer is invited straight back.
 One caveat worth knowing: a re-invitation has to be accepted from the email
 GitHub sends, and those expire after 7 days. If a customer says they never got
 back in, check for a pending invitation on the repo.
+
+### When a removal could not be confirmed
+
+Occasionally you will see this instead:
+
+```
+WARN: REVOKED, UNCONFIRMED: alice from acme/widget (...). GitHub answered 404,
+so nobody by that name is a collaborator and the removal could not be
+confirmed.
+```
+
+That means GitHub had no collaborator by that name to remove. Usually it is
+harmless: they had already been removed, or they never accepted the invitation
+in the first place.
+
+The case worth checking is a **renamed GitHub account**. We hold the username
+your customer typed at checkout. If they later renamed their account, that old
+name no longer matches anybody, and the person may still have access under their
+new name. Run `gh api repos/OWNER/REPO/collaborators` and look.
+
+This is reported separately from a clean removal on purpose. Telling you a
+removal succeeded when nothing was removed would be worse than useless.
 
 ### If they resubscribe
 
@@ -199,6 +281,40 @@ That means it cannot touch:
 If you remove a product from your config entirely, its customers keep their
 access. "I stopped selling this" and "remove all these people" are different
 things, and we assume the first.
+
+### Customers who changed plan or subscribed again
+
+A customer who cancels and resubscribes, or who you move to a different price,
+ends up with a **different** subscription in Stripe. The old one is cancelled and
+a new one takes over.
+
+They are protected three ways, and the third is the one that always works:
+
+- by the subscription we recorded when we let them in
+- by their GitHub username, if we can work out which repos the new subscription
+  covers
+- **by their Stripe customer**, which does not depend on working anything out
+
+That last one matters more than it sounds. The first two can both come up empty
+for a subscription that is perfectly healthy: we learn a customer's GitHub
+username from their checkout, so a subscription created any other way (in the
+Stripe dashboard, through the API, through a billing portal) has no username
+attached to it, and a subscription on a price you have not added to your config
+yet resolves to no repo. Either of those, combined with a record naming their
+previous subscription, used to be enough to remove somebody who was actively
+paying. The Stripe customer is on the subscription itself, so it is there
+whenever the subscription is.
+
+This matters most when the new subscription is `past_due`: their card failed on
+the first renewal after the change, Stripe is still retrying, and they must not
+be removed for it.
+
+If you have two prices that grant the same repo, a customer moving between them
+never loses access at the changeover.
+
+Grants recorded before this existed carry no customer id. They are filled in
+automatically on the first run that can see the customer, and until then they
+keep the older protections.
 
 ## What we do not do
 
