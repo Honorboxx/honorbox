@@ -4,7 +4,7 @@ order: 1
 name: HonorBox Pro
 meta_title: HonorBox Pro ($29): never silently lose a sale
 description: Reconcile proves every paid order reached its buyer. Plus license keys, five themes, ops bots, and a store doctor for your Stripe + GitHub store. $29 one-time.
-tagline: Your store calls a sale delivered the moment it sends an invite. Pro is what goes back and checks, plus license keys, five themes, and bots for the unattended hours.
+tagline: Your engine keeps the invitation open. Pro names which paid order is undelivered, and for how much, plus license keys, five themes, and bots for the unattended hours.
 price: $29
 price_note: one-time · lifetime access & updates
 payment_link: https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00
@@ -30,14 +30,16 @@ features:
 ## What Pro is
 
 The free HonorBox core is a complete store, and it is the one you are standing
-in. It takes the money and sends the invite. What nothing in it does is go back
-and ask whether that invite was ever accepted.
+in. It takes the money, sends the invite, and keeps that invitation open until
+the buyer accepts or you are told they never did. What it never does is look at
+the money: renewal reads GitHub's pending invitations and holds no Stripe key.
 
-**Pro is the operational half.** Reconcile answers that question for every paid
-order, the store doctor catches the setup mistakes before they cost you a
-launch, and the refund bot revokes exactly what a refund should revoke. Themes,
-license keys, and the playbook are what Pro *contains*. Not quietly losing a
-sale you already made is what it is *for*.
+**Pro is the operational half.** Reconcile walks the money and names the paid
+order that is still undelivered, the store doctor catches the setup mistakes
+before they cost you a launch, and the refund bot revokes what a refund should
+revoke without waiting for you to run a command. Themes, license keys, and the
+playbook are what Pro *contains*. Not quietly losing a sale you already made is
+what it is *for*.
 
 ## What's inside
 
@@ -71,23 +73,32 @@ your product repo is accidentally public. Run it before launch; sleep after.
 Reconcile answers the question that only starts costing money after launch: for
 every order you were *paid* for, does that buyer have the product *right now*?
 
-Those are different questions. The engine writes its ledger row the moment it
-**sends** an invite, and nothing ever goes back to check that it was accepted. A
-buyer who never clicks accept leaves every system you own reporting success:
+Those are different questions, and the free engine does not answer the second
+one. It writes its ledger row the moment it **sends** an invite, so a buyer who
+never clicks accept leaves every system you own reporting success:
 Stripe says paid, your ledger says delivered, the run is green. They have
 nothing.
 
-The engine will not let that invitation lapse: it re-issues before GitHub's
-seven-day expiry, three times, then warns you by name. That buys the buyer about
-three and a half weeks and it is free, because a sale that never lands was never
-delivered. What it cannot tell you is which *paid order* is still sitting
-unaccepted right now, before the warning, or how much money that is. The same
-blind spot hides an order that matched no grant, an invite that never landed, a
-typo'd username, and a refunded buyer who kept access.
+The engine will not let that invitation lapse quietly. It re-issues an
+unaccepted one before GitHub's seven-day expiry, three times, then warns you by
+name: about three and a half weeks of open door, and it is part of the free
+engine, because a sale that never lands was never delivered
+([how that works](https://github.com/Honorboxx/honorbox/blob/main/docs/how-it-works.md#delivery-model)).
 
-Reconcile starts from the money, walks every paid Stripe session, and asks
-GitHub whether that specific buyer holds access to that specific repo: one
-verdict per sale, non-zero exit when anything is lost, so you can schedule it
+That is also where it stops. Renewal works from GitHub's list of pending
+invitations and holds
+[no Stripe key at all](https://github.com/Honorboxx/honorbox/blob/main/scripts/renew-invites.js),
+so it can keep an invitation alive but never tell you which *paid order* it
+belongs to, or how much money is sitting undelivered. And it never sees a
+failure that left no invitation to renew: an order that matched no grant, a
+typo'd username the engine flagged and skipped, a refunded buyer who kept
+access.
+
+Reconcile starts from the money instead. It walks every paid Stripe session and
+asks GitHub whether that specific buyer holds access to that specific repo: one
+verdict per sale with the amount attached, `PAID, NO GRANT` on an order the
+engine never fulfilled, a repo it cannot read reported as unreadable rather than
+counted clean, and a non-zero exit when anything is lost, so you can schedule it
 instead of remembering it. Read-only.
 
 It also separates revenue from fulfillments: a $0 order fulfilled by a coupon
