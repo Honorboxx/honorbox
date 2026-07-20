@@ -7,9 +7,32 @@ const fs = require('fs');
 const path = require('path');
 const { parseFrontmatter } = require('./lib/fm.js');
 const { renderMarkdown, escapeHtml, excerpt, firstRasterImage, safeUrl } = require('./lib/md.js');
+const { imageSize } = require('./lib/imgsize.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
+
+// Intrinsic size of a site-relative image reference ("./assets/x.webp"), read
+// from the file on disk so an <img> can reserve its box before it loads.
+// Remote URLs, SVGs and anything unreadable return null and the attributes are
+// simply omitted — never guessed, because a wrong reservation shifts the page
+// just as badly as no reservation.
+const sizeCache = new Map();
+function sizeOfLocal(src) {
+  if (typeof src !== 'string' || /^(?:[a-z]+:)?\/\//i.test(src)) return null;
+  if (sizeCache.has(src)) return sizeCache.get(src);
+  let size = null;
+  try {
+    const rel = src.replace(/^\.?\//, '').split(/[?#]/)[0];
+    const file = path.join(ROOT, rel);
+    // Stay inside the repo: a "../.." reference must not read the disk.
+    if (path.relative(ROOT, file).startsWith('..')) throw new Error('outside root');
+    size = imageSize(fs.readFileSync(file));
+  } catch { size = null; }
+  sizeCache.set(src, size);
+  return size;
+}
+const MD_OPTS = { sizeOf: sizeOfLocal };
 
 function read(p) { return fs.readFileSync(p, 'utf8'); }
 function write(p, s) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); }
@@ -427,7 +450,7 @@ function productCard(p, variant = '') {
 </article>`;
 }
 
-function section(s) {
+function section(s, sizeOf = sizeOfLocal) {
   if (s.type === 'steps') {
     return `<section class="steps"><h2>${escapeHtml(s.title)}</h2><ol class="steps-list">${s.items
       .map((it) => {
@@ -467,9 +490,17 @@ function section(s) {
     // are numeric attributes so layout is reserved before the lazy image loads.
     const figs = (s.items || [])
       .map((it) => {
+        // The FILE is the truth, the config is the fallback. These items
+        // carried width="1360" height="900" for images that are actually
+        // 1200x630 — an aspect ratio 26% wrong, reserving a box the image
+        // never fills. A declared number drifts the moment the art is
+        // re-exported; a measured one cannot.
+        const measured = typeof sizeOf === 'function' ? sizeOf(it.img) : null;
+        const w = measured ? measured.width : Number(it.width);
+        const h = measured ? measured.height : Number(it.height);
         const dims =
-          Number.isFinite(Number(it.width)) && Number.isFinite(Number(it.height)) && Number(it.width) > 0 && Number(it.height) > 0
-            ? ` width="${Number(it.width)}" height="${Number(it.height)}"`
+          Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0
+            ? ` width="${w}" height="${h}"`
             : '';
         const img = `<img src="${safeHref(it.img)}" alt="${escapeHtml(it.alt || '')}" loading="lazy" decoding="async"${dims}>`;
         const fig = `<figure>${img}${it.caption ? `<figcaption>${escapeHtml(it.caption)}</figcaption>` : ''}</figure>`;
@@ -494,7 +525,7 @@ function main() {
     const { data, body, error } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
     if (error) problems.push(`products/${f}: ${error}`);
     for (const problem of productProblems(data)) problems.push(`products/${f}: ${problem}`);
-    return { ...data, features: data.features || [], body, html: renderMarkdown(body) };
+    return { ...data, features: data.features || [], body, html: renderMarkdown(body, MD_OPTS) };
   }).sort((a, b) => (Number(a.order || 999) - Number(b.order || 999)) || String(a.name).localeCompare(b.name, 'en'));
   const ids = new Set();
   for (const p of products) {
@@ -512,7 +543,7 @@ function main() {
       meta_title: data.meta_title,
       description: data.description,
       body,
-      html: renderMarkdown(body),
+      html: renderMarkdown(body, MD_OPTS),
     };
   });
 
@@ -528,7 +559,7 @@ function main() {
     const raw = read(file);
     const { title, body } = docTitle(raw, slug);
     const src = rewriteDocLinks(body, { repo: config.repo });
-    return [{ slug, title, body: src, html: renderMarkdown(src) }];
+    return [{ slug, title, body: src, html: renderMarkdown(src, MD_OPTS) }];
   });
 
   problems.push(...slugProblems(ids, pages.map((p) => p.slug)));
@@ -652,7 +683,10 @@ function main() {
   <div class="prose">${p.html}</div>
   <div class="pc-buy standalone">${buyButton(p, true)}</div>
 </article>`;
-    const bodyImage = firstRasterImage(p.body);
+    // Scraper-safe formats only: the gallery is served as WebP to browsers,
+    // but a card scraper that cannot decode it shows no preview at all, and a
+    // product link with a blank card is worse than a slightly larger one.
+    const bodyImage = firstRasterImage(p.body, { ext: /\.(png|jpe?g|gif)$/i });
     const ogImage = bodyImage ? absUrl(site, bodyImage) : defaultOgImage;
     write(path.join(DIST, `${p.id}.html`), page({
       title: p.meta_title || `${p.name} · ${config.name}`,

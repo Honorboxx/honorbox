@@ -94,6 +94,114 @@ test('invite failures classify as transient (retry) or permanent (attention)', (
   assert.equal(inviteAttempts(failures, 'cs_a'), 2);
 });
 
+test('how long to wait comes from GitHub headers, in the documented order', () => {
+  const { retryAfterMs } = require('../lib/fulfill-core.js');
+  const now = 1_700_000_000_000;
+  const nowSec = Math.floor(now / 1000);
+  // 1. retry-after wins — this is what a SECONDARY limit sends, and a burst
+  //    trips secondary limits, not primary ones.
+  assert.equal(retryAfterMs(new Headers({ 'retry-after': '30' }), now), 30_000);
+  // works through Headers (case-insensitive) and through the plain object a
+  // stubbed response carries
+  assert.equal(retryAfterMs({ 'retry-after': '5' }, now), 5_000);
+  // 2. a PRIMARY limit: remaining 0, wait until the window resets
+  assert.equal(
+    retryAfterMs(new Headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(nowSec + 600) }), now),
+    600_000
+  );
+  // retry-after takes precedence when both are present
+  assert.equal(
+    retryAfterMs(new Headers({ 'retry-after': '7', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(nowSec + 600) }), now),
+    7_000
+  );
+  // budget left is not a limit
+  assert.equal(retryAfterMs(new Headers({ 'x-ratelimit-remaining': '4999', 'x-ratelimit-reset': String(nowSec + 600) }), now), null);
+  // a reset already past never yields a negative wait
+  assert.equal(retryAfterMs(new Headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(nowSec - 60) }), now), 0);
+  // nothing to go on
+  assert.equal(retryAfterMs(null, now), null);
+  assert.equal(retryAfterMs(new Headers({}), now), null);
+  assert.equal(retryAfterMs(new Headers({ 'retry-after': 'soon' }), now), null);
+});
+
+test('a 403 carrying a rate-limit header is transient even when the prose says nothing', () => {
+  const { isTransientInviteError } = require('../lib/fulfill-core.js');
+  // The failure this closes: the only rate-limit test used to be a match on
+  // the words of the response body. GitHub's wording is not part of any
+  // contract — reword it and a retryable throttle silently reclassifies as a
+  // permanent permissions error, so the buyer is never retried at all and
+  // lands in needs_attention instead.
+  assert.ok(isTransientInviteError(Object.assign(new Error('403 Forbidden'), {
+    status: 403, headers: new Headers({ 'retry-after': '60' }),
+  })));
+  assert.ok(isTransientInviteError(Object.assign(new Error('403 Forbidden'), {
+    status: 403, headers: new Headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '9999999999' }),
+  })));
+  // The regression that must NOT ride along: a genuine permissions 403 has no
+  // rate-limit headers and stays permanent, because retrying cannot fix it.
+  assert.ok(!isTransientInviteError(Object.assign(new Error('Resource not accessible by personal access token'), {
+    status: 403, headers: new Headers({ 'x-ratelimit-remaining': '4998' }),
+  })));
+});
+
+test('the in-run retry waits as long as GitHub asked, inside a bounded budget', () => {
+  const {
+    inRunRetryDelayMs, IN_RUN_RETRY_BUDGET_MS, IN_RUN_MAX_WAIT_MS, IN_RUN_MAX_ATTEMPTS,
+  } = require('../lib/fulfill-core.js');
+  const limited = (secs) => Object.assign(new Error('secondary rate limit'), {
+    status: 403, headers: new Headers({ 'retry-after': String(secs) }),
+  });
+  // GitHub's number is honoured verbatim — never shortened, which is how a
+  // secondary limit gets extended instead of cleared.
+  assert.equal(inRunRetryDelayMs(limited(5), 1, 0), 5_000);
+  // A wait longer than the ceiling is DECLINED rather than slept through: that
+  // is a primary limit saying "come back in an hour", and holding an Actions
+  // run open for it burns billed minutes and delivers nothing. The poll has it.
+  assert.ok(IN_RUN_MAX_WAIT_MS < 3_600_000);
+  assert.equal(inRunRetryDelayMs(limited(3600), 1, 0), null);
+  // budget spent by earlier buyers in this same run -> decline
+  assert.equal(inRunRetryDelayMs(limited(5), 1, IN_RUN_RETRY_BUDGET_MS), null);
+  // a wait that would overrun the remaining budget is declined whole, not
+  // truncated to a shorter one that GitHub did not agree to
+  assert.equal(inRunRetryDelayMs(limited(20), 1, IN_RUN_RETRY_BUDGET_MS - 5_000), null);
+  // attempts are capped even when every failure is instant and costs no budget
+  assert.equal(inRunRetryDelayMs(limited(1), IN_RUN_MAX_ATTEMPTS, 0), null);
+  // a header-less transient (timeout, 5xx) still backs off rather than hammering
+  assert.ok(inRunRetryDelayMs(Object.assign(new Error('502'), { status: 502 }), 1, 0) > 0);
+  // a permanent failure is never retried in-run
+  assert.equal(inRunRetryDelayMs(Object.assign(new Error('404'), { status: 404 }), 1, 0), null);
+});
+
+test('failure rows are pruned by settlement, never dropping a live retry window', () => {
+  const { pruneFailures, shouldRetryInvite } = require('../lib/fulfill-core.js');
+  const now = Date.parse('2026-07-20T12:00:00Z');
+  const old = new Date(now - 7 * 3600 * 1000).toISOString(); // older than the 6h window
+  const live = { session: 'cs_live', transient: true, ts: old };
+  const settled = Array.from({ length: 3000 }, (_, i) => ({ session: `cs_done_${i}`, transient: true, ts: old }));
+  const processed = settled.map((f) => f.session);
+
+  const pruned = pruneFailures([live, ...settled], processed, 2000);
+  assert.equal(pruned.length, 2000);
+  // The live row survived WITH ITS ORIGINAL TIMESTAMP. Dropping it would
+  // restart the 6h budget from the next failure, so a session that should be
+  // handed to a human retries forever instead.
+  assert.deepEqual(pruned.find((f) => f.session === 'cs_live'), live);
+  const transient = Object.assign(new Error('502'), { status: 502 });
+  assert.ok(
+    !shouldRetryInvite(transient, pruned, 'cs_live', now),
+    'the 6h window must still read as expired after pruning'
+  );
+  // oldest settled rows go first and the surviving order is unchanged
+  assert.deepEqual(pruned.slice(1), settled.slice(1001));
+  // under the cap it is a no-op, returned as-is
+  const few = [live, settled[0]];
+  assert.equal(pruneFailures(few, processed, 2000), few);
+  // live rows outrank the cap: 3000 unsettled sessions are all kept, because
+  // every one of them is still owed a delivery
+  const allLive = settled.map((f) => ({ ...f }));
+  assert.equal(pruneFailures(allLive, [], 2000).length, 3000);
+});
+
 test('transient retries are time-boxed to the delivery promise, not attempt-counted', () => {
   // An attempt cap of 5 burns out in ~10 minutes on the 2-minute local
   // runner, which a routine GitHub incident outlasts. The retry budget is

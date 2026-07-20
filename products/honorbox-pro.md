@@ -50,10 +50,10 @@ type and dark-mode awareness: `terminal` (phosphor-on-black for CLI tools),
 `brutalist` (loud, typographic), `editorial` (serif, magazine-calm), and
 `midnight` (deep-blue product-launch look). Switch with one config line.
 
-![terminal theme, phosphor CRT](./assets/previews/terminal.png)
-![brutalist theme, loud type and hard shadows](./assets/previews/brutalist.png)
-![editorial theme, serif calm](./assets/previews/editorial.png)
-![midnight theme, deep blue](./assets/previews/midnight.png)
+![terminal theme, phosphor CRT](./assets/previews/terminal.webp)
+![brutalist theme, loud type and hard shadows](./assets/previews/brutalist.webp)
+![editorial theme, serif calm](./assets/previews/editorial.webp)
+![midnight theme, deep blue](./assets/previews/midnight.webp)
 
 **The store doctor.** One read-only command that checks your whole pipe:
 config shape, the pasted-URL-instead-of-id mistake, whether your payment links
