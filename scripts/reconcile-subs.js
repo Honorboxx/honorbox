@@ -201,8 +201,12 @@ function nextCursor(page, label) {
 
 // Learn which GitHub username belongs to which subscription. The username is
 // buyer-supplied text on the Checkout Session, so this walks sessions created
-// since the cursor and remembers the mapping. A pass that cannot read sessions
-// still reconciles from what it already knows.
+// since the cursor and remembers the mapping.
+//
+// A pass that cannot read sessions aborts rather than carrying on with what it
+// already knows. Carrying on sounds safer and is not: the names it is missing
+// are exactly the newest customers, so the visible symptom is somebody who paid
+// a minute ago never being let in, under a log line reporting a clean run.
 async function learnUsernames(sinceTs, key, sleep = defaultSleep) {
   const map = {};
   let newest = sinceTs;
