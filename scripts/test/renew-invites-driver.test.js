@@ -21,7 +21,7 @@ const path = require('node:path');
 const driver = require('../renew-invites.js');
 const reconciler = require('../reconcile-subs.js');
 const { REINVITE_AFTER_HOURS, MAX_REINVITES } = require('../lib/invite-core.js');
-const { inviteKey } = require('../lib/access-record.js');
+const { inviteKey, revocationSource } = require('../lib/access-record.js');
 
 // Renewal defaults --state to state/bots-state.json, which in a real ops repo is
 // LIVE entitlement data. A harness bug that forgets to redirect it would write
@@ -149,6 +149,11 @@ test('INTEGRATION: the revocation one command writes is the one the next sweep r
   const persisted = readState(dir);
   assert.equal(persisted.revoked_access.length, 1, `nothing was written: ${JSON.stringify(persisted)}`);
   assert.equal(persisted.revoked_access[0].key, inviteKey(REPO, 'refunded'));
+  // Recorded as a refund, not a lapse. A lapse record is cleared automatically
+  // the moment the reconciler sees that person entitled again, so a refund
+  // filed under the wrong source is a refunded buyer let back in by a later
+  // subscription.
+  assert.equal(revocationSource(persisted.revoked_access[0]), 'refund');
 
   // A fresh process-equivalent run, reading only that file. Both buyers are
   // stale enough to renew; only one of them is entitled to.

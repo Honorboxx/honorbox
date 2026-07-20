@@ -234,7 +234,11 @@ async function renewInvite(state, r, token, flush) {
 // cheerfully re-inviting them.
 async function revokeAccess(statePath, repo, login, token, { dryRun = false } = {}) {
   const state = loadState(statePath);
-  state[REVOKED_FIELD] = recordRevocation(state[REVOKED_FIELD], repo, login);
+  // Explicitly a 'refund' record, which is the class the subscription
+  // reconciler never clears by itself. A seller runs this because they gave
+  // somebody their money back, and that must not be undone by the same person
+  // later holding an active subscription.
+  state[REVOKED_FIELD] = recordRevocation(state[REVOKED_FIELD], repo, login, Date.now(), 'refund');
   state[REINVITES_FIELD] = forgetReinvites(state[REINVITES_FIELD], inviteKey(repo, login));
   if (dryRun) {
     console.log(`DRY RUN: would revoke ${login} from ${repo} and delete their pending invitations`);
