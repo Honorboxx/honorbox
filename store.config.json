@@ -1,11 +1,9 @@
 {
   "name": "HonorBox",
-  "kicker": "For everyone whose buyers live on GitHub",
   "headline": "Sell digital products with just Stripe + GitHub.",
   "tagline": "0% platform fee, $0/month, no server. A static storefront on GitHub Pages, checkout through your own Stripe account, and a GitHub Action that delivers every sale while you sleep.",
   "meta_title": "Sell digital products with Stripe + GitHub, 0% fee · HonorBox",
   "meta_description": "Sell digital products with just Stripe and GitHub Pages. 0% platform fee, $0/month, no server to run. MIT engine; buyers pay you directly on your own Stripe account.",
-  "subline": "This store runs on the engine it sells. Fork the free core and open your own stand.",
   "url": "https://honorboxx.github.io/honorbox",
   "theme": "stand",
   "seller": "HonorBox · honorbox@proton.me",
@@ -23,7 +21,7 @@
         {
           "img": "./assets/previews/terminal.webp",
           "alt": "The same storefront in the terminal theme: phosphor green type on black",
-          "caption": "terminal: phosphor-on-black, for CLI tools (free)",
+          "caption": "terminal: phosphor on black, free in the repo",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
@@ -31,7 +29,7 @@
         {
           "img": "./assets/previews/atrium.webp",
           "alt": "The same storefront in the atrium theme: minimal graphite type on a plaster ground",
-          "caption": "atrium: minimal, gallery-quiet",
+          "caption": "atrium: minimal, gallery quiet",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
@@ -47,7 +45,7 @@
         {
           "img": "./assets/previews/editorial.webp",
           "alt": "The same storefront in the editorial theme: serif type on book white",
-          "caption": "editorial: serif, book-calm",
+          "caption": "editorial: serif, book calm",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504

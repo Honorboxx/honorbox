@@ -53,9 +53,13 @@ a:focus-visible, summary:focus-visible, .btn:focus-visible, .showcase-link:focus
   border-bottom: 1px solid var(--line);
 }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--accent); text-decoration: none; }
-.brand::before { content: "▮"; animation: blink 1.2s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-.brand-mark { display: none; }
+/* The mark shows here, in phosphor, like everywhere else. It used to be
+   display:none with a blinking "▮" cursor in its place, which meant a store
+   on this theme carried no HonorBox mark at all: the same drift that had left
+   the product with six different marks, just wearing a costume. The theme's
+   identity is the phosphor, the monospace and the bracketed nav, and all of
+   that is untouched. */
+.brand-mark { width: 20px; height: 20px; flex-shrink: 0; }
 .site-nav { display: flex; gap: 1.1rem; flex-wrap: wrap; }
 .site-nav a { color: var(--ink-soft); text-decoration: none; }
 .site-nav a::before { content: "["; } .site-nav a::after { content: "]"; }
@@ -176,15 +180,12 @@ tr.attn td { color: var(--attn); }
    it covers every sheet and the page comes out blank. Terms, refunds and
    license are exactly the pages a buyer saves as PDF, so pin readable ink
    on white and drop the furniture. */
-/* The cursor blinks forever, which is the point of a cursor and also exactly
-   what a vestibular- or attention-sensitive reader has asked the OS to stop.
-   Reduced motion pins it lit, and kills the scanline shimmer with it. */
+/* Kills the scanline shimmer for anyone who has asked the OS to stop motion. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important; animation-delay: 0ms !important;
     animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
   }
-  .brand::before { animation: none; opacity: 1; }
 }
 
 @media print {

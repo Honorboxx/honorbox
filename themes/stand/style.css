@@ -1,110 +1,90 @@
 /* HonorBox theme: "stand".
 
-   An honour box is a plain stand with a single dark slot cut into it. So this
-   page is plain paper carrying exactly one reversed plate, and that plate is
-   the thing you pay into.
+   Monochrome. There is no accent hue anywhere in this theme, including the
+   mark, and that is the point rather than an omission.
 
-   The rules that follow from it:
+   The reasoning, because it will otherwise look like something was left out:
+   a colour has to earn a place in both schemes or it does not have one. The
+   accent here was a burnt red that carried the coin, the buy button, the
+   price, focus rings and a rule. Five jobs is how an accent stops meaning
+   anything, and the obvious replacement, a gold coin, measured 7.71:1 on ink
+   and 2.53:1 on the cream the mark flips to at night. Pushing it to pass
+   turned it brown. So the page spends its contrast on hierarchy instead, and
+   the one heavy object left on it is the thing you are meant to press.
 
-   - One reversed surface on the whole site: the flagship product's plate. It
-     is the only inverted ground, the only rounded slab, and it holds the only
-     saturated button. Everything else is set on bare paper. Boldness is spent
-     once, here, because the buy action has to be the most findable object on
-     the page and it should not need to shout to manage it.
-   - No borders on cards or bands. Separation is ground and space. A 1px line
-     survives only inside a table and between list rows, where a rule actually
-     encodes structure rather than drawing a box for its own sake.
-   - Quiet surfaces sit LIGHTER than the ground, never darker, so an object
-     reads as something resting on the paper rather than a hole in it.
-   - Section headings are announcements, not labels: roughly 2.5x the body,
-     where they used to be 1.55x. That ratio is what gives the page a shape
-     below the hero.
-   - The accent has exactly two jobs, the coin in the mark and the buy button.
-     It used to have five, which is how an accent stops meaning anything.
-   - The buy button is the one element that does not answer to the colour
-     scheme. It is the slot: identical on paper and at night.
+   The rules that follow:
 
-   Palette. Light: ground #faf8f5, raised #ffffff, ink #17130f, ink-soft
-   #5c5449, accent #b5482a, accent-deep #8f3820. Dark mirrors it, and the
-   plate becomes bone #ebe5db rather than white so it lights the page instead
-   of glaring on it. Measured contrast (WCAG 2.1): ink on ground 17.43,
-   ink-soft on ground 7.03, paper on plate 17.43, soft on plate 7.16, button
-   label 5.35, button against either plate 3.45 and 4.27 (both clear the 3:1
-   a control needs). Dark: ink 16.53, ink-soft 6.68, plate ink 14.75, plate
-   soft 5.95.
+   - The primary action is the only filled object on the page: solid ink on
+     paper, solid paper at night. 19.80:1 and 20.12:1 against their grounds,
+     where the old red button was 5.35:1. It cannot be missed and it never
+     competes with anything, because there is nothing to compete with.
+   - Everything else that needs an edge gets a hairline, never a fill.
+   - Quiet surfaces sit one step off the ground, and the hairline carries the
+     edge. Separation is space first, ground second, line last.
+   - Scale carries hierarchy, not weight. The display face is set at 400 for
+     headings; a headline stops shouting and starts reading.
 
-   Display face: Schibsted Grotesk (OFL, self-hosted in assets/fonts/). Mono is
-   reserved for machine-readable things: figures, labels, kickers. Both colour
-   schemes are first class; the theme mirrors rather than dims. */
+   Palette, true neutral in both directions. Light: ground #ffffff, raised
+   #fafafa, line #e5e5e5, ink #0a0a0a, muted #6e6e6e. Dark: ground #000000,
+   raised #0f0f0f, line #1f1f1f, ink #fafafa, muted #a3a3a3.
+
+   Measured (WCAG 2.1, against actual grounds rather than against white).
+   Light: ink 19.80 on ground and 18.97 on raised, muted 5.10 and 4.89,
+   primary button label 19.80, focus ring 19.80. Dark: ink 20.12 and 18.36,
+   muted 8.33 and 7.60, primary button label 20.12, focus ring 20.12.
+
+   Display face: Schibsted Grotesk (OFL, self-hosted in assets/fonts/) at 400
+   and 500. Body is the system sans. Both colour schemes are first class; the
+   theme mirrors rather than dims. */
 
 @font-face {
   font-family: "Schibsted Grotesk";
   font-style: normal;
-  font-weight: 700;
+  font-weight: 400;
   font-display: swap;
-  src: url("./assets/fonts/schibsted-grotesk-latin-700-normal.woff2") format("woff2");
+  src: url("./assets/fonts/schibsted-grotesk-latin-400-normal.woff2") format("woff2");
 }
 @font-face {
   font-family: "Schibsted Grotesk";
   font-style: normal;
-  font-weight: 800;
+  font-weight: 500;
   font-display: swap;
-  src: url("./assets/fonts/schibsted-grotesk-latin-800-normal.woff2") format("woff2");
+  src: url("./assets/fonts/schibsted-grotesk-latin-500-normal.woff2") format("woff2");
 }
 
 :root {
   color-scheme: light dark;
-  --ground: #faf8f5;      /* warm paper: the 60 */
-  --raised: #ffffff;      /* a surface resting on it, always lighter */
-  --line: #e6e1d9;
-  --edge: #ddd7cc;   /* the edge of a picture, which must survive a dark screenshot */
-  --ink: #17130f;
-  --ink-soft: #5c5449;
-  --accent: #b5482a;      /* the coin, and the only saturated thing here */
-  --accent-deep: #8f3820; /* the accent where it has to read as small text */
-  --on-accent: #ffffff;
-  --coin: #b5482a;
-
-  /* The plate: the slot cut into the stand. Inverted in light, bone in dark. */
-  --plate: #17130f;
-  --on-plate: #faf8f5;
-  --on-plate-mid: #ded7cc;   /* the claim */
-  --on-plate-soft: #a8a096;  /* the evidence */
-  --plate-line: #332c25;
+  --ground: #ffffff;
+  --raised: #fafafa;   /* a surface resting on the ground, the hairline gives it its edge */
+  --line: #e5e5e5;
+  --edge: #d4d4d4;     /* the edge of a picture, which must survive a light screenshot */
+  --ink: #0a0a0a;
+  --ink-soft: #6e6e6e;
+  --on-ink: #ffffff;   /* the label on the primary action */
 
   --display: "Schibsted Grotesk", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* One vertical scale, used everywhere, so the page keeps a beat. */
-  --gap-section: clamp(4rem, 9vw, 7.5rem);
+  --gap-section: clamp(4.5rem, 11vw, 9rem);
   --gap-block: clamp(1.5rem, 3vw, 2.25rem);
   --pad-page: clamp(1.15rem, 4vw, 2.25rem);
   --measure: 62ch;
   --shell: 66rem;
-
-  --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%227%22%20fill%3D%22none%22%20stroke%3D%22%2317130f%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%2317130f%22%2F%3E%3C%2Fsvg%3E');
+  --radius: 10px;
+  --pill: 999px;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --ground: #100e0c;
-    --raised: #191613;
-    --line: #2b2620;
-    --edge: #39322a;
-    --ink: #f2ede5;
-    --ink-soft: #a09789;
-    --accent: #d9603c;
-    --accent-deep: #e8785a;
-    --on-accent: #ffffff;
-    --coin: #d9603c;
-
-    --plate: #ebe5db;      /* bone, not white: it lights the page, never glares */
-    --on-plate: #17130f;
-    --on-plate-mid: #3a3428;
-    --on-plate-soft: #57503f;
-    --plate-line: #d3ccbf;
-
-    --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%227%22%20fill%3D%22none%22%20stroke%3D%22%23f2ede5%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23f2ede5%22%2F%3E%3C%2Fsvg%3E');
+    --ground: #000000;
+    --raised: #0f0f0f;
+    --line: #1f1f1f;
+    --edge: #2e2e2e;
+    --ink: #fafafa;
+    --ink-soft: #a3a3a3;
+    --on-ink: #000000;
   }
 }
 
@@ -122,27 +102,27 @@ body {
 
 main { max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad-page) var(--gap-section); }
 
-/* Type scale. The h1-to-body ratio is about 4x and h2-to-body about 2.5x,
-   where h2 used to be 1.55x. A section heading that is merely a label leaves
-   nine bands reading as one undifferentiated list; at this size each band
-   announces itself and the page has a shape below the hero. */
-h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.12; letter-spacing: -0.02em; }
+/* Type scale. Size carries the hierarchy and weight stays out of it: headings
+   are set at 400, the lightest weight the family ships. The headline was 700
+   at 4.25rem, which is what "shouting" looks like when you measure it. At 400
+   it can stay large and still read as a sentence rather than a claim. */
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.12; letter-spacing: -0.02em; }
 h1 {
-  font-size: clamp(2.6rem, 1.6rem + 4.4vw, 4.25rem);
-  line-height: 1.02; margin: 0 0 0.4em; text-wrap: balance; letter-spacing: -0.035em;
+  font-size: clamp(2.35rem, 1.5rem + 3.6vw, 3.75rem);
+  line-height: 1.04; margin: 0 0 0.4em; text-wrap: balance; letter-spacing: -0.032em;
 }
 h2 {
-  font-size: clamp(1.75rem, 1.3rem + 2.1vw, 2.6rem);
-  margin: 0 0 0.6em; text-wrap: balance; letter-spacing: -0.03em;
+  font-size: clamp(1.6rem, 1.25rem + 1.6vw, 2.25rem);
+  margin: 0 0 0.6em; text-wrap: balance; letter-spacing: -0.028em;
 }
-h3 { font-size: clamp(1.05rem, 1rem + 0.28vw, 1.18rem); margin: 0 0 0.35em; }
+h3 { font-size: clamp(1.05rem, 1rem + 0.28vw, 1.18rem); margin: 0 0 0.35em; font-weight: 500; }
 
 a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
 a:focus-visible, summary:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px;
+  outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 3px;
 }
-::selection { background: var(--accent); color: var(--on-accent); }
+::selection { background: var(--ink); color: var(--ground); }
 .muted { color: var(--ink-soft); }
 
 .skip-link {
@@ -164,18 +144,18 @@ a:focus-visible, summary:focus-visible {
   padding: 1.6rem var(--pad-page) 0.75rem;
 }
 .brand {
-  display: inline-flex; align-items: center; gap: 0.55rem;
-  font-family: var(--display); font-weight: 800; font-size: 1.15rem;
-  color: var(--ink); text-decoration: none; letter-spacing: -0.022em;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-family: var(--display); font-weight: 500; font-size: 1.1rem;
+  color: var(--ink); text-decoration: none; letter-spacing: -0.02em;
 }
-.brand-mark { color: var(--ink); width: 24px; height: 24px; flex-shrink: 0; }
+.brand-mark { color: var(--ink); width: 22px; height: 22px; flex-shrink: 0; }
 .site-nav { display: flex; gap: 0.3rem 1.5rem; flex-wrap: wrap; }
 .site-nav a {
   color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; font-weight: 500;
   padding: 0.2rem 0; border-bottom: 1.5px solid transparent;
   transition: color 0.15s ease, border-color 0.15s ease;
 }
-.site-nav a:hover { color: var(--ink); border-bottom-color: var(--accent); }
+.site-nav a:hover { color: var(--ink); }
 
 /* footer: an index, not a paragraph */
 .site-foot {
@@ -187,92 +167,70 @@ a:focus-visible, summary:focus-visible {
 .foot-links { max-width: 52rem; line-height: 2.4; margin: 0 0 1.1rem; color: var(--line); }
 .foot-links a, .foot-legal a { color: var(--ink-soft); text-decoration: none; }
 .foot-links a { padding: 0.15rem 0.25rem; }
-.foot-links a:hover, .foot-legal a:hover { color: var(--accent-deep); text-decoration: underline; }
+.foot-links a:hover, .foot-legal a:hover { color: var(--ink); text-decoration: underline; }
 .foot-legal { margin: 0; font-size: 0.83rem; }
 
-/* hero: left-set, and given real room. The mark prints above the headline and
-   the coin is caught mid-drop, part way into the slot, which is the whole idea
-   of the product. */
+/* hero: centred, and mostly air. It used to open with a 128px mark floating
+   above the headline, a monospace kicker in caps and a monospace subline
+   under the buttons. Four things competing before the reader reached the
+   product. It is a headline, a line of explanation and one button now. */
 .hero {
-  position: relative; text-align: left;
-  padding: clamp(2.75rem, 7vw, 5.5rem) 0 0;
+  text-align: center;
+  padding: clamp(3.5rem, 10vw, 7.5rem) 0 clamp(1rem, 3vw, 2rem);
 }
-.hero::before {
-  content: ""; display: block;
-  width: 128px; height: 71px; margin-bottom: clamp(1.75rem, 3.5vw, 2.5rem);
-  background: var(--mark-box) left center / contain no-repeat;
+.hero h1 { max-width: 20ch; margin-inline: auto; }
+.lede {
+  font-size: clamp(1.05rem, 0.98rem + 0.4vw, 1.2rem); line-height: 1.6;
+  color: var(--ink-soft); max-width: 58ch; margin: 0 auto 2.5rem; text-wrap: pretty;
 }
-/* Geometry, not guesswork: the mark's viewBox is 76 wide, so at 128px it
-   scales by 1.684. The slot (x 24 to 52) centres on 64px, and its band lands
-   3px to 15px below the mark's top edge. The coin is 12 wide, so it starts at
-   58px, and its lower half seats into that band. */
-.hero::after {
-  content: ""; position: absolute;
-  top: calc(clamp(2.75rem, 7vw, 5.5rem) - 14px); left: 58px;
-  width: 12px; height: 27px; border-radius: 6px;
-  background: var(--coin);
-  transform: rotate(-22deg);
-  animation: coin-drop 0.7s cubic-bezier(0.22, 1.3, 0.36, 1) 0.15s both;
-}
-@keyframes coin-drop {
-  from { transform: translateY(-26px) rotate(-42deg); }
-  to { transform: translateY(0) rotate(-22deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hero::after { animation: none; }
-  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-delay: 0ms !important; }
-}
-/* Sections settle into view like sheets squared on a desk. Scroll-driven,
-   CSS-only; browsers without animation-timeline (and reduced-motion users)
-   simply get the static page. Transform-only on purpose: no opacity, so
-   print, full-page captures, and non-scrolling contexts never hide content. */
-@supports (animation-timeline: view()) {
-  @media screen and (prefers-reduced-motion: no-preference) {
-    .showcase, .steps, .compare, .faq, .note {
-      animation: settle linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 22%;
-    }
+.hero-ctas { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; align-items: center; }
+
+/* Motion. One gesture, used once: content rises 8px and fades in as it
+   arrives, and never moves again. Everything else is a 180ms colour change.
+   Content is visible by default and the observer adds the effect, so a
+   scripting failure or an unsupported browser leaves a readable page rather
+   than a blank one. */
+@media (prefers-reduced-motion: no-preference) {
+  .js-reveal { opacity: 0; transform: translateY(8px); }
+  .js-reveal.is-in {
+    opacity: 1; transform: none;
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+    transition-delay: var(--reveal-delay, 0ms);
   }
 }
-@keyframes settle {
-  from { transform: translateY(8px); }
-  to { transform: none; }
-}
-.kicker {
-  font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--ink-soft); margin: 0 0 1.3em;
-}
-.hero h1 { max-width: 17ch; }
-.lede {
-  font-size: clamp(1.1rem, 1rem + 0.5vw, 1.32rem); line-height: 1.55;
-  color: var(--ink-soft); max-width: 50ch; margin: 0 0 2.4rem; text-wrap: pretty;
-}
-.hero-ctas { display: flex; gap: 0.75rem; justify-content: flex-start; flex-wrap: wrap; align-items: center; }
-.hero-sub {
-  font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft);
-  margin: 1.8rem 0 0; max-width: 60ch; line-height: 1.7;
+@media (prefers-reduced-motion: reduce) {
+  /* No transforms, no reveals, nothing left mid-transition. */
+  .js-reveal, .js-reveal.is-in { opacity: 1; transform: none; transition: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* buttons. The filled one is the only saturated object on the site, and it is
-   deliberately identical in both colour schemes: it is the slot, and a slot
-   does not change colour at night. */
+/* buttons. The primary one is the only filled object on the page, so it does
+   not need a colour to be found: solid ink on paper, solid paper at night,
+   19.80:1 and 20.12:1 against their grounds. The old red managed 5.35:1 and
+   spent a hue to do it. Everything secondary is a hairline and no fill, which
+   is the whole hierarchy: one thing is filled, and that is the thing to press. */
 .btn {
-  display: inline-block; padding: 0.72rem 1.35rem; border-radius: 5px;
-  font-weight: 600; text-decoration: none;
-  border: 1.5px solid var(--line); color: var(--ink); background: transparent;
+  display: inline-block; padding: 0.72rem 1.4rem; border-radius: var(--pill);
+  font-weight: 500; text-decoration: none;
+  border: 1px solid var(--line); color: var(--ink); background: transparent;
   font-size: 0.97rem; line-height: 1.35;
-  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease, transform 0.14s ease;
+  transition: background-color 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), opacity 0.18s var(--ease);
 }
-.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .btn-buy {
-  background: #b5482a; color: #ffffff; border-color: #b5482a; font-weight: 700;
+  background: var(--ink); color: var(--on-ink); border-color: var(--ink); font-weight: 500;
 }
-.btn-buy:hover { background: #9c3d22; border-color: #9c3d22; transform: translateY(-1px); }
-.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
-.btn-big { padding: 0.9rem 1.8rem; font-size: 1.03rem; }
-.btn-disabled { opacity: 0.6; border-style: dashed; cursor: not-allowed; }
+/* Hover lightens rather than recolours. There is no second brand colour to
+   move to, and opacity keeps the label's contrast proportional instead of
+   landing it on some in-between grey. */
+.btn-buy:hover { opacity: 0.86; }
+.btn-ghost:hover { border-color: var(--ink); }
+.btn-big { padding: 0.85rem 1.75rem; font-size: 1.02rem; }
+.btn-disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---------- products ---------- */
 
@@ -321,37 +279,26 @@ a:focus-visible, summary:focus-visible {
   display: block; margin-top: 0.25rem; letter-spacing: 0.01em;
 }
 
-/* THE PLATE. The one reversed surface on the site, and the only place the
-   accent is allowed to fill anything. Laid out wide and shallow rather than as
-   a tall slab: the identity and the buy action hold a left rail, the
-   specification runs beside it, so the thing a visitor must find sits in the
-   plate's top-left where reading starts. */
+/* The flagship card. It used to be a reversed slab, the one inverted surface
+   on the site. A slab that dark is a second heavy object arguing with the
+   button inside it, and it is most of what made the page look like it was
+   trying something. It is a card now: a hairline, a radius, and room. The
+   layout it had was good and is kept, wide and shallow rather than a tall
+   block, so the identity and the buy action hold a left rail and the
+   specification runs beside them. */
 .product-card.flagship {
-  background: var(--plate);
-  color: var(--on-plate);
+  background: var(--raised);
+  border: 1px solid var(--line);
   padding: clamp(1.75rem, 4vw, 3.25rem);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .product-card.flagship h3 {
-  font-size: clamp(1.6rem, 1.25rem + 1.5vw, 2.2rem); letter-spacing: -0.03em;
+  font-size: clamp(1.5rem, 1.2rem + 1.3vw, 2rem); letter-spacing: -0.025em;
 }
-/* Brighter than the spec lines beside it. One colour for both made the
-   plate's left rail and right column read as a single undifferentiated block
-   of grey; the tagline is the claim, the spec is the evidence. An explicit
-   token rather than color-mix: an engine that does not know the function drops
-   the declaration and inherits --ink-soft, which on this plate is dark grey on
-   near-black. A fallback nobody can read is worse than a flatter plate. */
-.product-card.flagship .pc-tagline { color: var(--on-plate-mid); max-width: 34ch; }
-.product-card.flagship .badge {
-  color: var(--on-plate-soft); border-color: var(--plate-line);
-}
-.product-card.flagship .pc-features li { color: var(--on-plate-soft); }
-/* A hairline between spec lines, in the plate's own line colour. Inside a
-   specification a rule is structure, not decoration: it says these are
-   separate claims. */
-.product-card.flagship .pc-features li + li { border-top: 1px solid var(--plate-line); }
-.product-card.flagship .price { color: var(--on-plate); }
-.product-card.flagship .price small { color: var(--on-plate-soft); }
+.product-card.flagship .pc-tagline { max-width: 34ch; }
+/* A hairline between spec lines. Inside a specification a rule is structure,
+   not decoration: it says these are separate claims. */
+.product-card.flagship .pc-features li + li { border-top: 1px solid var(--line); }
 .product-card.flagship .pc-buy { padding-top: 1.6rem; }
 
 @media (min-width: 56rem) {
@@ -372,7 +319,7 @@ a:focus-visible, summary:focus-visible {
   .product-card.flagship .pc-buy {
     grid-column: 1; grid-row: 2; align-self: start;
     margin-top: 1.75rem; padding-top: 1.6rem;
-    border-top: 1px solid var(--plate-line);
+    border-top: 1px solid var(--line);
     justify-content: flex-start; gap: 1.5rem;
   }
   .product-card.flagship .pc-features {
@@ -380,11 +327,13 @@ a:focus-visible, summary:focus-visible {
   }
 }
 
-/* companion: a quiet row on bare paper, the opposite of the plate */
+/* companion: a quieter row than the flagship, on the same hairline system */
 .product-card.companion {
   flex-direction: row; align-items: center; gap: 0.5rem 1.5rem;
   padding: 1.25rem var(--card-pad);
   background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 .product-card.companion .badge,
 .product-card.companion .pc-features { display: none; }
@@ -405,22 +354,17 @@ a:focus-visible, summary:focus-visible {
   margin-top: var(--gap-section);
 }
 
-/* Every section that carries a standfirst sets it beside the heading rather
-   than beneath it: the heading holds the left column, the note the right, and
-   the content spans both. Wide screens get a proper masthead, narrow ones get
-   the same two lines stacked. No markup knows about this. */
-@media (min-width: 56rem) {
-  .compare, .showcase {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: clamp(2rem, 5vw, 4rem);
-    align-items: end;
-  }
-  .compare > h2, .showcase > h2 { grid-column: 1; grid-row: 1; margin-bottom: 0; }
-  .compare > .muted, .showcase > .muted { grid-column: 2; grid-row: 1; margin: 0; }
-  .compare > .table-scroll, .showcase > .showcase-grid { grid-column: 1 / -1; }
+/* Each band opens the same way: a heading, then its standfirst under it, both
+   centred, then the content left-aligned beneath. The heading and standfirst
+   used to sit side by side as a two-column masthead, which is a device, and
+   it only existed above 56rem so the page had two different section grammars
+   depending on the window. One grammar now, at every width.
+   The content itself stays left-aligned. Centred body text is harder to read,
+   and none of this is decoration. */
+.steps > h2, .compare > h2, .faq > h2, .showcase > h2 { text-align: center; margin-bottom: 0.35em; }
+.compare > .muted, .showcase > .muted, .steps > .muted, .faq > .muted {
+  font-size: 0.98rem; max-width: 56ch; margin: 0 auto; text-align: center;
 }
-.compare > .muted, .showcase > .muted { font-size: 0.92rem; max-width: 56ch; margin: 0 0 0.4em; }
 
 /* steps: the numerals set the order, quietly */
 .steps-list {
@@ -433,7 +377,7 @@ a:focus-visible, summary:focus-visible {
   display: block; margin-bottom: 0.85rem; padding-bottom: 0.85rem;
   border-bottom: 1px solid var(--line);
   font-family: var(--mono); font-weight: 400;
-  color: var(--accent-deep); font-size: 0.9rem; letter-spacing: 0.14em; line-height: 1;
+  color: var(--ink-soft); font-size: 0.9rem; letter-spacing: 0.14em; line-height: 1;
 }
 .steps-list h3 { margin: 0 0 0.4rem; font-size: 1.08rem; }
 .steps-list p { margin: 0; color: var(--ink-soft); font-size: 0.93rem; line-height: 1.6; max-width: 54ch; }
@@ -459,8 +403,8 @@ a:focus-visible, summary:focus-visible {
 .doc-list h3 { margin: 0 0 0.35rem; font-size: 1.08rem; }
 .steps-list h3 a, .doc-list h3 a { color: var(--ink); text-decoration: none; }
 .steps-list h3 a::after, .doc-list h3 a::after { content: ""; position: absolute; inset: 0; }
-.steps-list li:has(h3 a):hover::after, .doc-list li:hover::after { color: var(--accent-deep); transform: translate(3px, -50%); }
-.steps-list li:has(h3 a):hover h3 a, .doc-list li:hover h3 a { color: var(--accent-deep); }
+.steps-list li:has(h3 a):hover::after, .doc-list li:hover::after { color: var(--ink); transform: translate(3px, -50%); }
+.steps-list li:has(h3 a):hover h3 a, .doc-list li:hover h3 a { color: var(--ink); }
 
 /* compare table: hairlines, and our column marked by ground rather than bold */
 /* The table is wider than a phone, so it scrolls. Row labels have to stay put
@@ -469,15 +413,15 @@ a:focus-visible, summary:focus-visible {
 .table-scroll {
   overflow-x: auto; margin-top: 1.6rem;
   background:
-    linear-gradient(to right, var(--paper) 30%, transparent) left / 3rem 100% no-repeat local,
-    linear-gradient(to left, var(--paper) 30%, transparent) right / 3rem 100% no-repeat local,
+    linear-gradient(to right, var(--ground) 30%, transparent) left / 3rem 100% no-repeat local,
+    linear-gradient(to left, var(--ground) 30%, transparent) right / 3rem 100% no-repeat local,
     linear-gradient(to right, rgba(0,0,0,0.13), transparent) left / 1.1rem 100% no-repeat scroll,
     linear-gradient(to left, rgba(0,0,0,0.13), transparent) right / 1.1rem 100% no-repeat scroll;
 }
-.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.table-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .table-scroll table { min-width: 40rem; }
 .table-scroll th:first-child, .table-scroll td:first-child {
-  position: sticky; left: 0; background: var(--paper);
+  position: sticky; left: 0; background: var(--ground);
 }
 table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
 th {
@@ -508,12 +452,12 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   color: var(--ink-soft); flex-shrink: 0; line-height: 1;
   transition: transform 0.2s ease; transform-origin: center;
 }
-.faq summary:hover { color: var(--accent-deep); }
+.faq summary:hover { color: var(--ink-soft); }
 .faq details[open] summary::after { transform: rotate(45deg); }
 .faq p { color: var(--ink-soft); margin: 0 0 1.4rem; max-width: var(--measure); padding: 0 0.15rem; font-size: 0.96rem; }
 /* Wraps on purpose. A seller writes this label, so it can be any length, and
    nowrap turned a long one into horizontal overflow on a phone. */
-.faq-more { color: var(--accent-deep); }
+.faq-more { color: var(--ink); }
 
 /* note: the page's one piece of plain speech. It used to be 0.94rem grey in a
    tinted box, which is the typography of fine print, on the paragraph that
@@ -525,45 +469,69 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   max-width: 46ch;
   color: var(--ink);
   padding: 0 0 0 clamp(1.1rem, 2.5vw, 1.6rem);
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--line);
 }
 .note p a { color: var(--ink); }
 
-/* showcase: the theme screenshots are the page's colour, and they are real
-   product rather than decoration */
+/* showcase. Five sold themes, five deliberately different palettes, laid out
+   in a row. Unframed they read as the page changing its mind five times: the
+   owner's word for it was chaos, and that is a fair description of five
+   full-bleed colour blocks with nothing holding them.
+   Nothing here restyles a theme. Each preview goes into an identical neutral
+   mat instead, so the frame is the constant and the colour inside it is
+   visibly the sample rather than the site. This is what a shop does with
+   paint chips, and it is the whole fix.
+   Two columns, not three. Three put five tiles in a 3+2 grid with a hole in
+   the corner, and shrank a screenshot of a page to a third of a column, which
+   is too small to read the thing being sold. */
 .showcase-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: clamp(1.3rem, 3vw, 2rem) clamp(1.1rem, 2.5vw, 1.6rem);
-  margin-top: 2rem;
+  --showcase-gap: clamp(1.1rem, 2.5vw, 1.6rem);
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: clamp(1.3rem, 3vw, 1.9rem) var(--showcase-gap);
+  margin-top: 2.25rem;
 }
-.showcase figure { margin: 0; }
+/* An odd last tile centres at the width of the others rather than stretching
+   across the row. Keyed on the item count, not on there being five themes, so
+   a seller who ships four or six never meets the seam either. */
+.showcase-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  width: calc(50% - (var(--showcase-gap) / 2));
+  justify-self: center;
+}
+.showcase figure {
+  margin: 0; height: 100%;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: clamp(0.5rem, 1.2vw, 0.7rem);
+  transition: border-color 0.18s var(--ease);
+}
 .showcase img {
   display: block; width: 100%; height: auto;
-  border-radius: 6px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 5px;
+  /* The preview's own edge, because a light theme's screenshot on a light mat
+     would otherwise bleed into it. */
   box-shadow: 0 0 0 1px var(--edge);
 }
 .showcase figcaption {
-  font-family: var(--mono); font-size: 0.71rem; letter-spacing: 0.06em;
-  color: var(--ink-soft); margin-top: 0.7rem;
+  font-size: 0.86rem; color: var(--ink-soft);
+  margin-top: 0.7rem; padding: 0 0.25rem 0.2rem;
+  transition: color 0.18s var(--ease);
 }
-.showcase-link { text-decoration: none; }
-.showcase-link:hover img, .showcase-link:focus-visible img {
-  box-shadow: 0 0 0 1px var(--accent); transform: translateY(-2px);
-}
+.showcase-link { text-decoration: none; display: block; height: 100%; }
+.showcase-link:hover figure, .showcase-link:focus-visible figure { border-color: var(--ink); }
 .showcase-link:hover figcaption { color: var(--ink); }
-.showcase-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; display: block; }
+.showcase-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: var(--radius); }
 
 /* ---------- prose ---------- */
-/* One left edge for the whole site. A 44rem column centred under a 66rem
-   header gave the site two different left edges and left ~380px of dead
-   margin either side of every doc. On a wide screen the h1 takes a left rail
-   and the body hangs off the header's own edge; below that it is one column.
-   No markup knows about this either. */
-.prose { max-width: var(--shell); margin: clamp(2.5rem, 5vw, 4rem) 0 0; }
-.prose > * { max-width: 44rem; }
+/* A centred reading column. It used to be a two-column grid above 64rem with
+   the h1 in a left rail, which is the same masthead device the home sections
+   were using, and it gave a doc a different shape from the page that links to
+   it. A document is a column of text; that is the conventional answer and it
+   is the right one. */
+.prose { max-width: 44rem; margin: clamp(2.5rem, 5vw, 4rem) auto 0; }
 .prose p, .prose ul, .prose ol, .prose blockquote { max-width: var(--measure); }
-.prose h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); }
+.prose h1 { font-size: clamp(1.95rem, 1.4rem + 2.2vw, 2.85rem); }
 .prose h1 + p { font-size: 1.08rem; color: var(--ink-soft); max-width: 52ch; }
 .prose h2 {
   font-size: clamp(1.3rem, 1.15rem + 0.7vw, 1.65rem);
@@ -575,49 +543,30 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 .prose li { margin: 0.4rem 0; }
 .prose li::marker { color: var(--ink-soft); }
 
-@media (min-width: 64rem) {
-  .prose {
-    display: grid;
-    grid-template-columns: minmax(0, 15rem) minmax(0, 44rem);
-    column-gap: clamp(2rem, 5vw, 3.5rem);
-    align-items: start;
-  }
-  .prose > * { grid-column: 2; }
-  /* Title in the rail, standfirst beside it: the same masthead the compare and
-     showcase bands use, so a doc and the storefront are recognisably one site.
-     Deliberately not sticky. The h1's grid area is row 1 only, so a sticky
-     title would release the moment the first paragraph scrolled past and the
-     declaration would be describing behaviour it cannot produce. Spanning the
-     whole column needs a wrapper element, and the markup is shared across five
-     themes, so the rail stays honest instead. */
-  .prose > h1 {
-    grid-column: 1; grid-row: 1;
-    font-size: clamp(1.9rem, 1.1rem + 1.5vw, 2.35rem);
-    margin: 0; max-width: none; text-wrap: balance;
-  }
-  .prose > :nth-child(2) { grid-row: 1; }
+.product-page { max-width: 44rem; margin: clamp(2rem, 5vw, 3.25rem) auto 0; }
+/* The one place a kicker survives: it names the store above a product's
+   title, which is wayfinding rather than decoration. Set as quiet text, not
+   as monospace capitals. */
+.kicker {
+  font-size: 0.92rem; color: var(--ink-soft); margin: 0 0 0.6em; letter-spacing: 0;
 }
-
-.product-page { max-width: var(--shell); margin: clamp(2rem, 5vw, 3.25rem) 0 0; }
-.product-page > * { max-width: 44rem; }
-.product-page .kicker { margin-bottom: 1em; }
+.product-page .kicker { margin-bottom: 0.7em; }
 .product-page .lede { margin-left: 0; margin-right: 0; text-wrap: pretty; }
 .product-page .prose { margin-top: 0; max-width: 44rem; display: block; }
 .product-page .prose > * { max-width: none; }
 .product-page .prose p, .product-page .prose ul, .product-page .prose ol { max-width: var(--measure); }
 
-/* The standalone buy block on a product page is the plate again, at the size
-   the page can carry. Same object, same meaning, so the site has one way of
-   saying "this is the thing you pay for". */
+/* The standalone buy block on a product page is the flagship card again, at
+   the size the page can carry. Same object, same meaning, so the site has one
+   way of saying "this is the thing you pay for". */
 .pc-buy.standalone {
   margin: 2.25rem 0 2.75rem; padding: 1.35rem 1.5rem;
   border-radius: 12px;
-  background: var(--plate); color: var(--on-plate);
+  background: var(--raised); border: 1px solid var(--line);
 }
-.pc-buy.standalone .price { color: var(--on-plate); }
-.pc-buy.standalone .price small { color: var(--on-plate-soft); }
+
 .pc-buy.standalone:not(:has(.price)) {
-  background: none; padding: 0;
+  background: none; border: none; padding: 0;
   justify-content: flex-start; margin: 2.75rem 0 0.5rem;
 }
 
@@ -636,13 +585,13 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   overflow-wrap: anywhere;
 }
 .prose blockquote {
-  border-left: 2px solid var(--accent); margin: 1.4rem 0; padding: 0.2rem 1.2rem;
+  border-left: 2px solid var(--line); margin: 1.4rem 0; padding: 0.2rem 1.2rem;
   color: var(--ink-soft);
 }
 
 /* trust page: the public ledger prints like every other table */
 .ledger-total { font-size: 1.05rem; }
-.ledger-total strong { font-family: var(--display); font-weight: 800; color: var(--accent-deep); }
+.ledger-total strong { font-family: var(--display); font-weight: 500; color: var(--ink); }
 .trust h1 + p { color: var(--ink-soft); }
 
 .prose figure { margin: 1.6rem 0; }
@@ -666,16 +615,12 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 .prose .table-scroll { max-width: none; }
 
 /* ---------- small screens ---------- */
-@media (max-width: 55.99rem) {
-  .showcase-grid { grid-template-columns: repeat(2, 1fr); }
-  /* Five tiles in two columns strand the fifth at half width, which reads as a
-     broken grid rather than a remainder. Any odd-numbered last tile takes the
-     full row instead. Keyed on count, not on there being five themes, so a
-     seller who ships four or six never meets the same seam. */
-  .showcase-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
-}
+/* One column below tablet: a screenshot of a whole page at half of a phone is
+   not a preview of anything. The centred-orphan rule has to be undone too, or
+   the last tile keeps a half-width cap with nothing beside it. */
 @media (max-width: 44rem) {
   .showcase-grid { grid-template-columns: 1fr; }
+  .showcase-grid > :last-child:nth-child(odd) { width: auto; justify-self: stretch; }
 }
 @media (max-width: 40rem) {
   .product-card.companion { flex-direction: column; align-items: stretch; }
@@ -695,17 +640,18 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 
 /* Print: prefers-color-scheme still reports dark under print media, so a
    dark-mode reader's saved PDF rendered near-white ink on unprinted white
-   (~2.6:1). Pin the light palette for paper regardless of screen scheme, and
-   flatten the plate, which would otherwise print as a solid black rectangle. */
+   (~2.6:1). Pin the light palette for paper regardless of screen scheme. */
 @media print {
   :root {
-    --ground: #ffffff; --raised: #ffffff; --line: #d8d2c8; --edge: #b9b2a6;
-    --ink: #17130f; --ink-soft: #5c5449;
-    --accent: #b5482a; --accent-deep: #8f3820; --on-accent: #ffffff; --coin: #b5482a;
-    --plate: #ffffff; --on-plate: #17130f; --on-plate-mid: #3a3428;
-    --on-plate-soft: #5c5449; --plate-line: #d8d2c8;
+    --ground: #ffffff; --raised: #ffffff; --line: #d4d4d4; --edge: #b8b8b8;
+    --ink: #0a0a0a; --ink-soft: #6e6e6e;
+    --on-ink: #ffffff;
   }
   body { background: #fff; color: var(--ink); }
   .site-nav, .skip-link { display: none; }
+  /* A scroll reveal must never reach paper. Anything the observer has not
+     got to yet is still at opacity 0, and printing is exactly the case where
+     nothing scrolls, so every section below the fold would print blank. */
+  .js-reveal, .js-reveal.is-in { opacity: 1 !important; transform: none !important; }
   .product-card.flagship, .pc-buy.standalone { border: 1px solid var(--line); }
 }

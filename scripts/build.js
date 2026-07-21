@@ -675,15 +675,19 @@ function main() {
   }
 
   // ---------- home ----------
+  // The hero carries a headline, one line of explanation and one action.
+  // kicker and subline are optional and omitted entirely when unset, rather
+  // than emitting an empty <p> for a theme to style around. The repo link is
+  // not repeated here: it is already in the nav, and two buttons side by side
+  // make neither of them the primary one.
   const hero = `<section class="hero">
-  <p class="kicker">${escapeHtml(config.kicker || '')}</p>
+  ${config.kicker ? `<p class="kicker">${escapeHtml(config.kicker)}</p>` : ''}
   <h1>${escapeHtml(config.headline || config.name)}</h1>
   <p class="lede">${escapeHtml(config.tagline)}</p>
   <div class="hero-ctas">
     ${products[0] ? buyButton(products[0], true) : ''}
-    ${config.repo ? `<a class="btn btn-ghost" href="https://github.com/${escapeHtml(config.repo)}">Read the engine on GitHub</a>` : ''}
   </div>
-  <p class="hero-sub">${escapeHtml(config.subline || '')}</p>
+  ${config.subline ? `<p class="hero-sub">${escapeHtml(config.subline)}</p>` : ''}
 </section>`;
 
   const home =
