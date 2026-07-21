@@ -23,12 +23,20 @@ updates:
       timezone: Etc/UTC
     commit-message:
       prefix: ci
-    # Minor and patch bumps arrive as one PR: they are the low-risk majority,
-    # and five separate PRs a week for them is how people learn to stop reading
-    # them. Majors are deliberately NOT grouped. Each one is a behaviour change
-    # that deserves its own test run and its own decision, and a grouped major
-    # that fails tells you only that one of four things broke.
     groups:
+      # init and analyze are one tool in two steps and CodeQL refuses a
+      # mismatched pair ("Loaded a configuration file for version '3.37.1',
+      # but running version '4.37.2'"). Dependabot counts them as two
+      # dependencies, so ungrouped it bumps one half per PR and both halves
+      # fail. This group carries every update type, majors included, because
+      # the halves have to cross a major together or not at all.
+      codeql-action:
+        patterns: ["github/codeql-action*"]
+      # Everything else: minor and patch bumps arrive as one PR, they are the
+      # low-risk majority and five PRs a week for them is how people learn to
+      # stop reading them. Majors stay separate on purpose. Each is a
+      # behaviour change deserving its own test run, and a grouped major that
+      # fails tells you only that one of four things broke.
       actions:
         applies-to: version-updates
         update-types: [minor, patch]
