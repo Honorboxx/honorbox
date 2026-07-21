@@ -53,6 +53,43 @@ paid order that is still undelivered, the store doctor catches setup mistakes
 before they cost you a launch, and the refund guard revokes what a refund should
 revoke without waiting for you to run a command.
 
+## Who should buy this (and who shouldn't)
+
+**Buy Pro if** you have a store set up and a launch coming, and you would rather
+find out now than infer it later from an absence of sales. You get one launch,
+and a misconfigured grant or a dead buy button burns it while every local signal
+tells you the store is fine. Buy it too if you are already taking orders and want
+each one proved delivered rather than assumed, if you sell or plan multiple
+products, if your product runs on machines you cannot see and needs license keys,
+or if you want a storefront that doesn't look like every other fork.
+
+Already selling through Stripe and GitHub with something you wired up yourself?
+That is the setup this was built for, and adopting the engine is a config file
+naming the payment links and product repos you already have, not a migration your
+buyers can see. One thing to know before you fork: the suite reads a HonorBox
+config, so it checks a store built on the engine rather than any arbitrary setup.
+
+Delivery is a private repo, so read the box before you buy it. Public and
+checkable right now: a complete Pro theme
+([`terminal`](https://github.com/Honorboxx/honorbox/tree/main/themes/terminal),
+shipped in this repo), the license module's
+[full API surface](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md#the-license-module-api-surface)
+with the key format and both verify snippets, the playbook's complete table of
+contents, and
+[what every module prints](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md),
+in its real format, so you can see the answer each one gives before you pay for
+the code behind it.
+
+**Skip Pro if** you have not actually set a store up yet. There is nothing for
+the suite to check, and the free core is a complete store on its own. Skip it if
+you're selling one PDF or template, or if you're happy in CSS and would rather
+restyle the free theme yourself, which the theme contract makes easy.
+
+And skip it if you are buying it to feel like you have started. That is the most
+common reason anyone buys a tool like this and it is the wrong one. The suite is
+worth $29 when you have a real store and a real launch date. It is worth nothing
+as a substitute for having either.
+
 ## What's inside
 
 **The conformance suite.** The largest thing Pro ships. It reads your config and
@@ -187,37 +224,6 @@ store nobody has heard of, and an EU VAT primer with two worked registration
 examples. Every chapter title and a one-line summary of each is
 [published](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md#the-commerce-playbook)
 so you can see the shape of it before paying.
-
-## Who should buy this (and who shouldn't)
-
-**Buy Pro if** you have a store set up and a launch coming, and you would rather
-find out now than infer it later from an absence of sales. You get one launch,
-and a misconfigured grant or a dead buy button burns it while every local signal
-tells you the store is fine. Buy it too if you are already taking orders and want
-each one proved delivered rather than assumed, if you sell or plan multiple
-products, if your product runs on machines you cannot see and needs license keys,
-or if you want a storefront that doesn't look like every other fork.
-
-Delivery is a private repo, so read the box before you buy it. Public and
-checkable right now: a complete Pro theme
-([`terminal`](https://github.com/Honorboxx/honorbox/tree/main/themes/terminal),
-shipped in this repo), the license module's
-[full API surface](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md#the-license-module-api-surface)
-with the key format and both verify snippets, the playbook's complete table of
-contents, and
-[what every module prints](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md),
-in its real format, so you can see the answer each one gives before you pay for
-the code behind it.
-
-**Skip Pro if** you have not actually set a store up yet. There is nothing for
-the suite to check, and the free core is a complete store on its own. Skip it if
-you're selling one PDF or template, or if you're happy in CSS and would rather
-restyle the free theme yourself, which the theme contract makes easy.
-
-And skip it if you are buying it to feel like you have started. That is the most
-common reason anyone buys a tool like this and it is the wrong one. The suite is
-worth $29 when you have a real store and a real launch date. It is worth nothing
-as a substitute for having either.
 
 ## How delivery works
 
