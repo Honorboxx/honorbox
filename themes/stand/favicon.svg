@@ -1,18 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <!-- A coin dropping into the slot of an honor box.
+  <!-- The honour box: a stand with a slot cut into it, and a foot.
        Drawn on a 48 unit frame with every straight edge on a multiple of 3, so
        at 16px (one pixel is 3 units) and at 32px (1.5 units) the body, slot and
        foot land on whole pixels instead of smearing into grey. No plate behind
        it: at 16px the margin a plate needs is the difference between a readable
-       mark and a smudge. -->
+       mark and a smudge.
+       The path sits low in its own frame so it can meet a wordmark's baseline
+       in the lockup. Standing alone it is lifted 6 units, a whole pixel at
+       16px, to centre it here.
+       One colour, no accent. A coin that reads as gold on ink browns to 2.53:1
+       on the cream the mark flips to at night, and a mark that only works in
+       one colour scheme is half a mark. -->
   <style>
-    .box { fill: #14120f }
-    .coin { fill: #b5482a }
+    .box { fill: #0a0a0a }
     @media (prefers-color-scheme: dark) {
-      .box { fill: #f0ece5 }
-      .coin { fill: #d9603c }
+      .box { fill: #fafafa }
     }
   </style>
-  <path class="box" d="M9,15H39A3,3 0 0 1 42,18V42H6V18A3,3 0 0 1 9,15ZM4.5,39H43.5A1.5,1.5 0 0 1 45,40.5V43.5A1.5,1.5 0 0 1 43.5,45H4.5A1.5,1.5 0 0 1 3,43.5V40.5A1.5,1.5 0 0 1 4.5,39ZM18,24A3,3 0 0 0 15,27A3,3 0 0 0 18,30H30A3,3 0 0 0 33,27A3,3 0 0 0 30,24H18Z"/>
-  <path class="coin" d="M18.21,9.84A6.25,4.15 -22 0 1 29.79,5.16A6.25,4.15 -22 0 1 18.21,9.84Z"/>
+  <g transform="translate(0,-6)">
+    <path class="box" d="M9,15H39A3,3 0 0 1 42,18V42H6V18A3,3 0 0 1 9,15ZM4.5,39H43.5A1.5,1.5 0 0 1 45,40.5V43.5A1.5,1.5 0 0 1 43.5,45H4.5A1.5,1.5 0 0 1 3,43.5V40.5A1.5,1.5 0 0 1 4.5,39ZM18,24A3,3 0 0 0 15,27A3,3 0 0 0 18,30H30A3,3 0 0 0 33,27A3,3 0 0 0 30,24H18Z"/>
+  </g>
 </svg>

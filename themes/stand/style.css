@@ -82,8 +82,6 @@
   --pad-page: clamp(1.15rem, 4vw, 2.25rem);
   --measure: 62ch;
   --shell: 66rem;
-
-  --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%227%22%20fill%3D%22none%22%20stroke%3D%22%2317130f%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%2317130f%22%2F%3E%3C%2Fsvg%3E');
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -103,8 +101,6 @@
     --on-plate-mid: #3a3428;
     --on-plate-soft: #57503f;
     --plate-line: #d3ccbf;
-
-    --mark-box: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2076%2042%22%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%2254%22%20height%3D%2233%22%20rx%3D%227%22%20fill%3D%22none%22%20stroke%3D%22%23f2ede5%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%222%22%20width%3D%2228%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%23f2ede5%22%2F%3E%3C%2Fsvg%3E');
   }
 }
 
@@ -197,32 +193,8 @@ a:focus-visible, summary:focus-visible {
   position: relative; text-align: left;
   padding: clamp(2.75rem, 7vw, 5.5rem) 0 0;
 }
-.hero::before {
-  content: ""; display: block;
-  width: 128px; height: 71px; margin-bottom: clamp(1.75rem, 3.5vw, 2.5rem);
-  background: var(--mark-box) left center / contain no-repeat;
-}
-/* Geometry, not guesswork: the mark's viewBox is 76 wide, so at 128px it
-   scales by 1.684. The slot (x 24 to 52) centres on 64px, and its band lands
-   3px to 15px below the mark's top edge. The coin is 12 wide, so it starts at
-   58px, and its lower half seats into that band. */
-.hero::after {
-  content: ""; position: absolute;
-  top: calc(clamp(2.75rem, 7vw, 5.5rem) - 14px); left: 58px;
-  width: 12px; height: 27px; border-radius: 6px;
-  background: var(--coin);
-  transform: rotate(-22deg);
-  animation: coin-drop 0.7s cubic-bezier(0.22, 1.3, 0.36, 1) 0.15s both;
-}
-@keyframes coin-drop {
-  from { transform: translateY(-26px) rotate(-42deg); }
-  to { transform: translateY(0) rotate(-22deg); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .hero::after { animation: none; }
-  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-delay: 0ms !important; }
-}
-/* Sections settle into view like sheets squared on a desk. Scroll-driven,
+  /* Sections settle into view like sheets squared on a desk. Scroll-driven,
    CSS-only; browsers without animation-timeline (and reduced-motion users)
    simply get the static page. Transform-only on purpose: no opacity, so
    print, full-page captures, and non-scrolling contexts never hide content. */
