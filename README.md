@@ -11,8 +11,12 @@ HonorBox turns a GitHub repo into an unattended store, a roadside honor box
 for the internet:
 
 - **Storefront:** a static site built by a zero-dependency Node script and
-  hosted free on GitHub Pages. It ships no JavaScript: the only `<script>` on a
-  built page is the JSON-LD block search engines read.
+  hosted free on GitHub Pages. No framework, no build step you have to run, and
+  nothing loaded from anyone else's server: zero external scripts, styles,
+  fonts or images. The only scripts on a built page are first party and inline,
+  about 5 KB unminified and mostly comments: the JSON-LD block search engines
+  read, plus a theme toggle and a scroll reveal. Both degrade to a fully
+  readable page with JavaScript switched off.
 - **Checkout:** Stripe Payment Links on *your own* Stripe account. Buyers pay
   you directly; you pay Stripe's processing rate and nothing on top of it.
 - **Fulfillment:** a scheduled GitHub Action polls Stripe, invites each buyer's
