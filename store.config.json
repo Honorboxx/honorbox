@@ -2,11 +2,13 @@
   "name": "HonorBox",
   "headline": "Sell digital products with just Stripe + GitHub.",
   "tagline": "The engine is free and MIT: a static storefront on GitHub Pages, checkout through your own Stripe account, and a GitHub Action that delivers every sale while you sleep. Pro is the $29 suite that checks it is all still working.",
-  "meta_title": "Sell digital products with Stripe + GitHub, 0% fee · HonorBox",
+  "subline": "Start free: fork the engine this store runs on",
+  "subline_href": "https://github.com/Honorboxx/honorbox",
+  "meta_title": "Sell digital products with Stripe + GitHub, 0% fee \u00b7 HonorBox",
   "meta_description": "Sell digital products with just Stripe and GitHub Pages. 0% platform fee, $0/month, no server to run. MIT engine; buyers pay you directly on your own Stripe account.",
   "url": "https://honorboxx.github.io/honorbox",
   "theme": "stand",
-  "seller": "HonorBox · honorbox@proton.me",
+  "seller": "HonorBox \u00b7 honorbox@proton.me",
   "repo": "Honorboxx/honorbox",
   "sections": [
     {
@@ -96,9 +98,9 @@
       "rows": [
         [
           "Platform fee",
-          "10% + 50¢",
-          "5% + 50¢",
-          "5% + 50¢ free tier",
+          "10% + 50\u00a2",
+          "5% + 50\u00a2",
+          "5% + 50\u00a2 free tier",
           "0%"
         ],
         [
@@ -110,7 +112,7 @@
         ],
         [
           "Payment processing",
-          "2.9% + 30¢ on top",
+          "2.9% + 30\u00a2 on top",
           "included above",
           "included above",
           "Stripe's standard rate only"
