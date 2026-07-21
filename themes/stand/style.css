@@ -473,30 +473,55 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 }
 .note p a { color: var(--ink); }
 
-/* showcase: the theme screenshots are the page's colour, and they are real
-   product rather than decoration */
+/* showcase. Five sold themes, five deliberately different palettes, laid out
+   in a row. Unframed they read as the page changing its mind five times: the
+   owner's word for it was chaos, and that is a fair description of five
+   full-bleed colour blocks with nothing holding them.
+   Nothing here restyles a theme. Each preview goes into an identical neutral
+   mat instead, so the frame is the constant and the colour inside it is
+   visibly the sample rather than the site. This is what a shop does with
+   paint chips, and it is the whole fix.
+   Two columns, not three. Three put five tiles in a 3+2 grid with a hole in
+   the corner, and shrank a screenshot of a page to a third of a column, which
+   is too small to read the thing being sold. */
 .showcase-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: clamp(1.3rem, 3vw, 2rem) clamp(1.1rem, 2.5vw, 1.6rem);
-  margin-top: 2rem;
+  --showcase-gap: clamp(1.1rem, 2.5vw, 1.6rem);
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: clamp(1.3rem, 3vw, 1.9rem) var(--showcase-gap);
+  margin-top: 2.25rem;
 }
-.showcase figure { margin: 0; }
+/* An odd last tile centres at the width of the others rather than stretching
+   across the row. Keyed on the item count, not on there being five themes, so
+   a seller who ships four or six never meets the seam either. */
+.showcase-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  width: calc(50% - (var(--showcase-gap) / 2));
+  justify-self: center;
+}
+.showcase figure {
+  margin: 0; height: 100%;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: clamp(0.5rem, 1.2vw, 0.7rem);
+  transition: border-color 0.18s var(--ease);
+}
 .showcase img {
   display: block; width: 100%; height: auto;
-  border-radius: 6px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 5px;
+  /* The preview's own edge, because a light theme's screenshot on a light mat
+     would otherwise bleed into it. */
   box-shadow: 0 0 0 1px var(--edge);
 }
 .showcase figcaption {
-  font-family: var(--mono); font-size: 0.71rem; letter-spacing: 0.06em;
-  color: var(--ink-soft); margin-top: 0.7rem;
+  font-size: 0.86rem; color: var(--ink-soft);
+  margin-top: 0.7rem; padding: 0 0.25rem 0.2rem;
+  transition: color 0.18s var(--ease);
 }
-.showcase-link { text-decoration: none; }
-.showcase-link:hover img, .showcase-link:focus-visible img {
-  box-shadow: 0 0 0 1px var(--ink); transform: translateY(-1px);
-}
+.showcase-link { text-decoration: none; display: block; height: 100%; }
+.showcase-link:hover figure, .showcase-link:focus-visible figure { border-color: var(--ink); }
 .showcase-link:hover figcaption { color: var(--ink); }
-.showcase-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: var(--radius); display: block; }
+.showcase-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: var(--radius); }
 
 /* ---------- prose ---------- */
 /* A centred reading column. It used to be a two-column grid above 64rem with
@@ -590,16 +615,12 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 .prose .table-scroll { max-width: none; }
 
 /* ---------- small screens ---------- */
-@media (max-width: 55.99rem) {
-  .showcase-grid { grid-template-columns: repeat(2, 1fr); }
-  /* Five tiles in two columns strand the fifth at half width, which reads as a
-     broken grid rather than a remainder. Any odd-numbered last tile takes the
-     full row instead. Keyed on count, not on there being five themes, so a
-     seller who ships four or six never meets the same seam. */
-  .showcase-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
-}
+/* One column below tablet: a screenshot of a whole page at half of a phone is
+   not a preview of anything. The centred-orphan rule has to be undone too, or
+   the last tile keeps a half-width cap with nothing beside it. */
 @media (max-width: 44rem) {
   .showcase-grid { grid-template-columns: 1fr; }
+  .showcase-grid > :last-child:nth-child(odd) { width: auto; justify-self: stretch; }
 }
 @media (max-width: 40rem) {
   .product-card.companion { flex-direction: column; align-items: stretch; }

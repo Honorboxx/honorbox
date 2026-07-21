@@ -21,7 +21,7 @@
         {
           "img": "./assets/previews/terminal.webp",
           "alt": "The same storefront in the terminal theme: phosphor green type on black",
-          "caption": "terminal: phosphor-on-black, for CLI tools (free)",
+          "caption": "terminal: phosphor on black, free in the repo",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
@@ -29,7 +29,7 @@
         {
           "img": "./assets/previews/atrium.webp",
           "alt": "The same storefront in the atrium theme: minimal graphite type on a plaster ground",
-          "caption": "atrium: minimal, gallery-quiet",
+          "caption": "atrium: minimal, gallery quiet",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
@@ -45,7 +45,7 @@
         {
           "img": "./assets/previews/editorial.webp",
           "alt": "The same storefront in the editorial theme: serif type on book white",
-          "caption": "editorial: serif, book-calm",
+          "caption": "editorial: serif, book calm",
           "href": "./honorbox-pro.html",
           "width": 960,
           "height": 504
