@@ -102,20 +102,20 @@ body {
 
 main { max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad-page) var(--gap-section); }
 
-/* Type scale. The h1-to-body ratio is about 4x and h2-to-body about 2.5x,
-   where h2 used to be 1.55x. A section heading that is merely a label leaves
-   nine bands reading as one undifferentiated list; at this size each band
-   announces itself and the page has a shape below the hero. */
-h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.12; letter-spacing: -0.02em; }
+/* Type scale. Size carries the hierarchy and weight stays out of it: headings
+   are set at 400, the lightest weight the family ships. The headline was 700
+   at 4.25rem, which is what "shouting" looks like when you measure it. At 400
+   it can stay large and still read as a sentence rather than a claim. */
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.12; letter-spacing: -0.02em; }
 h1 {
-  font-size: clamp(2.6rem, 1.6rem + 4.4vw, 4.25rem);
-  line-height: 1.02; margin: 0 0 0.4em; text-wrap: balance; letter-spacing: -0.035em;
+  font-size: clamp(2.35rem, 1.5rem + 3.6vw, 3.75rem);
+  line-height: 1.04; margin: 0 0 0.4em; text-wrap: balance; letter-spacing: -0.032em;
 }
 h2 {
-  font-size: clamp(1.75rem, 1.3rem + 2.1vw, 2.6rem);
-  margin: 0 0 0.6em; text-wrap: balance; letter-spacing: -0.03em;
+  font-size: clamp(1.6rem, 1.25rem + 1.6vw, 2.25rem);
+  margin: 0 0 0.6em; text-wrap: balance; letter-spacing: -0.028em;
 }
-h3 { font-size: clamp(1.05rem, 1rem + 0.28vw, 1.18rem); margin: 0 0 0.35em; }
+h3 { font-size: clamp(1.05rem, 1rem + 0.28vw, 1.18rem); margin: 0 0 0.35em; font-weight: 500; }
 
 a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
@@ -144,11 +144,11 @@ a:focus-visible, summary:focus-visible {
   padding: 1.6rem var(--pad-page) 0.75rem;
 }
 .brand {
-  display: inline-flex; align-items: center; gap: 0.55rem;
-  font-family: var(--display); font-weight: 800; font-size: 1.15rem;
-  color: var(--ink); text-decoration: none; letter-spacing: -0.022em;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-family: var(--display); font-weight: 500; font-size: 1.1rem;
+  color: var(--ink); text-decoration: none; letter-spacing: -0.02em;
 }
-.brand-mark { color: var(--ink); width: 24px; height: 24px; flex-shrink: 0; }
+.brand-mark { color: var(--ink); width: 22px; height: 22px; flex-shrink: 0; }
 .site-nav { display: flex; gap: 0.3rem 1.5rem; flex-wrap: wrap; }
 .site-nav a {
   color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; font-weight: 500;
@@ -170,44 +170,41 @@ a:focus-visible, summary:focus-visible {
 .foot-links a:hover, .foot-legal a:hover { color: var(--ink); text-decoration: underline; }
 .foot-legal { margin: 0; font-size: 0.83rem; }
 
-/* hero: left-set, and given real room. The mark prints above the headline and
-   the coin is caught mid-drop, part way into the slot, which is the whole idea
-   of the product. */
+/* hero: centred, and mostly air. It used to open with a 128px mark floating
+   above the headline, a monospace kicker in caps and a monospace subline
+   under the buttons. Four things competing before the reader reached the
+   product. It is a headline, a line of explanation and one button now. */
 .hero {
-  position: relative; text-align: left;
-  padding: clamp(2.75rem, 7vw, 5.5rem) 0 0;
+  text-align: center;
+  padding: clamp(3.5rem, 10vw, 7.5rem) 0 clamp(1rem, 3vw, 2rem);
 }
-@media (prefers-reduced-motion: reduce) {
-  /* Sections settle into view like sheets squared on a desk. Scroll-driven,
-   CSS-only; browsers without animation-timeline (and reduced-motion users)
-   simply get the static page. Transform-only on purpose: no opacity, so
-   print, full-page captures, and non-scrolling contexts never hide content. */
-@supports (animation-timeline: view()) {
-  @media screen and (prefers-reduced-motion: no-preference) {
-    .showcase, .steps, .compare, .faq, .note {
-      animation: settle linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 22%;
-    }
+.hero h1 { max-width: 20ch; margin-inline: auto; }
+.lede {
+  font-size: clamp(1.05rem, 0.98rem + 0.4vw, 1.2rem); line-height: 1.6;
+  color: var(--ink-soft); max-width: 58ch; margin: 0 auto 2.5rem; text-wrap: pretty;
+}
+.hero-ctas { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; align-items: center; }
+
+/* Motion. One gesture, used once: content rises 8px and fades in as it
+   arrives, and never moves again. Everything else is a 180ms colour change.
+   Content is visible by default and the observer adds the effect, so a
+   scripting failure or an unsupported browser leaves a readable page rather
+   than a blank one. */
+@media (prefers-reduced-motion: no-preference) {
+  .js-reveal { opacity: 0; transform: translateY(8px); }
+  .js-reveal.is-in {
+    opacity: 1; transform: none;
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+    transition-delay: var(--reveal-delay, 0ms);
   }
 }
-@keyframes settle {
-  from { transform: translateY(8px); }
-  to { transform: none; }
-}
-.kicker {
-  font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--ink-soft); margin: 0 0 1.3em;
-}
-.hero h1 { max-width: 17ch; }
-.lede {
-  font-size: clamp(1.1rem, 1rem + 0.5vw, 1.32rem); line-height: 1.55;
-  color: var(--ink-soft); max-width: 50ch; margin: 0 0 2.4rem; text-wrap: pretty;
-}
-.hero-ctas { display: flex; gap: 0.75rem; justify-content: flex-start; flex-wrap: wrap; align-items: center; }
-.hero-sub {
-  font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft);
-  margin: 1.8rem 0 0; max-width: 60ch; line-height: 1.7;
+@media (prefers-reduced-motion: reduce) {
+  /* No transforms, no reveals, nothing left mid-transition. */
+  .js-reveal, .js-reveal.is-in { opacity: 1; transform: none; transition: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* buttons. The primary one is the only filled object on the page, so it does
@@ -335,6 +332,8 @@ a:focus-visible, summary:focus-visible {
   flex-direction: row; align-items: center; gap: 0.5rem 1.5rem;
   padding: 1.25rem var(--card-pad);
   background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 .product-card.companion .badge,
 .product-card.companion .pc-features { display: none; }
@@ -355,22 +354,17 @@ a:focus-visible, summary:focus-visible {
   margin-top: var(--gap-section);
 }
 
-/* Every section that carries a standfirst sets it beside the heading rather
-   than beneath it: the heading holds the left column, the note the right, and
-   the content spans both. Wide screens get a proper masthead, narrow ones get
-   the same two lines stacked. No markup knows about this. */
-@media (min-width: 56rem) {
-  .compare, .showcase {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: clamp(2rem, 5vw, 4rem);
-    align-items: end;
-  }
-  .compare > h2, .showcase > h2 { grid-column: 1; grid-row: 1; margin-bottom: 0; }
-  .compare > .muted, .showcase > .muted { grid-column: 2; grid-row: 1; margin: 0; }
-  .compare > .table-scroll, .showcase > .showcase-grid { grid-column: 1 / -1; }
+/* Each band opens the same way: a heading, then its standfirst under it, both
+   centred, then the content left-aligned beneath. The heading and standfirst
+   used to sit side by side as a two-column masthead, which is a device, and
+   it only existed above 56rem so the page had two different section grammars
+   depending on the window. One grammar now, at every width.
+   The content itself stays left-aligned. Centred body text is harder to read,
+   and none of this is decoration. */
+.steps > h2, .compare > h2, .faq > h2, .showcase > h2 { text-align: center; margin-bottom: 0.35em; }
+.compare > .muted, .showcase > .muted, .steps > .muted, .faq > .muted {
+  font-size: 0.98rem; max-width: 56ch; margin: 0 auto; text-align: center;
 }
-.compare > .muted, .showcase > .muted { font-size: 0.92rem; max-width: 56ch; margin: 0 0 0.4em; }
 
 /* steps: the numerals set the order, quietly */
 .steps-list {
@@ -505,15 +499,14 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 .showcase-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: var(--radius); display: block; }
 
 /* ---------- prose ---------- */
-/* One left edge for the whole site. A 44rem column centred under a 66rem
-   header gave the site two different left edges and left ~380px of dead
-   margin either side of every doc. On a wide screen the h1 takes a left rail
-   and the body hangs off the header's own edge; below that it is one column.
-   No markup knows about this either. */
-.prose { max-width: var(--shell); margin: clamp(2.5rem, 5vw, 4rem) 0 0; }
-.prose > * { max-width: 44rem; }
+/* A centred reading column. It used to be a two-column grid above 64rem with
+   the h1 in a left rail, which is the same masthead device the home sections
+   were using, and it gave a doc a different shape from the page that links to
+   it. A document is a column of text; that is the conventional answer and it
+   is the right one. */
+.prose { max-width: 44rem; margin: clamp(2.5rem, 5vw, 4rem) auto 0; }
 .prose p, .prose ul, .prose ol, .prose blockquote { max-width: var(--measure); }
-.prose h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); }
+.prose h1 { font-size: clamp(1.95rem, 1.4rem + 2.2vw, 2.85rem); }
 .prose h1 + p { font-size: 1.08rem; color: var(--ink-soft); max-width: 52ch; }
 .prose h2 {
   font-size: clamp(1.3rem, 1.15rem + 0.7vw, 1.65rem);
@@ -525,32 +518,14 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
 .prose li { margin: 0.4rem 0; }
 .prose li::marker { color: var(--ink-soft); }
 
-@media (min-width: 64rem) {
-  .prose {
-    display: grid;
-    grid-template-columns: minmax(0, 15rem) minmax(0, 44rem);
-    column-gap: clamp(2rem, 5vw, 3.5rem);
-    align-items: start;
-  }
-  .prose > * { grid-column: 2; }
-  /* Title in the rail, standfirst beside it: the same masthead the compare and
-     showcase bands use, so a doc and the storefront are recognisably one site.
-     Deliberately not sticky. The h1's grid area is row 1 only, so a sticky
-     title would release the moment the first paragraph scrolled past and the
-     declaration would be describing behaviour it cannot produce. Spanning the
-     whole column needs a wrapper element, and the markup is shared across five
-     themes, so the rail stays honest instead. */
-  .prose > h1 {
-    grid-column: 1; grid-row: 1;
-    font-size: clamp(1.9rem, 1.1rem + 1.5vw, 2.35rem);
-    margin: 0; max-width: none; text-wrap: balance;
-  }
-  .prose > :nth-child(2) { grid-row: 1; }
+.product-page { max-width: 44rem; margin: clamp(2rem, 5vw, 3.25rem) auto 0; }
+/* The one place a kicker survives: it names the store above a product's
+   title, which is wayfinding rather than decoration. Set as quiet text, not
+   as monospace capitals. */
+.kicker {
+  font-size: 0.92rem; color: var(--ink-soft); margin: 0 0 0.6em; letter-spacing: 0;
 }
-
-.product-page { max-width: var(--shell); margin: clamp(2rem, 5vw, 3.25rem) 0 0; }
-.product-page > * { max-width: 44rem; }
-.product-page .kicker { margin-bottom: 1em; }
+.product-page .kicker { margin-bottom: 0.7em; }
 .product-page .lede { margin-left: 0; margin-right: 0; text-wrap: pretty; }
 .product-page .prose { margin-top: 0; max-width: 44rem; display: block; }
 .product-page .prose > * { max-width: none; }
@@ -653,5 +628,9 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   }
   body { background: #fff; color: var(--ink); }
   .site-nav, .skip-link { display: none; }
+  /* A scroll reveal must never reach paper. Anything the observer has not
+     got to yet is still at opacity 0, and printing is exactly the case where
+     nothing scrolls, so every section below the fold would print blank. */
+  .js-reveal, .js-reveal.is-in { opacity: 1 !important; transform: none !important; }
   .product-card.flagship, .pc-buy.standalone { border: 1px solid var(--line); }
 }

@@ -13,7 +13,7 @@
 <meta property="og:description" content="{{description}}">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#100f0d" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 </head>
 <body class="{{body_class}}">
 <a class="skip-link" href="#main">Skip to content</a>
@@ -28,5 +28,40 @@
   <p class="foot-links">{{footer}}</p>
   <p class="foot-legal">© {{year}} · {{seller}} · Payments by Stripe · Runs on <a href="https://github.com/Honorboxx/honorbox">HonorBox</a></p>
 </footer>
+<script>
+/* Reveal on arrival: an 8px rise and a fade, once per element, then the
+   observer lets go. Inline and dependency free, and deliberately additive.
+   Nothing is hidden until this script has run and confirmed the browser both
+   supports IntersectionObserver and is not being asked to reduce motion, so a
+   blocked, failed or unsupported script leaves every word on the page. That
+   ordering is the whole safety argument: the CSS only hides .js-reveal, and
+   only this script ever adds that class. */
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce || !('IntersectionObserver' in window)) return;
+
+  var targets = document.querySelectorAll('.hero, .products > *, .steps, .compare, .faq, .showcase, .note, .prose > h2');
+  if (!targets.length) return;
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-in');
+      io.unobserve(entry.target);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.01 });
+
+  Array.prototype.forEach.call(targets, function (el, i) {
+    el.classList.add('js-reveal');
+    /* Stagger siblings only, and cap it. A per-index delay down a long page
+       would leave the last section waiting seconds after it is already in
+       view. */
+    var prev = el.previousElementSibling;
+    var n = prev && prev.classList.contains('js-reveal') ? 1 : 0;
+    el.style.setProperty('--reveal-delay', (n ? Math.min(i % 4, 3) * 60 : 0) + 'ms');
+    io.observe(el);
+  });
+}());
+</script>
 </body>
 </html>

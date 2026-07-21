@@ -1,11 +1,9 @@
 {
   "name": "HonorBox",
-  "kicker": "For everyone whose buyers live on GitHub",
   "headline": "Sell digital products with just Stripe + GitHub.",
   "tagline": "0% platform fee, $0/month, no server. A static storefront on GitHub Pages, checkout through your own Stripe account, and a GitHub Action that delivers every sale while you sleep.",
   "meta_title": "Sell digital products with Stripe + GitHub, 0% fee · HonorBox",
   "meta_description": "Sell digital products with just Stripe and GitHub Pages. 0% platform fee, $0/month, no server to run. MIT engine; buyers pay you directly on your own Stripe account.",
-  "subline": "This store runs on the engine it sells. Fork the free core and open your own stand.",
   "url": "https://honorboxx.github.io/honorbox",
   "theme": "stand",
   "seller": "HonorBox · honorbox@proton.me",
