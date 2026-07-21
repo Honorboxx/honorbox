@@ -197,6 +197,24 @@ a:focus-visible, summary:focus-visible {
 }
 .site-nav a:hover { color: var(--ink); }
 
+/* The hero's second door. The page offers one paid action, deliberately, so
+   this is a quiet link rather than a competing button: the free engine is what
+   the headline actually describes, and a reader who wants it should not have to
+   find the nav to leave. Kept light enough that the buy button stays the most
+   findable object on the page. */
+.hero-sub {
+  margin: 1.25rem 0 0;
+  font-size: 0.92rem;
+}
+.hero-sub a {
+  color: var(--ink-soft); text-decoration: none;
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: 1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.hero-sub a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+.hero-sub a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+
 /* Theme toggle. Hidden by default and revealed by the script that gives it
    behaviour, so a reader with JS blocked never sees a control that does
    nothing. The two glyphs live in one button and swap on the resolved theme,

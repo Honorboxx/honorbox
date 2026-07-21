@@ -687,7 +687,9 @@ function main() {
   <div class="hero-ctas">
     ${products[0] ? buyButton(products[0], true) : ''}
   </div>
-  ${config.subline ? `<p class="hero-sub">${escapeHtml(config.subline)}</p>` : ''}
+  ${config.subline ? `<p class="hero-sub">${config.subline_href
+      ? `<a href="${escapeHtml(config.subline_href)}">${escapeHtml(config.subline)}</a>`
+      : escapeHtml(config.subline)}</p>` : ''}
 </section>`;
 
   const home =

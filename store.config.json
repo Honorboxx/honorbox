@@ -1,17 +1,41 @@
 {
   "name": "HonorBox",
   "headline": "Sell digital products with just Stripe + GitHub.",
-  "tagline": "0% platform fee, $0/month, no server. A static storefront on GitHub Pages, checkout through your own Stripe account, and a GitHub Action that delivers every sale while you sleep.",
-  "meta_title": "Sell digital products with Stripe + GitHub, 0% fee · HonorBox",
+  "tagline": "The engine is free and MIT: a static storefront on GitHub Pages, checkout through your own Stripe account, and a GitHub Action that delivers every sale while you sleep. Pro is the $29 suite that checks it is all still working.",
+  "subline": "Start free: fork the engine this store runs on",
+  "subline_href": "https://github.com/Honorboxx/honorbox",
+  "meta_title": "Sell digital products with Stripe + GitHub, 0% fee \u00b7 HonorBox",
   "meta_description": "Sell digital products with just Stripe and GitHub Pages. 0% platform fee, $0/month, no server to run. MIT engine; buyers pay you directly on your own Stripe account.",
   "url": "https://honorboxx.github.io/honorbox",
   "theme": "stand",
-  "seller": "HonorBox · honorbox@proton.me",
+  "seller": "HonorBox \u00b7 honorbox@proton.me",
   "repo": "Honorboxx/honorbox",
   "sections": [
     {
       "type": "note",
       "text": "30 days, no questions asked, refunded through Stripe to the card you paid with. And because the engine is MIT-licensed and delivery is a private repository your GitHub account keeps, what you buy does not stop working if this project does. It is new, and the release history says exactly how new."
+    },
+    {
+      "type": "steps",
+      "title": "How the honor box works",
+      "items": [
+        {
+          "title": "Fork the stand",
+          "text": "Fork the free, MIT-licensed engine and edit one config file. Your storefront builds to GitHub Pages; hosting costs $0, forever. None of that is paywalled: the setup guide is in the repo, and this page was built by the engine it describes."
+        },
+        {
+          "title": "Put out your goods",
+          "text": "Create a Stripe Payment Link for each product and drop the URL in the config. Buyers pay you directly on your own Stripe account, so the money never sits with anyone else on its way to you."
+        },
+        {
+          "title": "Let the box collect",
+          "text": "A scheduled GitHub Action polls Stripe, invites each buyer's GitHub account to your private product repo, and keeps your books. No webhooks, no server, no database."
+        }
+      ]
+    },
+    {
+      "type": "note",
+      "text": "The one hard requirement: your buyers need GitHub accounts, because delivery is a repo invite. The second thing to check is your volume. At ten sales a month of a $29 product the fee you would save against a merchant of record is about $8, and for that $8 they do your VAT, which is the better trade; the first guide below has the arithmetic. This earns its keep at volume, or when owning the Stripe account and the customer relationship matters to you for its own sake."
     },
     {
       "type": "showcase",
@@ -61,28 +85,6 @@
       ]
     },
     {
-      "type": "steps",
-      "title": "How the honor box works",
-      "items": [
-        {
-          "title": "Fork the stand",
-          "text": "Fork the free, MIT-licensed engine and edit one config file. Your storefront builds to GitHub Pages; hosting costs $0, forever."
-        },
-        {
-          "title": "Put out your goods",
-          "text": "Create a Stripe Payment Link for each product and drop the URL in the config. Buyers pay you directly on your own Stripe account, so the money never sits with anyone else on its way to you."
-        },
-        {
-          "title": "Let the box collect",
-          "text": "A scheduled GitHub Action polls Stripe, invites each buyer's GitHub account to your private product repo, and keeps your books. No webhooks, no server, no database."
-        }
-      ]
-    },
-    {
-      "type": "note",
-      "text": "The one hard requirement: your buyers need GitHub accounts, because delivery is a repo invite. The second thing to check is your volume. At ten sales a month of a $29 product the fee you would save against a merchant of record is about $8, and for that $8 they do your VAT, which is the better trade; the first guide below has the arithmetic. This earns its keep at volume, or when owning the Stripe account and the customer relationship matters to you for its own sake."
-    },
-    {
       "type": "compare",
       "title": "Side by side",
       "note": "Fees as published on each vendor's own pricing page, checked July 2026. Polar is the closest comparison: it delivers private-repo access natively and instantly, and it handles your VAT. If you want a merchant of record, one of the first three is the better tool, and the guides below say when.",
@@ -96,9 +98,9 @@
       "rows": [
         [
           "Platform fee",
-          "10% + 50¢",
-          "5% + 50¢",
-          "5% + 50¢ free tier",
+          "10% + 50\u00a2",
+          "5% + 50\u00a2",
+          "5% + 50\u00a2 free tier",
           "0%"
         ],
         [
@@ -110,7 +112,7 @@
         ],
         [
           "Payment processing",
-          "2.9% + 30¢ on top",
+          "2.9% + 30\u00a2 on top",
           "included above",
           "included above",
           "Stripe's standard rate only"
@@ -177,6 +179,12 @@
       "title": "Straight answers",
       "items": [
         {
+          "q": "Is this free, or is it $29?",
+          "a": "The engine is free and MIT: fork it, edit one config file, and you have a working store with checkout, fulfillment, docs and two themes. Nothing about it expires or phones home. The $29 is HonorBox Pro, a separate suite for a different problem: whether the store you just built is actually working. What the free core cannot tell you is whether a specific order reached the person who paid for it, because an empty ledger and a broken store look identical from the outside and you find out from the buyer. Start free. Buy Pro when you have a store to check.",
+          "href": "https://github.com/Honorboxx/honorbox",
+          "href_label": "Fork the free engine"
+        },
+        {
           "q": "What exactly do I get when I buy?",
           "a": "Your GitHub account is invited to the product's private repository, usually within minutes and always within a few hours. You keep access permanently, updates included. If the invite doesn't arrive, the recovery path is written down and ends in either access or a refund.",
           "href": "./support.html",
@@ -193,8 +201,8 @@
           "a": "Yes. Delivery is a repo invite, so every buyer needs one. Fine for code, templates, courses aimed at technical people, and tools. The wrong channel for lay-reader ebooks, physical goods, or general consumers. Better to know that before your first failed delivery."
         },
         {
-          "q": "Do I need HonorBox Pro to use the engine?",
-          "a": "No, and you should start on the free core. It is a working store: checkout, fulfillment, docs, two themes. What it does not do is tell you whether a specific order actually reached the person who paid for it. An empty ledger and a broken store look identical from the outside, and you find out from the buyer. Pro is the half you want once money is moving: sixteen checks for the known ways this architecture loses money quietly, run against your own account on every push. Buy it when you have orders to prove, not to feel like you have started."
+          "q": "I already sell through Stripe and GitHub. What does this add?",
+          "a": "The engine replaces the glue you wrote: polling Stripe, matching the order, sending the invite, keeping the ledger, and the storefront in front of it. It reads one config file naming the payment links and product repos you already have, so your checkout keeps working and your buyers notice nothing. Pro then answers what a hand-rolled setup almost never answers for itself: is every paid order delivered right now, and is any of the known silent failures live in your setup? Fair warning, the suite reads a HonorBox config, so it checks a store built on the engine rather than any arbitrary setup."
         },
         {
           "q": "Does the fulfillment bot need my full Stripe secret key?",
