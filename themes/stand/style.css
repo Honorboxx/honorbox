@@ -744,6 +744,9 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   }
   body { background: #fff; color: var(--ink); }
   .site-nav, .skip-link { display: none; }
+  /* Must match the .js reveal's specificity to win: a plain .theme-toggle
+     rule loses to `.js .theme-toggle` and the control prints on paper. */
+  .js .theme-toggle { display: none; }
   /* A scroll reveal must never reach paper. Anything the observer has not
      got to yet is still at opacity 0, and printing is exactly the case where
      nothing scrolls, so every section below the fold would print blank. */
