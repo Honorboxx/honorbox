@@ -1853,6 +1853,39 @@ test('a named social card must be real and scraper-safe, or the build stops', ()
   }
 });
 
+test('a social card never shows a theme the store has stopped selling', () => {
+  // Link unfurlers cache og:image for days, so a card may only ever show what
+  // the store currently sells: a theme-preview card must name a theme the home
+  // showcase still carries. Non-theme cards are not this test's business.
+  const { spawnSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const ROOT = path.join(__dirname, '..', '..');
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build.js')], {
+    cwd: ROOT, encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, `build must pass before cards can be judged:\n${r.stderr}`);
+
+  const cfg = fs.readFileSync(path.join(ROOT, 'store.config.json'), 'utf8');
+  const showcased = new Set(
+    [...cfg.matchAll(/previews\/([a-z]+)\.(?:png|webp)/g)].map((m) => m[1])
+  );
+  assert.ok(showcased.size > 0, 'the showcase must name at least one theme preview');
+
+  const dist = path.join(ROOT, 'dist');
+  for (const file of fs.readdirSync(dist).filter((f) => f.endsWith('.html'))) {
+    const html = fs.readFileSync(path.join(dist, file), 'utf8');
+    const card = html.match(/property="og:image" content="([^"]+)"/);
+    if (!card) continue;
+    const theme = card[1].match(/previews\/([a-z]+)\.png$/);
+    if (!theme) continue;
+    assert.ok(
+      showcased.has(theme[1]),
+      `${file} cards the "${theme[1]}" theme, which the home showcase no longer carries`
+    );
+  }
+});
+
 // Which Stripe account a key reaches. The point of the function is that
 // nothing else in a run tells you: STRIPE_SECRET_KEY is an ordinary variable
 // name and a live key sitting in it looks exactly like a test key.
