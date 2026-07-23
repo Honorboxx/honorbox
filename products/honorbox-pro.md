@@ -19,7 +19,7 @@ features:
   - "Scheduled guard: a drop-in Actions workflow that runs the suite and reconcile four times a day and raises one self-closing GitHub issue in your ops repo naming exactly what went red. A run that could not reach Stripe alarms too; it never reads as healthy"
   - "Store doctor: preflight your config, payment links, and fulfillment permissions before launch"
   - "Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't"
-  - "Ops bots: auto-acknowledge new support issues, auto-revoke repo access when Stripe refunds"
+  - "Ops bots: auto-acknowledge new support issues, auto-revoke repo access on a Stripe refund or a lost chargeback"
   - "Stats: tracker-free sales analytics rendered from your Stripe data, one command"
   - "The rail storefront theme, a fixed left navigation column, built to the same class contract as the free theme"
   - "License-key module: ed25519 keys signed in CI, verified offline in your app (JS + Python)"
@@ -179,8 +179,8 @@ invitations and holds
 so it can keep an invitation alive but never tell you which *paid order* it
 belongs to, or how much money is sitting undelivered. And it never sees a
 failure that left no invitation to renew: an order that matched no grant, a
-typo'd username the engine flagged and skipped, a refunded buyer who kept
-access.
+typo'd username the engine flagged and skipped, a refunded or charged-back
+buyer who kept access.
 
 Reconcile starts from the money instead. It walks every paid Stripe session and
 asks GitHub whether that specific buyer holds access to that specific repo: one

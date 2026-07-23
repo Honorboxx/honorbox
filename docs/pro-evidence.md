@@ -294,9 +294,11 @@ Exit 1, so a scheduled run fails loudly. A repo it cannot read is reported as
 unreadable, never silently counted clean.
 
 Scope note in the same spirit: our store has never had a pending or expired
-invitation, so those verdicts are covered by the module's test suite over
-fixtures (18 tests) rather than by a live catch. The test that matters most
-there pins that GitHub's own `expired` flag decides expiry, never our clock.
+invitation or a chargeback, so those verdicts are covered by the module's test
+suite over fixtures (21 tests) rather than by a live catch. The tests that
+matter most there pin that GitHub's own `expired` flag decides expiry, never
+our clock, and that a lost dispute reads as the leak it is even though Stripe
+creates no refund for it.
 
 ## guard: what the alarm issue says
 
