@@ -204,11 +204,12 @@ minutes/month** on the GitHub Free plan. Two rules decide the bill:
   whether it finds a sale or not.
 
 So the monthly cost of polling is simply its run count, and the shipped
-`*/30` cron is sized to fit a 31-day month:
+`17,47` cron (twice an hour, off the top of the hour where GitHub's scheduler
+is busiest) is sized to fit a 31-day month:
 
 | Poll cron | Runs/month (31d) | Billable minutes | Inside 2,000? |
 |---|---|---|---|
-| **`*/30` (shipped default)** | 1,488 | 1,488 | **yes**, 512 spare |
+| **`17,47` (shipped default)** | 1,488 | 1,488 | **yes**, 512 spare |
 | `*/20` | 2,232 | 2,232 | no, 232 over |
 | `*/15` | 2,976 | 2,976 | no, 976 over (~$5.86/mo at $0.006/min) |
 | `*/5` | 8,928 | 8,928 | no, 4.5x the tier |
@@ -227,7 +228,7 @@ and the whole-minute rounding above is exactly what makes that free:
 |---|---|---|
 | **A step in `fulfill.yml` (shipped default)** | 0 | **0** |
 | Its own hourly cron | 744 | 744 (over the 512 spare) |
-| Its own `*/30` cron | 1,488 | 1,488 (~2x the whole tier with the poll) |
+| Its own half-hourly cron | 1,488 | 1,488 (~2x the whole tier with the poll) |
 
 A fulfillment run takes ~15 seconds and is billed as a full minute either way,
 so the renewal step spends the seconds already paid for. Per poll it adds one
@@ -244,9 +245,9 @@ needs. Renewal fires at 6 days against a 7-day expiry, so it has 24 hours and
 
 If you turn on the optional heartbeat (§ [instant-delivery.md](instant-delivery.md)),
 loosen this cron to hourly: heartbeat nudges cost an ops-repo minute each, and
-hourly + hourly is the same 1,488 minutes as a lone `*/30`.
+hourly + hourly is the same 1,488 minutes as a lone `17,47`.
 
-**What you actually wait for.** With the `*/30` default and no webhook relay,
+**What you actually wait for.** With the `17,47` default and no webhook relay,
 a buyer's invite lands a median of **~15 minutes** after payment (uniform
 arrival inside a 30-minute window) and ~30 minutes worst case *if GitHub runs
 the cron on time*. It often does not: GitHub's scheduler is best-effort and

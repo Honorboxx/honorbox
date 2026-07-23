@@ -230,7 +230,7 @@ so buyers stop being delivered to. And the symptom is not an error, it is a
 cron that quietly stopped. Nothing in your store reports it. You find out
 from a customer.
 
-Fixed by sizing the cadence to the tier (*/30 = 1,488 min/month, 512 minutes
+Fixed by sizing the cadence to the tier (17,47 = 1,488 min/month, 512 minutes
 of headroom) rather than by rewording the pricing claim.
 
 Now the other half, because a catalogue that only frightens people is as

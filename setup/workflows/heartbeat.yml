@@ -35,7 +35,7 @@
 #   So: 1 nudge = 1 billable minute in the ops repo.
 #
 #   Hourly here + hourly in fulfill.yml (offset, below) = 744 + 744 = 1,488
-#   min/month, the same bill as a lone */30 poll but with two independent
+#   min/month, the same bill as a lone 17,47 poll but with two independent
 #   schedulers, so one drifting scheduler no longer means a long gap.
 #
 #   A */5 heartbeat would be 12/h * 24 * 31 = 8,928 billable minutes: 4.5x the
@@ -49,7 +49,7 @@
 #     here is the ops repo's minute budget, not that floor.
 #
 # IF YOU ENABLE THIS, loosen fulfill.yml's cron to hourly ("0 * * * *") so the
-# two together stay inside the free tier. Leaving fulfill.yml at */30 AND
+# two together stay inside the free tier. Leaving fulfill.yml at 17,47 AND
 # running this hourly is 1,488 + 744 = 2,232 min/month, which is over.
 
 name: Fulfillment heartbeat

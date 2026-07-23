@@ -113,7 +113,7 @@ schedulers cut the odds of a long gap without any always-on machine.
 
 Heartbeat buys **reliability, not speed**. Pair it with an hourly poll
 (`0 * * * *` in `fulfill.yml`, `30 * * * *` here) and you get the same
-~15-minute median as the shipped `*/30` poll, for the same 1,488 Actions
+~15-minute median as the shipped `17,47` poll, for the same 1,488 Actions
 minutes a month, but from two schedulers instead of one, so a single
 scheduler drifting no longer means a long silence. It does not beat the
 webhook relay, and it is not free to run tighter: see the cost note below.
