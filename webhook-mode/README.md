@@ -2,7 +2,7 @@
 
 By default HonorBox delivers by polling Stripe on a schedule: zero servers,
 zero extra accounts, minutes of delay (occasionally more when GitHub's cron
-drifts). Webhook mode adds a 140-line relay (185 lines on Node) on a free
+drifts). Webhook mode adds a 140-line relay (230 lines on Node) on a free
 serverless tier that
 turns each paid checkout into an immediate fulfillment run. **The poll stays
 on as the safety net**: whichever fires first delivers, the other no-ops.

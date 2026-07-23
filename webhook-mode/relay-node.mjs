@@ -154,6 +154,70 @@ export default async function relay(request) {
   return handleWebhook(request, readEnv());
 }
 
+// --- Plain-Node request reading, bounded ------------------------------------
+// The self-host server owns the socket, and handleWebhook verifies the Stripe
+// signature only AFTER the whole body is read. Without a cap an unauthenticated
+// client could stream an unbounded body and force this process to buffer all of
+// it before the 400 — availability, not disclosure, but still an unauthenticated
+// input with no bound. A real Stripe event is a few KB; 1 MiB is far above any
+// of them and far below a memory problem, so a body past it stops the read and
+// answers 413 before verification runs. This lives ONLY in the Node bootstrap,
+// never in the shared core: Val Town and Cloudflare cap the request body at the
+// platform edge before the handler runs, so they do not own this bound.
+export const MAX_BODY_BYTES = 1 << 20; // 1 MiB
+
+export function readBoundedBody(req, maxBytes = MAX_BODY_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    req.on('data', (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        // Stop reading and drop what we buffered; do not keep accepting bytes
+        // from an unauthenticated client only to reject them at the end.
+        done({ tooLarge: true });
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => done({ body: Buffer.concat(chunks) }));
+    req.on('error', (err) => { if (!settled) { settled = true; reject(err); } });
+    // Client vanished mid-read: resolve so the caller never awaits forever.
+    req.on('close', () => done({ closed: true }));
+  });
+}
+
+// One request: read the body under the cap, hand a standard Request to the same
+// relay() the platforms use, and write its Response back. A body over the cap is
+// refused with 413 before verification ever runs.
+export async function serveNodeRequest(req, res) {
+  try {
+    const read = await readBoundedBody(req);
+    if (read.tooLarge) {
+      res.statusCode = 413;
+      res.end('payload too large');
+      return;
+    }
+    if (read.closed) return; // client closed mid-read; nothing to answer
+    const request = new Request(`http://localhost${req.url || '/'}`, {
+      method: req.method,
+      headers: { 'stripe-signature': (req.headers && req.headers['stripe-signature']) || '' },
+      body: req.method === 'POST' ? read.body : undefined,
+    });
+    const response = await relay(request);
+    res.statusCode = response.status;
+    res.end(await response.text());
+  } catch (err) {
+    res.statusCode = 500;
+    res.end('relay error'); // detail stays in the server log, not the wire
+    console.error(err);
+  }
+}
+
 // Plain-Node bootstrap: only when this file itself is `node relay-node.mjs`.
 // Parse-safe on Val Town/Deno (never executes there); inert under `import`.
 if (typeof Deno === 'undefined' && typeof process !== 'undefined' && process.argv[1]) {
@@ -161,25 +225,6 @@ if (typeof Deno === 'undefined' && typeof process !== 'undefined' && process.arg
   if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const { createServer } = await import('node:http');
     const port = Number(process.env.PORT || 8787);
-    createServer((req, res) => {
-      const chunks = [];
-      req.on('data', (c) => chunks.push(c));
-      req.on('end', async () => {
-        try {
-          const request = new Request(`http://localhost${req.url}`, {
-            method: req.method,
-            headers: { 'stripe-signature': req.headers['stripe-signature'] || '' },
-            body: req.method === 'POST' ? Buffer.concat(chunks) : undefined,
-          });
-          const response = await relay(request);
-          res.statusCode = response.status;
-          res.end(await response.text());
-        } catch (err) {
-          res.statusCode = 500;
-          res.end('relay error'); // detail stays in the server log, not the wire
-          console.error(err);
-        }
-      });
-    }).listen(port, () => console.log(`honorbox relay listening on :${port}`));
+    createServer(serveNodeRequest).listen(port, () => console.log(`honorbox relay listening on :${port}`));
   }
 }

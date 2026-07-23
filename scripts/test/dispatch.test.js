@@ -9,6 +9,7 @@ const assert = require('node:assert');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { Readable } = require('node:stream');
 
 const relayUrl = (f) => pathToFileURL(path.join(__dirname, '..', '..', 'webhook-mode', f)).href;
 const relays = (async () => ({
@@ -313,6 +314,67 @@ test('a signed body that parses to null or a non-object is acked, not crashed', 
         mod.handleWebhook(postReq(body, sigHeader(body, { t })), ENV));
       assert.equal(result.status, 200, `${relay} body=${body}`);
       assert.equal(calls.length, 0, `${relay} body=${body} must not dispatch`);
+    }
+  }
+});
+
+// --- Plain-Node bootstrap: bounded body read --------------------------------
+// The self-host server (relay-node.mjs, run directly) owns the socket, and the
+// signature is verified only after the whole body is read. An unbounded read
+// lets an unauthenticated client force this process to buffer an arbitrarily
+// large body before the 400. The cap lives only in the Node bootstrap; the
+// Cloudflare/Val Town variant does not own the socket, so relay-cloudflare.mjs
+// has no counterpart and the shared-core pin above is untouched.
+
+function mockReq(chunks, { method = 'POST', headers = {}, url = '/' } = {}) {
+  const r = Readable.from(chunks);
+  r.method = method;
+  r.headers = headers;
+  r.url = url;
+  return r;
+}
+function mockRes() {
+  return { statusCode: 200, body: null, end(b) { this.body = b === undefined ? '' : b; } };
+}
+
+test('bootstrap body reader returns the whole body under the cap', async () => {
+  const { valtown } = await relays;
+  const body = Buffer.from(BODY);
+  const read = await valtown.readBoundedBody(mockReq([body]), 1 << 20);
+  assert.equal(read.tooLarge, undefined);
+  assert.deepEqual(read.body, body);
+});
+
+test('bootstrap body reader stops past the cap and reports too large', async () => {
+  const { valtown } = await relays;
+  const chunk = Buffer.alloc(64 * 1024, 0x61); // 64 KiB
+  // Three 64 KiB chunks against a 100 KiB cap: the second crosses it.
+  const read = await valtown.readBoundedBody(mockReq([chunk, chunk, chunk]), 100 * 1024);
+  assert.equal(read.tooLarge, true);
+  assert.equal(read.body, undefined);
+});
+
+test('bootstrap: an oversized body is refused 413 before verification runs', async () => {
+  const { valtown } = await relays;
+  const big = Buffer.alloc(valtown.MAX_BODY_BYTES + 1, 0x61);
+  const res = mockRes();
+  // No env set: reaching verification would 500 (unconfigured). A 413 proves the
+  // cap answered first, before relay()/handleWebhook was ever called.
+  await valtown.serveNodeRequest(mockReq([big]), res);
+  assert.equal(res.statusCode, 413);
+});
+
+test('bootstrap: a normal-size body still reaches verification (unsigned → 400)', async () => {
+  const { valtown } = await relays;
+  const saved = {};
+  for (const [k, v] of Object.entries(ENV)) { saved[k] = process.env[k]; process.env[k] = v; }
+  try {
+    const res = mockRes();
+    await valtown.serveNodeRequest(mockReq([Buffer.from(BODY)], { headers: {} }), res); // no signature
+    assert.equal(res.statusCode, 400, 'a within-cap body flows to signature verification, not 413');
+  } finally {
+    for (const k of Object.keys(saved)) {
+      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
     }
   }
 });
