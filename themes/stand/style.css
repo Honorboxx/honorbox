@@ -637,7 +637,16 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   font-size: 0.92rem; color: var(--ink-soft); margin: 0 0 0.6em; letter-spacing: 0;
 }
 .product-page .kicker { margin-bottom: 0.7em; }
-.product-page .lede { margin-left: 0; margin-right: 0; text-wrap: pretty; }
+/* Left set like everything else on this page, and allowed to reach the same
+   right edge. The inherited 58ch cap is 5.7px narrower than the h1, kicker and
+   prose stacked above it, so the lede alone stopped short and left one ragged
+   line down an otherwise straight margin. A measure cap is right for a centred
+   hero, where nothing sits beside it to disagree with. */
+.product-page .lede {
+  margin-left: 0; margin-right: 0;
+  max-width: none;
+  text-wrap: pretty;
+}
 .product-page .prose { margin-top: 0; max-width: 44rem; display: block; }
 .product-page .prose > * { max-width: none; }
 .product-page .prose p, .product-page .prose ul, .product-page .prose ol { max-width: var(--measure); }
