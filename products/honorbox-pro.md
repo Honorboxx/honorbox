@@ -29,6 +29,8 @@ features:
 30 days to change your mind, no questions asked, refunded through Stripe.
 [The refund policy in full](./refunds.html).
 
+Launch week: code `PRODUCTHUNT` takes 20% off at checkout, through August 20.
+
 ## What Pro is
 
 You finish setting up a store. You launch it. Nothing happens.
