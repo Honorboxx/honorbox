@@ -18,6 +18,7 @@ const {
   section, buyButton, productCard, hero, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
+  themeProblems, internalRefs,
 } = require('../build.js');
 
 const GRANTS = [{ payment_link: 'plink_1', product: 'HonorBox Pro', repo: 'o/r' }];
@@ -1332,6 +1333,31 @@ test('workflow templates: deploy template runs the whole test suite, pins match 
   for (const [action, sha] of Object.entries(pins(tpl))) {
     if (livePins[action]) assert.equal(sha, livePins[action], `pin drift for ${action}`);
   }
+});
+
+test('themeProblems: a missing theme is a named config problem, not an ENOENT', () => {
+  assert.deepEqual(themeProblems('stand', ['stand', 'terminal']), []);
+  assert.deepEqual(themeProblems(undefined, ['stand', 'terminal']), [], 'unset falls back to stand');
+  const [typo] = themeProblems('standd', ['stand', 'terminal']);
+  assert.match(typo, /themes\/standd\/layout\.html/);
+  assert.match(typo, /stand, terminal/, 'must list what exists');
+  // The store copy sells rail as "one config line"; a free-core forker who
+  // types it gets told where rail lives instead of a stack trace.
+  const [rail] = themeProblems('rail', ['stand', 'terminal']);
+  assert.match(rail, /Pro/);
+  assert.equal(themeProblems(undefined, []).length, 1, 'no themes at all is still a named problem');
+});
+
+test('internalRefs: internal targets only, normalized to dist-relative paths', () => {
+  const html = '<a href="./x.html">x</a> <a href="./y.html#frag">y</a> <img src="assets/a.png">' +
+    '<a href="https://example.com/z.html">ext</a> <a href="mailto:a@b.c">m</a>' +
+    '<a href="#top">t</a> <a href="./">home</a> <a href="//host/pp.html">pp</a> <a href="./q.html?v=2">q</a>';
+  assert.deepEqual(
+    internalRefs(html).sort(),
+    ['assets/a.png', 'index.html', 'q.html', 'x.html', 'y.html'],
+    'schemes, protocol-relative and fragments are not internal; query/fragment are not part of the file'
+  );
+  assert.deepEqual(internalRefs('<p>no links</p>'), []);
 });
 
 test('markdown: bold spanning two source lines renders (not literal **)', () => {

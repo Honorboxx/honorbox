@@ -87,7 +87,9 @@ and [`scripts/lib/fulfill-core.js`](scripts/lib/fulfill-core.js).
    `products/crew.md` and write your own: they carry HonorBox's real checkout
    links, and a store that keeps them sells *our* product into *our* Stripe
    account. The build stops you and names every leftover, but it is faster to
-   just delete them now.
+   just delete them now. `pages/` is our store's own prose (guides, terms,
+   refunds, support), so rewrite or delete those too; the build warns about
+   every link they leave dead.
 2. **One command creates your product on Stripe**: Product, Price, and a
    Payment Link with the delivery field, wired straight into your config:
 

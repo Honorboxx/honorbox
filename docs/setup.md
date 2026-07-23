@@ -32,7 +32,13 @@ account and an activated Stripe account (charges enabled).
    money lands in HonorBox's Stripe account. The build refuses to produce
    that store as soon as any of `name`, `url`, or `repo` is yours, and names
    every file and field to fix.
-4. `node scripts/build.js` locally and open `dist/index.html` to preview.
+4. `pages/` ships HonorBox's own store prose: five guide articles plus
+   `terms.md`, `refunds.md`, `privacy.md` and `support.md`, all written for
+   this store, naming its products and its support address. Rewrite them to
+   say something true about your store, or delete the ones you do not want.
+   Several link to the product pages deleted in step 3, and the build prints
+   a warning for every internal link left pointing at nothing.
+5. `node scripts/build.js` locally and open `dist/index.html` to preview.
 
 ## 2. Stripe
 

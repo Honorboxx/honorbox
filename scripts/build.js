@@ -316,6 +316,35 @@ function configProblems(c) {
   return out;
 }
 
+// The theme is a directory lookup, so a typo, or a Pro theme named before its
+// folder was copied in, used to surface as a raw ENOENT stack trace from the
+// layout read: a file path pointing nowhere near the config line that caused
+// it. Validate it like any other config field and say what IS available.
+function themeProblems(theme, available) {
+  const t = theme || 'stand';
+  if (available.includes(t)) return [];
+  const have = available.length ? `themes in this repo: ${available.join(', ')}` : 'no themes/ directory with a layout.html was found';
+  const pro = t === 'rail' ? ' ("rail" ships with HonorBox Pro: copy its folder into themes/ first)' : '';
+  return [`"theme" is ${JSON.stringify(t)} but themes/${t}/layout.html does not exist${pro}; ${have}`];
+}
+
+// Every internal reference a built page emits, as dist-relative file paths.
+// Scheme'd urls (https:, mailto:), protocol-relative urls and pure #fragment
+// or ?query references are not internal; a query or fragment is not part of
+// the file on disk, so both are dropped before the path is resolved.
+function internalRefs(html) {
+  const out = new Set();
+  for (const m of String(html).matchAll(/\b(?:href|src)="([^"]*)"/g)) {
+    const raw = m[1].replace(/&amp;/g, '&');
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//')) continue;
+    const bare = raw.split(/[?#]/)[0];
+    if (!bare) continue; // same-page fragment
+    const rel = bare.replace(/^\.?\//, '');
+    out.add(rel === '' || rel.endsWith('/') ? `${rel}index.html` : rel);
+  }
+  return [...out];
+}
+
 // This repo is two things at once: HonorBox's live store, and the template
 // sellers fork. Everything in products/ is real and wired to HonorBox's Stripe
 // account, so a fork that re-homes the storefront but keeps these links ships
@@ -577,13 +606,26 @@ function section(s, sizeOf = sizeOfLocal) {
 function main() {
   fs.rmSync(DIST, { recursive: true, force: true });
 
-  const config = JSON.parse(read(path.join(ROOT, 'store.config.json')));
+  // A hand-edited config is the first file every forker touches, and a
+  // trailing comma used to answer them with a raw SyntaxError stack that
+  // never names the file.
+  let config;
+  try {
+    config = JSON.parse(read(path.join(ROOT, 'store.config.json')));
+  } catch (e) {
+    console.error(`build: store.config.json: ${e.message}`);
+    process.exit(2);
+  }
   const themeDir = path.join(ROOT, 'themes', config.theme || 'stand');
-  const layout = read(path.join(themeDir, 'layout.html'));
 
   const problems = []; // fatal: the build refuses to ship a store this broken
   const warnings = []; // non-fatal, but printed on EVERY build, never silent
   for (const problem of configProblems(config)) problems.push(`store.config.json: ${problem}`);
+  const themesDir = path.join(ROOT, 'themes');
+  const availableThemes = fs.existsSync(themesDir)
+    ? fs.readdirSync(themesDir).filter((d) => fs.existsSync(path.join(themesDir, d, 'layout.html'))).sort()
+    : [];
+  for (const problem of themeProblems(config.theme, availableThemes)) problems.push(`store.config.json: ${problem}`);
   const products = listMd(path.join(ROOT, 'products')).map((f) => {
     const { data, body, error } = parseFrontmatter(read(path.join(ROOT, 'products', f)));
     if (error) problems.push(`products/${f}: ${error}`);
@@ -651,6 +693,8 @@ function main() {
     process.exit(2);
   }
 
+  // Read only after the gate: themeProblems has vouched for the file.
+  const layout = read(path.join(themeDir, 'layout.html'));
   const site = config.url.replace(/\/$/, '');
   // Sitemap <lastmod> / Article dateModified: honor a pinned BUILD_DATE (CI
   // can pass one for reproducible builds), else today, same determinism
@@ -890,6 +934,21 @@ files that ship in the repo.</p>
   write(path.join(DIST, '404.html'), page({ title: `Not found · ${config.name}`, slug: '404', content: `<article class="prose"><h1>Nothing at this stand</h1><p>That page doesn't exist. <a href="./">Back to the store.</a></p></article>`, noindex: true }));
   write(path.join(DIST, '.nojekyll'), '');
 
+  // Dead internal links, checked over everything just written. A reference
+  // that resolves inside dist/ but points at nothing this build produced is a
+  // link a visitor can click and land on a 404. The classic case is a fork
+  // that deleted products/honorbox-pro.md, exactly as the quickstart says to,
+  // while pages/ and the config sections still link ./honorbox-pro.html.
+  // Warnings, not fatal: a prose link must not block a deploy, but a green
+  // build has to say so.
+  for (const file of fs.readdirSync(DIST).filter((f) => f.endsWith('.html')).sort()) {
+    for (const ref of internalRefs(read(path.join(DIST, file)))) {
+      if (!fs.existsSync(path.join(DIST, ref))) {
+        warnings.push(`${file}: dead link "./${ref}" (nothing in this build produces that file)`);
+      }
+    }
+  }
+
   // Printed at the END, after the pages that generate them have been written.
   // Not fatal, but a silent fallback is how the product's social card changed
   // without anyone deciding to change it. A green build still has to say so.
@@ -899,6 +958,7 @@ files that ship in the repo.</p>
 
 module.exports = {
   escapeHtml, buyButton, productCard, hero, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore, section,
+  themeProblems, internalRefs,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
   PUBLISHED_DOCS, docTitle, rewriteDocLinks,
