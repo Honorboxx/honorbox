@@ -20,7 +20,7 @@ features:
   - "Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't"
   - "Ops bots: auto-acknowledge new support issues, auto-revoke repo access when Stripe refunds"
   - "Stats: tracker-free sales analytics rendered from your Stripe data, one command"
-  - "4 more storefront themes; the terminal theme is published in the free repo as a full code sample"
+  - "The rail storefront theme, a fixed left navigation column; the terminal theme is published in the free repo as a full code sample"
   - "License-key module: ed25519 keys signed in CI, verified offline in your app (JS + Python)"
   - "Commerce playbook: pricing, the first ten sales, EU VAT, multi-product catalogs (table of contents is public)"
   - Priority support label on the issue tracker
