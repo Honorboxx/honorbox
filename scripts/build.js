@@ -90,7 +90,7 @@ function tpl(layout, vars) {
 function setMeta(html, attr, name, content) {
   const esc = escapeHtml(String(content));
   const re = new RegExp(`(<meta\\s+${attr}="${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s+content=")[^"]*(")`);
-  if (re.test(html)) return html.replace(re, (m, open, close) => `${open}${esc}${close}`);
+  if (re.test(html)) return html.replace(re, (_, open, close) => `${open}${esc}${close}`);
   return injectHead(html, `<meta ${attr}="${name}" content="${esc}">`);
 }
 
@@ -161,13 +161,13 @@ function rewriteDocLinks(md, { repo, published = PUBLISHED_DOCS } = {}) {
     // GitHub silently turned a deep link into a section into a link at the top
     // of a 500-line document, which is the kind of rot nobody reports and
     // everybody notices.
-    .replace(/(\]\()([A-Za-z0-9_-]+)\.md(#[A-Za-z0-9_-]+)?(\))/g, (m, open, slug, hash, close) =>
+    .replace(/(\]\()([A-Za-z0-9_-]+)\.md(#[A-Za-z0-9_-]+)?(\))/g, (_, open, slug, hash, close) =>
       published.includes(slug)
         ? `${open}./${slug}.html${hash || ''}${close}`
         : `${open}${blob(`docs/${slug}.md`)}${hash || ''}${close}`
     )
     // anything one level up: ../dir/ (tree) or ../dir/file.ext (blob)
-    .replace(/(\]\()\.\.\/([A-Za-z0-9_./-]+)(\))/g, (m, open, rest, close) =>
+    .replace(/(\]\()\.\.\/([A-Za-z0-9_./-]+)(\))/g, (_, open, rest, close) =>
       `${open}${rest.endsWith('/') ? tree(rest) : blob(rest)}${close}`
     );
 }
