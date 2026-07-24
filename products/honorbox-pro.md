@@ -2,9 +2,9 @@
 id: honorbox-pro
 order: 1
 name: HonorBox Pro
-meta_title: "HonorBox Pro ($29): find out if your store is broken"
-description: A suite that checks your Stripe + GitHub store against the known ways it silently loses sales, on every push. Plus reconcile, a doctor, bots and themes. $29.
-tagline: An empty ledger looks the same whether nobody came or your store is silently broken. Pro is the suite that tells those apart, before your first sale, on every push after it, and on a clock in between.
+meta_title: "HonorBox Pro ($29): find the orders that never landed"
+description: Walks every paid Stripe order against live GitHub access and names the ones that never reached the buyer. Runs on a store you wired yourself. $29.
+tagline: A GitHub repo invitation expires after seven days, and nothing in Stripe will ever mention it. Pro walks every paid order against live GitHub access, names the ones that never landed, and keeps asking on a schedule. Point it at the setup you already run.
 price: $29
 price_note: one developer, one-time · team and company licences below
 payment_link: https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00
@@ -14,12 +14,12 @@ payment_link: https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00
 # it makes it a decision rather than a side effect of editing the gallery.
 og_image: ./assets/previews/stand.png
 features:
+  - "Bring your own store: runs against a hand-rolled Stripe + GitHub setup from a minimal config naming your existing payment links and repos, no engine adoption; engine-layout checks skip and print why"
+  - "Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't"
   - "Conformance suite: 16 checks for the known ways this architecture loses money quietly, each proven able to fail, wired to a CI gate that goes red when your setup drifts"
   - "Catches a dead buy button (a deactivated link still answers HTTP 200), a price on the page that differs from what the link charges, a pasted URL that makes every sale unmatchable, and a live 100%-off coupon"
-  - "Bring your own store: runs against a hand-rolled Stripe + GitHub setup from a minimal config naming your existing payment links and repos, no engine adoption; engine-layout checks skip and print why"
   - "Scheduled guard: a drop-in Actions workflow that runs the suite and reconcile four times a day and raises one self-closing GitHub issue in your ops repo naming exactly what went red. A run that could not reach Stripe alarms too; it never reads as healthy"
   - "Store doctor: preflight your config, payment links, and fulfillment permissions before launch"
-  - "Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't"
   - "Ops bots: auto-acknowledge new support issues, auto-revoke repo access on a Stripe refund or a lost chargeback"
   - "Stats: tracker-free sales analytics rendered from your Stripe data, one command"
   - "The rail storefront theme, a fixed left navigation column, built to the same class contract as the free themes"
@@ -35,22 +35,26 @@ Launch week: code `PRODUCTHUNT` takes 20% off at checkout, through August 20.
 
 ## What Pro is
 
-You finish setting up a store. You launch it. Nothing happens.
+Someone paid you and never got in. You would find out when they email you, if
+they email you.
 
-There are two explanations and from where you are standing they are identical:
-nobody came, or your store is quietly broken. Both look like a silent dashboard
-and an empty ledger. The tools you already own cannot tell them apart, because
-almost every way this architecture fails returns a perfectly healthy-looking
-response. A payment link you deactivated still answers its URL with HTTP 200 and
-the ordinary Stripe checkout page, so a link checker, an uptime monitor and a
-`curl` in CI all agree your dead buy button is fine. Only the API knows, and
-nothing is asking it.
+Every expensive failure in this architecture has that shape: the money arrives,
+the delivery does not, and nothing anywhere says so. An invitation nobody
+accepts expires after seven days, and unless something re-issues it before then
+the sale is gone with nothing recording that it was ever at risk. A refund
+returns the money and leaves the collaborator in place, and a lost chargeback
+does the same. A payment link that went into your config as a URL where Stripe
+reports a `plink_` id makes every sale of that product match nothing at all.
+Stripe says paid, GitHub was never asked, and the only buyer who tells you is
+the one who cared enough to chase.
 
-**Pro is mostly the thing that asks.** A conformance suite of sixteen checks for
-the known ways a Stripe-plus-GitHub store loses money without telling you, run
-against your own account, wired to a CI gate. Most of its checks need no orders
-at all, which is the point: they are useful on the day you launch, not after
-you have lost something.
+**Pro is the thing that asks instead.** Reconcile walks every paid Stripe
+session and asks GitHub whether that specific buyer holds access to that
+specific repo right now: one verdict per order with the amount attached, and a
+non-zero exit when anything is lost, so you can schedule it rather than remember
+it. Alongside it, a conformance suite of sixteen checks for the known ways a
+Stripe-plus-GitHub store loses money without telling you, run against your own
+account and wired to a CI gate.
 
 And because the ways a store breaks do not arrive by push, the asking runs on
 a clock as well as a gate: a scheduled guard re-runs the suite and the
@@ -59,36 +63,69 @@ something goes red, so a silently broken store becomes a loud notification
 within hours instead of a theory you form weeks later from an absence of
 sales.
 
-Around it sits the operational half: reconcile walks the money and names the
-paid order that is still undelivered, the store doctor catches setup mistakes
-before they cost you a launch, and the refund guard revokes what a refund should
-revoke without waiting for you to run a command.
+If you have not launched yet, you have the same problem one step earlier. An
+empty ledger looks identical whether nobody came or the store is
+quietly broken, and almost every way this architecture fails returns a
+perfectly healthy-looking response: a payment link you deactivated still answers
+its URL with HTTP 200 and the ordinary Stripe checkout page, so a link checker,
+an uptime monitor and a `curl` in CI all agree your dead buy button is fine.
+Only the API knows, and nothing is asking it. Most of the suite's checks need no
+orders at all, which is the point: they are useful on the day you launch, not
+after you have lost something.
 
-## Who should buy this (and who shouldn't)
+Around both sits the rest of the operational half: the store doctor catches
+setup mistakes before they cost you a launch, and the refund guard revokes what
+a refund should revoke without waiting for you to run a command.
 
-**Buy Pro if** you have a store set up and a launch coming, and you would rather
-find out now than infer it later from an absence of sales. You get one launch,
-and a misconfigured grant or a dead buy button burns it while every local signal
-tells you the store is fine. Buy it too if you are already taking orders and want
-each one proved delivered rather than assumed, if you sell or plan multiple
-products, if your product runs on machines you cannot see and needs license keys,
-or if you want a storefront that doesn't look like every other fork.
+## It runs on the store you already have
 
-Already selling through Stripe and GitHub with something you wired up yourself?
-That is the setup this was built for, and you do not have to adopt the engine
-to put Pro on it. Write a minimal config naming the payment links and product
-repos you already have, and add one custom field to your payment link asking
-for the buyer's GitHub username: a two-minute edit in the Stripe dashboard, and
-the link URL does not change. Reconcile, stats, the refund and dispute guards,
-the store doctor and the suite's money-path checks then run in full against
-your setup as it stands. Checks that only apply to the engine's own layout skip
-and print the reason, and no ledger is required: if there is none, Pro says so
-and moves on. Check that before you pay rather than after:
+You made your payment links in the Stripe dashboard. You deliver by inviting the
+buyer to a private repo, with glue you wrote once and have not opened since.
+That is the setup this was built for, and you do not have to adopt the engine to
+put Pro on it. Write a minimal config naming the payment links and product repos
+you already have, and add one custom field to your payment link asking for the
+buyer's GitHub username: a two-minute edit in the Stripe dashboard, and the link
+URL does not change, so nothing you have already published goes stale and no
+buyer sees a difference. Reconcile, stats, the refund and dispute guards, the
+store doctor and the suite's money-path checks then run in full against your
+setup as it stands.
+
+Straight about the parts that do not. Checks written for the engine's own
+storefront layout skip, print the reason, and are counted apart from the passes
+rather than quietly passing. No ledger is required, and with none there the two
+history checks step aside and reconcile answers the same questions from live
+Stripe and GitHub state instead. The suite is young: it
+catches what has been catalogued and nothing else. Check all of that before you
+pay rather than after:
 [what runs on a store you built yourself](./bring-your-own-store.html)
 has the config, the checkout field, the modules that run in full, the ones that
 step aside with the lines they print, and the limits. If you later want the
 storefront and the fulfillment glue too, adopting the engine is a config file
 naming those same links and repos, not a migration your buyers can see.
+
+**You could write the diff yourself in an afternoon.** The reason to buy this
+instead is what the homemade version does when it is wrong. A check that
+compares paid sessions against collaborators gets the cases that matter
+backwards: a pending invitation looks like a loss, an expired one looks
+identical to a pending one, a refunded buyer who still holds access looks
+delivered, and if one payment link went in as a URL where Stripe reports an id,
+nothing matches at all and the run reports zero failures. **A reconciler that
+matches nothing reports everything clean.** That is not a hypothetical we are
+selling against: the first version of one check in this suite could not be made
+to fail at all, and what found it was a mutation suite that breaks each check on
+purpose and requires it to go red. Every check has to survive that now, which is
+the part you are actually buying.
+
+## Who should buy this (and who shouldn't)
+
+**Buy Pro if** you are already taking orders and want each one proved delivered
+rather than assumed. Buy it too if you have a store set up and a launch coming,
+and you would rather find out now than infer it later from an absence of sales:
+you get one launch, and a misconfigured grant or a dead buy button burns it
+while every local signal tells you the store is fine. Buy it if you sell or plan
+multiple products, if your product runs on machines you cannot see and needs
+license keys, or if you want a storefront that doesn't look like every other
+fork.
 
 Delivery is a private repo, so read the box before you buy it. Public and
 checkable right now: the license module's
@@ -107,8 +144,8 @@ restyle the free theme yourself, which the theme contract makes easy.
 
 And skip it if you are buying it to feel like you have started. That is the most
 common reason anyone buys a tool like this and it is the wrong one. The suite is
-worth $29 when you have a real store and a real launch date. It is worth nothing
-as a substitute for having either.
+worth $29 when there is a real store with real money moving through it, or a
+real launch date for one. It is worth nothing as a substitute for having either.
 
 ## What's inside
 
