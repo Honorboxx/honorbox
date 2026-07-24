@@ -38,10 +38,10 @@ throughout:
 ```
 
 One row per product: the payment link that sells it, and the private repo the
-buyer gets invited to. `payment_link` is the **id**, the `plink_` string from
-the dashboard or
-from `GET /v1/payment_links`, not the buyer-facing URL. Everyone pastes the URL
-once, so both the doctor and the audit check for that mistake by name.
+buyer gets invited to. `payment_link` is the **id**, the `plink_` string from the
+dashboard or from `GET /v1/payment_links`, not the buyer-facing URL. Everyone
+pastes the URL once, so both the doctor and the audit check for that mistake by
+name.
 
 If you also create Checkout Sessions through the API, or sell through coupon
 codes, add the price id to the same row (`"price": "price_XXXXXXXXXXXXXXXXXXXX"`).
