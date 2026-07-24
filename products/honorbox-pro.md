@@ -74,10 +74,18 @@ products, if your product runs on machines you cannot see and needs license keys
 or if you want a storefront that doesn't look like every other fork.
 
 Already selling through Stripe and GitHub with something you wired up yourself?
-That is the setup this was built for, and adopting the engine is a config file
-naming the payment links and product repos you already have, not a migration your
-buyers can see. One thing to know before you fork: the suite reads a HonorBox
-config, so it checks a store built on the engine rather than any arbitrary setup.
+That is the setup this was built for, and you do not have to adopt the engine
+to put Pro on it. Write a minimal config naming the payment links and product
+repos you already have, and add one custom field to your payment link asking
+for the buyer's GitHub username: a two-minute edit in the Stripe dashboard, and
+the link URL does not change. Reconcile, stats, the refund and dispute guards,
+the store doctor and the suite's money-path checks then run in full against
+your setup as it stands. Checks that only apply to the engine's own layout skip
+and print the reason, and no ledger is required: if there is none, Pro says so
+and moves on. The quickstart is in the Pro repo as WITHOUT-THE-ENGINE.md. If
+you later want the storefront and the fulfillment glue too, adopting the engine
+is a config file naming those same links and repos, not a migration your buyers
+can see.
 
 Delivery is a private repo, so read the box before you buy it. Public and
 checkable right now: the license module's

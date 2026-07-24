@@ -186,7 +186,9 @@
         },
         {
           "q": "I already sell through Stripe and GitHub. What does this add?",
-          "a": "The engine replaces the glue you wrote: polling Stripe, matching the order, sending the invite, keeping the ledger, and the storefront in front of it. It reads one config file naming the payment links and product repos you already have, so your checkout keeps working and your buyers notice nothing. Pro then answers what a hand-rolled setup almost never answers for itself: is every paid order delivered right now, and is any of the known silent failures live in your setup? Fair warning, the suite reads a HonorBox config, so it checks a store built on the engine rather than any arbitrary setup."
+          "a": "The engine replaces the glue you wrote: polling Stripe, matching the order, sending the invite, keeping the ledger, and the storefront in front of it. It reads one config file naming the payment links and product repos you already have, so your checkout keeps working and your buyers notice nothing. Pro then answers what a hand-rolled setup almost never answers for itself: is every paid order delivered right now, and is any of the known silent failures live in your setup? It does not need the engine to answer that. Point Pro at the setup you already run: a minimal config naming your payment links and repos, plus one custom field on your payment link asking for the buyer's GitHub username, a two-minute edit that leaves the link URL unchanged. Reconcile, stats, the refund and dispute guards, the store doctor and the suite's money-path checks then run in full against your setup; the checks that only apply to the engine's layout skip and print why.",
+          "href": "./honorbox-pro.html",
+          "href_label": "Who should buy Pro"
         },
         {
           "q": "Does the fulfillment bot need my full Stripe secret key?",
