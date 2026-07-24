@@ -23,8 +23,9 @@ for the internet:
   GitHub account to your private product repo, and keeps your books. GitHub
   expires an unaccepted invitation after seven days, so it re-issues before that
   happens, and sooner if GitHub is ever seen to expire one sooner: a buyer who
-  missed the email does not quietly lose what they paid for. No webhooks required, no database, no server to babysit (opt-in webhook
-  mode available when you want near-instant delivery).
+  missed the email does not quietly lose what they paid for. No webhooks
+  required, no database, no server to babysit (opt-in webhook mode available
+  when you want near-instant delivery).
 
 **Live demo: [the HonorBox store](https://honorboxx.github.io/honorbox/).** This
 repo *is* a working store selling
