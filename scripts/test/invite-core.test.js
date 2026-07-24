@@ -14,6 +14,7 @@ const assert = require('node:assert');
 
 const {
   DOCUMENTED_EXPIRY_HOURS,
+  EXPIRY_NEWS_TOLERANCE_HOURS,
   RENEWAL_MARGIN_HOURS,
   REINVITE_AFTER_HOURS,
   MAX_REINVITES,
@@ -97,6 +98,32 @@ test('the shortest expiry GitHub is actually seen to enforce is what gets believ
     'an unreadable created_at is not a measurement'
   );
   assert.equal(observedExpiryHours([inv(1, 'a', -5, { expired: true })], NOW), null, 'a clock ahead of ours is not a measurement');
+});
+
+test('a sighting is a number an operator can read, not a float with the poll delay on the end', () => {
+  // The age is measured whenever the poll happened to run, so the raw figure
+  // carries the scheduling delay as trailing decimals. That lands in the state
+  // file and in the log line, where it is noise. Floored, not rounded:
+  // under-reading the window renews earlier, which is the safe direction.
+  const late = { id: 1, invitee: { login: 'a' }, created_at: new Date(NOW - 60 * 3_600_000 - 1).toISOString(), expired: true };
+  assert.equal(observedExpiryHours([late], NOW), 60, 'a hair over 60 hours is 60 hours');
+  const bit = { id: 2, invitee: { login: 'b' }, created_at: new Date(NOW - (60.019 * 3_600_000)).toISOString(), expired: true };
+  assert.equal(observedExpiryHours([bit], NOW), 60.01, 'and real precision below the hour survives');
+});
+
+test('clock skew against GitHub is not mistaken for GitHub changing its policy', () => {
+  // created_at is GitHub's clock, the age is ours, and they are not the same
+  // clock. A few seconds either way is normal and must not read as "the window
+  // is shorter than published" on a store where nothing is wrong: that would
+  // warn every seller who ever lets one invitation lapse.
+  assert.deepEqual(learnExpiry(undefined, DOCUMENTED_EXPIRY_HOURS - 0.02), { hours: null, tightened: false }, 'seconds of skew');
+  assert.deepEqual(
+    learnExpiry(undefined, DOCUMENTED_EXPIRY_HOURS - EXPIRY_NEWS_TOLERANCE_HOURS),
+    { hours: null, tightened: false },
+    'right at the tolerance is still not news'
+  );
+  const news = DOCUMENTED_EXPIRY_HOURS - EXPIRY_NEWS_TOLERANCE_HOURS - 0.01;
+  assert.deepEqual(learnExpiry(undefined, news), { hours: news, tightened: true }, 'past it, it is');
 });
 
 test('the cadence tracks the observed window, and is clamped at both ends', () => {

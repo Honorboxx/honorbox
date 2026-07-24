@@ -104,6 +104,10 @@ const REINVITES_FIELD = 'reinvites';
 // than its published one, which on a healthy store is never.
 const EXPIRY_FIELD = 'invite_expiry_hours';
 
+// How much shorter a sighting must be before it is treated as GitHub having
+// changed the window rather than as clock skew. See learnExpiry.
+const EXPIRY_NEWS_TOLERANCE_HOURS = 1;
+
 function ageHours(inv, now) {
   const created = Date.parse(inv && inv.created_at);
   if (!Number.isFinite(created)) return null; // unparseable: the caller decides
@@ -129,7 +133,12 @@ function observedExpiryHours(invitations, now = Date.now()) {
     if (!Number.isFinite(age) || age <= 0) continue; // unparseable, or a clock ahead of ours
     if (shortest === null || age < shortest) shortest = age;
   }
-  return shortest;
+  // Floored to a hundredth of an hour, 36 seconds. Enough precision to be a
+  // real measurement, little enough that what lands in the state file and the
+  // log is a number an operator can act on rather than a float with a
+  // scheduling delay printed on the end. Floored rather than rounded because
+  // under-reading the window renews earlier, and that is the safe direction.
+  return shortest === null ? null : Math.floor(shortest * 100) / 100;
 }
 
 // When to re-issue, given what this store has observed.
@@ -162,12 +171,19 @@ function renewalThresholdHours(observed) {
 // `tightened` is what the caller turns into a warning. It is true exactly once
 // per new low, so learning stays an event rather than a line the log repeats
 // for the rest of the repository's life.
+// A sighting has to be shorter by a clear hour before it counts as news. The
+// age is computed from GitHub's `created_at` against our own clock, and those
+// two are not the same clock: a few seconds of skew either way is normal. That
+// is invisible against a genuinely different policy, which moves in days, and
+// would otherwise let an ordinary seven-day expiry read as "GitHub expires
+// sooner than it publishes" and warn every seller who ever has one lapse.
 function learnExpiry(current, observed) {
   const cur = Number(current);
   const held = Number.isFinite(cur) && cur > 0 ? cur : null;
   const obs = Number(observed);
   if (!Number.isFinite(obs) || obs <= 0) return { hours: held, tightened: false };
-  if (obs >= (held === null ? DOCUMENTED_EXPIRY_HOURS : held)) return { hours: held, tightened: false };
+  const known = held === null ? DOCUMENTED_EXPIRY_HOURS : held;
+  if (obs >= known - EXPIRY_NEWS_TOLERANCE_HOURS) return { hours: held, tightened: false };
   return { hours: obs, tightened: true };
 }
 
@@ -355,6 +371,7 @@ function expiryLearnedLine(repo, observedHours, thresholdHours) {
 
 module.exports = {
   DOCUMENTED_EXPIRY_HOURS,
+  EXPIRY_NEWS_TOLERANCE_HOURS,
   RENEWAL_MARGIN_HOURS,
   REINVITE_AFTER_HOURS,
   MAX_REINVITES,
