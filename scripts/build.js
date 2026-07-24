@@ -130,7 +130,17 @@ function guideSlugs(sections) {
 // and free: it is worth reading on its own, it is what the suite's checks are
 // generated from, and keeping it off the site would leave "published openly" as
 // a claim rather than a fact. Regenerated from Pro, never edited here.
-const PUBLISHED_DOCS = ['how-it-works', 'setup', 'subscriptions', 'least-privilege', 'instant-delivery', 'tax', 'failure-catalogue'];
+//
+// bring-your-own-store.md IS here too, and the line it sits on the other side of
+// from pro-evidence.md is worth stating. Both are written for a prospect, but
+// this one exists to answer a question a reader has BEFORE they can decide
+// anything: does the suite run on the store they already built, or does it
+// assume ours. A buyer who cannot answer that does not get as far as evidence.
+// It has to be findable, linkable in a sentence and readable on a phone, and a
+// blob URL is none of those. It does not go stale the way a transcript does
+// either: it describes which modules apply to which setup, and the checks it
+// quotes are the ones the suite is built from.
+const PUBLISHED_DOCS = ['how-it-works', 'setup', 'subscriptions', 'least-privilege', 'instant-delivery', 'tax', 'failure-catalogue', 'bring-your-own-store'];
 
 // docs/*.md carry no frontmatter: the first "# " line is the title. Split it
 // off so the page template owns the <h1> (same shape as pages/) instead of the

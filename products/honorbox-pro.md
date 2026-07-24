@@ -84,7 +84,7 @@ the store doctor and the suite's money-path checks then run in full against
 your setup as it stands. Checks that only apply to the engine's own layout skip
 and print the reason, and no ledger is required: if there is none, Pro says so
 and moves on. Check that before you pay rather than after:
-[what runs on a store you built yourself](https://github.com/Honorboxx/honorbox/blob/main/docs/bring-your-own-store.md)
+[what runs on a store you built yourself](./bring-your-own-store.html)
 has the config, the checkout field, the modules that run in full, the ones that
 step aside with the lines they print, and the limits. If you later want the
 storefront and the fulfillment glue too, adopting the engine is a config file
@@ -97,7 +97,7 @@ with the key format and both verify snippets, the playbook's complete table of
 contents,
 [what every module prints](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md),
 in its real format, and
-[what runs on a hand-rolled store](https://github.com/Honorboxx/honorbox/blob/main/docs/bring-your-own-store.md),
+[what runs on a hand-rolled store](./bring-your-own-store.html),
 so you can see the answer each one gives before you pay for the code behind it.
 
 **Skip Pro if** you have not actually set a store up yet. There is nothing for
