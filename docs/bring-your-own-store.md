@@ -97,9 +97,6 @@ revenue actually collected: 58 USD across 2 paid orders
 Nothing is lost yet. The WARN rows become losses if nobody chases them.
 ```
 
-The hint under a verdict prints on one line. It is wrapped above to fit this
-page, and nothing else about the block is changed.
-
 It is a warn and not a loss on purpose. An absent username proves only that the
 session cannot be mapped to a GitHub account, and a hand-rolled store may well
 have delivered that order by hand long before this tool existed. Calling it lost
@@ -168,7 +165,8 @@ config  /tmp/acme-ops/store.config.json
 
 [UNKNOWN] A paid checkout that matches no fulfillment grant
          shipped defect: real bug, reproduced, no victim (2026-07-20)
-         no fulfillment state at /tmp/acme-ops/state/fulfill-state.json: unmatched-history check skipped
+         no fulfillment state at /tmp/acme-ops/state/fulfill-state.json:
+         unmatched-history check skipped
          -> the engine records paid-but-unmatched sessions in
          state/fulfill-state.json; a store running its own fulfillment never has
          it. Reconcile reports the same orders live as PAID, NO GRANT.
@@ -211,7 +209,8 @@ config  /tmp/acme-ops/store.config.json
 
 [UNKNOWN] A buyer flagged for attention that nothing ever tells
          reasoned guard: has NOT happened here
-         no ledger at /tmp/acme-ops/ledger/ledger.json: needs-attention check skipped
+         no ledger at /tmp/acme-ops/ledger/ledger.json: needs-attention check
+         skipped
          -> the engine writes ledger/ledger.json from the first sale; a store
          running its own fulfillment never has one. Reconcile answers the same
          question straight from Stripe and GitHub.
@@ -335,11 +334,8 @@ of the config and the bot prints its reason and moves on, with the guards still
 running:
 
 ```
-bots: issue triage skipped: no "repo" in config, so there is no storefront
-repo to watch (refund and dispute guards still run)
+bots: issue triage off, no "repo" in config; refund and dispute guards run
 ```
-
-That is one line in the log, wrapped here for the page.
 
 **The guard's own secrets.** The scheduled guard is a workflow for your private
 ops repo. It takes a read-only Stripe key and the same GitHub token, runs the

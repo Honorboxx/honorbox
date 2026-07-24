@@ -65,7 +65,8 @@ config  /tmp/widget-store/store.config.json
 
 [EXPOSED] A poll cadence that outruns the free tier, then stops delivering
          incident: happened here (2026-07-19)
-         .github/workflows/poll.yml schedule "*/2 * * * *" is ~22320 runs/month ≈ 22320 billed minutes (jobs round up to 1 min)
+         .github/workflows/poll.yml schedule "*/2 * * * *" is ~22320 runs/month ≈
+         22320 billed minutes (jobs round up to 1 min)
          -> that is 20320 minutes over the 2000-minute Free allowance on a private
          repo, from this workflow alone. When it runs out mid-month delivery simply
          stops and nothing tells you. Either poll locally (launchd/systemd) and
@@ -159,7 +160,8 @@ config  /tmp/widget-store/store.config.json
 
 [  OK  ] A poll cadence that outruns the free tier, then stops delivering
          incident: happened here (2026-07-19)
-         .github/workflows/poll.yml schedule "17 * * * *" is ~744 runs/month ≈ 744 billed minutes (jobs round up to 1 min)
+         .github/workflows/poll.yml schedule "17 * * * *" is ~744 runs/month ≈ 744
+         billed minutes (jobs round up to 1 min)
 
 [  OK  ] One hung request stalling every buyer behind it
          reasoned guard: has NOT happened here (2026-07-20)
@@ -266,9 +268,11 @@ HonorBox reconcile: last 90 days
        cs_live_XXXXXXXXXXXX…
 
 2 paid orders in window · 2 confirmed · 0 need attention · 0 not delivered
-revenue actually collected: 29 USD across 1 paid order (1 zero-cost fulfillment excluded)
+revenue actually collected: 29 USD across 1 paid order (1 zero-cost
+  fulfillment excluded)
 
-Every paid order is confirmed delivered against GitHub, not assumed from a send.
+Every paid order is confirmed delivered against GitHub, not assumed from a
+  send.
 ```
 
 The revenue line is the point. A coupon-covered order is a delivery, not a sale,
@@ -284,11 +288,13 @@ cannot see:
 ```
 HonorBox reconcile: last 90 days
 
-[UNREADABLE] you/widget-pro-typo: GitHub collaborators for you/widget-pro-typo failed: Not Found
+[UNREADABLE] you/widget-pro-typo: GitHub collaborators for you/widget-pro-typo
+  failed: Not Found
   buyers on the repo(s) above could not be checked at all.
 
 [LOST] 2026-05-14 ?             29 USD     @ada-example      PAID, NO GRANT
-       this order matches no fulfillment grant: the engine skipped it and the money is sitting in your account with nothing delivered
+       this order matches no fulfillment grant: the engine skipped it and the
+       money is sitting in your account with nothing delivered
        cs_live_XXXXXXXXXXXX…
 
 1 paid order in window · 0 confirmed · 0 need attention · 1 not delivered
