@@ -118,11 +118,37 @@ function inline(s) {
   return out.replace(new RegExp(CODE + '(\\d+)' + CODE, 'g'), (_, n) => `<code>${escapeHtml(spans[n])}</code>`);
 }
 
+// {{buy:<product id>}} alone on a line is the store's real Buy button for that
+// product, built by opts.buy (see renderMarkdown). Docs are the most
+// persuasive thing this store publishes and they had no way to ask for the one
+// element that takes money: every path through this file ends in escapeHtml,
+// so a hand-written <a class="btn btn-buy"> arrives at the reader as visible
+// tag text. Naming the product rather than a label and a url is what keeps a
+// page from quoting a price the product record no longer charges.
+//
+// BUY_OPEN is what makes a line a buy token; BUY_LINE is what makes that token
+// well formed. Two rules rather than one, because "is this a button" and "is
+// this button written correctly" have different right answers. If only the
+// well-formed shape counted, "{{buy: honorbox-pro}}", one stray space, would
+// fall through to the paragraph rule and print the token to a buyer on a green
+// build, which is the failure every other comment in this file is about.
+// So the line is a button either way and the caller is told which it got: an
+// id when it closes cleanly, null and the line as written when it does not.
+// Leniency was the other option and it is worse than it looks. An unclosed
+// "{{buy:honorbox-pro" reads as the id "honorbox-pro" and quietly renders the
+// right button, so the same typo one character later ("{{buy:honorbox-pro}} .")
+// would fail the build while this one shipped. A parser that guesses is a
+// parser that guesses wrong later.
+const BUY_OPEN = /^\{\{buy:/;
+const BUY_LINE = /^\{\{buy:(.*?)\}\}\s*$/;
+
 // Lines that are markdown structure, not paragraph prose. One definition
 // shared by the renderer's paragraph terminator and excerpt(), so the two
 // can never drift apart again (an image line after a paragraph used to be
-// swallowed because a hand-copied variant here lacked `!\[`).
-const STRUCTURAL = /^(#{1,4}\s|```|<!--|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
+// swallowed because a hand-copied variant here lacked `!\[`). `\{\{buy:` is
+// BUY_OPEN spelled again: a buy token is a block, so prose above it must stop
+// at it rather than eat it, and a meta description must not be the token.
+const STRUCTURAL = /^(#{1,4}\s|```|<!--|[-*]\s|\d+\.\s|>|!\[|\{\{buy:|(-{3,}|\*{3,})\s*$)/;
 
 // GFM pipe tables. The delimiter row is what makes a table a table: a row of
 // only -, :, | and spaces, with at least one dash. Without this second-line
@@ -291,6 +317,28 @@ function renderMarkdown(src, opts = {}) {
       while (i < lines.length && !/^```\s*$/.test(lines[i])) buf.push(lines[i++]);
       i++; // closing fence
       out.push(`<pre><code>${escapeHtml(buf.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    // A buy token, resolved HERE, while the page is still markdown and long
+    // before the theme layout's own {{placeholder}} fill runs. That order is
+    // the whole reason the two cannot meet: by the time a layout is filled,
+    // nothing a doc author wrote is a placeholder any more.
+    // A BLOCK rule, and that is the whole of how a doc documents this syntax.
+    // A fence consumes its own lines in the branch above, so a token inside
+    // one is never a line this rule sees, and a code span keeps the line from
+    // being only the token. The tempting alternative, a pass over the source
+    // before the loop, has neither property: it rewrites the token wherever it
+    // appears, and the first doc to print the syntax prints a button instead.
+    // opts.buy is called with no typeof guard, unlike opts.sizeOf. sizeOf is
+    // an optimization and degrades honestly when it is absent; this decides
+    // whether a page has a Buy button at all, so a caller that forgets it gets
+    // a TypeError here rather than a storefront that prints the token where
+    // the button belongs.
+    if (BUY_OPEN.test(line)) {
+      const token = BUY_LINE.exec(line);
+      out.push(opts.buy(token ? token[1] : null, line));
+      i++;
       continue;
     }
 

@@ -17,11 +17,17 @@ const {
 const { parseFrontmatter } = require('../lib/fm.js');
 const { renderMarkdown, excerpt, firstRasterImage, safeUrl } = require('../lib/md.js');
 const {
-  section, buyButton, productCard, hero, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore,
+  section, buyButton, buyToken, productCard, hero, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
   themeProblems, internalRefs,
 } = require('../build.js');
+
+// Renders a real file out of docs/ the way the tests below want it: for their
+// purposes a {{buy:}} token is not the subject, and the renderer refuses to
+// guess what one means rather than print it to a reader. What the token really
+// resolves to is buyToken's job, and is tested there.
+const renderDoc = (src) => renderMarkdown(src, { buy: () => '' });
 
 const GRANTS = [{ payment_link: 'plink_1', product: 'HonorBox Pro', repo: 'o/r' }];
 
@@ -683,7 +689,7 @@ test('every fragment link in the shipped docs lands on a real heading', () => {
   for (const f of fs.readdirSync(docsDir).filter((n) => n.endsWith('.md'))) {
     const src = fs.readFileSync(path.join(docsDir, f), 'utf8');
     const ids = new Set(
-      [...renderMarkdown(src).matchAll(/<h[1-4] id="([^"]+)"/g)].map((m) => m[1])
+      [...renderDoc(src).matchAll(/<h[1-4] id="([^"]+)"/g)].map((m) => m[1])
     );
     for (const m of src.matchAll(/\]\((#[a-z0-9-]+)\)/g)) {
       if (!ids.has(m[1].slice(1))) dead.push(`${f} -> ${m[1]}`);
@@ -1818,7 +1824,7 @@ test('docs build: every published doc exists and renders a titled page', () => {
     assert.ok(fs.existsSync(file), `docs/${slug}.md is listed in PUBLISHED_DOCS but missing`);
     const { title, body } = docTitle(fs.readFileSync(file, 'utf8'), slug);
     assert.ok(title && title !== slug, `docs/${slug}.md needs an H1 for its page title`);
-    const html = renderMarkdown(rewriteDocLinks(body, { repo: 'o/r' }));
+    const html = renderDoc(rewriteDocLinks(body, { repo: 'o/r' }));
     // A doc that still points at a RELATIVE .md would 404 on the live site.
     // An absolute github.com blob URL ending in .md is the correct rewrite for
     // a doc we do not publish, so it must not be flagged: matching every .md
@@ -2231,4 +2237,184 @@ test('frontmatter strips quotes from list items, not just scalars', () => {
     'single quoted too',
     'unquoted stays as is',
   ], 'a quoted list item printed its quotes into the storefront');
+});
+
+// ---------- {{buy:<id>}}, the buy button a doc or page can ask for ----------
+
+// The store's most persuasive page had no button on it. docs/*.md and pages/*.md
+// go through renderMarkdown, which ends every path in escapeHtml, so an author
+// who wrote <a class="btn btn-buy"> shipped that text to the reader. The token
+// closes that gap by naming a product rather than a label and a url: the name,
+// the price and the checkout link come off products/<id>.md, so a page cannot
+// go on advertising a price the store stopped charging.
+const PRO = { id: 'honorbox-pro', name: 'HonorBox Pro', price: '$29', payment_link: 'https://buy.stripe.com/x' };
+const buyOpts = (products, problems, where = 'docs/x.md') => ({ buy: buyToken(products, problems, where) });
+
+test('buy token: a token line renders the store\'s real button, not text', () => {
+  const problems = [];
+  const html = renderMarkdown('Intro.\n\n{{buy:honorbox-pro}}', buyOpts([PRO], problems));
+  assert.deepEqual(problems, [], 'a known product is not a problem');
+  assert.match(html, /<a class="btn btn-buy btn-big" href="https:\/\/buy\.stripe\.com\/x">Buy HonorBox Pro · \$29<\/a>/);
+  // The wrapper the product page already closes with: no .price beside it, so
+  // both themes drop the panel and render the bare call to action.
+  assert.match(html, /<div class="pc-buy standalone"><a class="btn btn-buy btn-big"/);
+  assert.ok(!html.includes('{{buy'), 'the token itself must never reach the reader');
+});
+
+test('buy token: it is the SAME button the product page emits', () => {
+  // Not "a button that looks like it". One code path for checkout urls means
+  // one gate to audit, and it is buyButton's. A second path would be the one
+  // nobody re-reads when the gate moves.
+  const problems = [];
+  const html = renderMarkdown('{{buy:honorbox-pro}}', buyOpts([PRO], problems));
+  assert.ok(html.includes(buyButton(PRO, true)), 'the token must emit buyButton(p, true) verbatim');
+});
+
+test('buy token: a product with no usable checkout gets the state that already exists', () => {
+  // Not a new failure mode. A missing or rejected payment_link is already
+  // "Checkout coming soon", and a token must not invent a second answer to a
+  // question this module has answered since the beginning.
+  const problems = [];
+  const broken = { ...PRO, payment_link: 'javascript:alert(1)' };
+  const html = renderMarkdown('{{buy:honorbox-pro}}', buyOpts([broken], problems));
+  assert.deepEqual(problems, [], 'a bad payment_link is buyButton\'s to report, not the token\'s');
+  assert.ok(html.includes('Checkout coming soon'), 'the disabled state, not a dead href');
+  assert.ok(!html.includes('javascript:'), 'the rejected scheme never reaches the page');
+  assert.ok(html.includes(buyButton(broken, true)), 'still buyButton\'s own answer');
+});
+
+test('buy token: an id that names no product fails the build, loudly and by name', () => {
+  // The two silent alternatives are both what this repo exists to refuse:
+  // printing the token ships a store showing its own markup where the button
+  // belongs, and dropping the line ships the page that argues for the product
+  // with nothing on it to buy.
+  const problems = [];
+  const html = renderMarkdown('{{buy:honorbox-prow}}', buyOpts([PRO], problems, 'docs/bring-your-own-store.md'));
+  assert.equal(problems.length, 1, 'exactly one problem, and it is fatal');
+  assert.match(problems[0], /^docs\/bring-your-own-store\.md: /, 'names the file the author has to open');
+  assert.match(problems[0], /\{\{buy:honorbox-prow\}\}/, 'quotes the line as written');
+  assert.match(problems[0], /"honorbox-pro"/, 'names what does exist, so the typo is visible');
+  assert.ok(!html.includes('{{buy'), 'never prints the token');
+  assert.ok(!html.includes('<a '), 'and never guesses at a product');
+});
+
+test('buy token: a malformed token is loud, never quietly prose and never a guess', () => {
+  // One stray space is the whole failure. If only the well-formed shape were a
+  // token, "{{buy: honorbox-pro}}" would fall through to the paragraph rule and
+  // print to a buyer on a green build. The unclosed case is why leniency was
+  // rejected: read forgivingly it is the id "honorbox-pro" and renders the
+  // right button, so the same typo one character later would fail the build
+  // while this one shipped.
+  for (const line of ['{{buy: honorbox-pro}}', '{{buy:honorbox-pro}} and more', '{{buy:}}', '{{buy:honorbox-pro', '{{buy:HONORBOX-PRO}}']) {
+    const problems = [];
+    const html = renderMarkdown(line, buyOpts([PRO], problems));
+    assert.equal(problems.length, 1, `${line}: must fail the build`);
+    assert.ok(problems[0].includes(line), `${line}: the message must quote what was written`);
+    assert.match(problems[0], /a buy token is \{\{buy:<product id>\}\} alone on a line/, `${line}: says the shape`);
+    assert.ok(!html.includes('{{buy'), `${line}: must not print the token`);
+    assert.ok(!html.includes('btn-buy'), `${line}: must not guess at a button`);
+  }
+});
+
+test('buy token: a fenced block prints the syntax instead of firing it', () => {
+  // A doc that documents this token has to be able to show it. The fence rule
+  // consumes its lines above the token rule, so the resolver is never reached.
+  let calls = 0;
+  const src = 'How to ask for a button:\n\n```\n{{buy:honorbox-pro}}\n```\n\nThat is all.';
+  const html = renderMarkdown(src, { buy: () => { calls++; return 'BUTTON'; } });
+  assert.equal(calls, 0, 'a fenced token must not resolve');
+  assert.ok(html.includes('<pre><code>{{buy:honorbox-pro}}</code></pre>'), html);
+  assert.ok(!html.includes('BUTTON'));
+});
+
+test('buy token: a code span prints the syntax instead of firing it', () => {
+  let calls = 0;
+  const html = renderMarkdown('`{{buy:honorbox-pro}}`', { buy: () => { calls++; return 'BUTTON'; } });
+  assert.equal(calls, 0, 'a token inside a code span must not resolve');
+  assert.ok(html.includes('<code>{{buy:honorbox-pro}}</code>'), html);
+  assert.ok(!html.includes('BUTTON'));
+});
+
+test('buy token: prose above a token is not swallowed, and is not the excerpt', () => {
+  // The same rule an image line needed: without the token in STRUCTURAL the
+  // paragraph loop eats the line below it, and the button disappears into a
+  // sentence on a green build.
+  const problems = [];
+  const html = renderMarkdown('The case for it.\n{{buy:honorbox-pro}}', buyOpts([PRO], problems));
+  assert.deepEqual(problems, []);
+  assert.ok(html.includes('<p>The case for it.</p>'), html);
+  assert.ok(html.includes('btn-buy'), 'the button survives a paragraph directly above it');
+  // A meta description is prose, and the token is not prose.
+  assert.equal(excerpt('{{buy:honorbox-pro}}\n\nThe real opening line.'), 'The real opening line.');
+});
+
+test('buy token: the renderer refuses to guess rather than print the token', () => {
+  // opts.buy has no typeof guard, unlike opts.sizeOf. sizeOf is an
+  // optimization and degrades honestly; this decides whether a page has a Buy
+  // button, so a caller that forgets it has to find out here rather than ship
+  // a storefront printing "{{buy:honorbox-pro}}" where the button belongs.
+  assert.throws(() => renderMarkdown('{{buy:honorbox-pro}}'), TypeError);
+  // and a document with no token is untouched by any of this
+  assert.equal(renderMarkdown('Plain prose.'), '<p>Plain prose.</p>');
+});
+
+test('buy token: it cannot reach, or be spoofed from, the theme layout fill', () => {
+  // Two different systems spell a placeholder {{...}} and they must never meet.
+  // They do not, because the token is resolved while the page is still
+  // markdown and the layout is filled long afterwards.
+  const problems = [];
+  const content = renderMarkdown('{{buy:honorbox-pro}}', buyOpts([PRO], problems));
+  assert.ok(content.includes('btn-buy'), 'already a button before the layout exists');
+
+  // 1. The fill does not recognise the token, so a token that somehow survived
+  //    could not become a layout value either.
+  assert.equal(tpl('{{buy:honorbox-pro}}', { buy: 'X', 'buy:honorbox-pro': 'Y', content: 'Z' }), '{{buy:honorbox-pro}}');
+
+  // 2. Nothing a doc author writes can name a layout placeholder. The fill is
+  //    a single pass, so a value's own text is never rescanned.
+  const layout = '<title>{{title}}</title><main>{{content}}</main>';
+  const filled = tpl(layout, { title: 'T', content: '<p>{{title}} {{store_name}} {{content}}</p>' });
+  assert.equal(filled, '<title>T</title><main><p>{{title}} {{store_name}} {{content}}</p></main>');
+
+  // 3. The same, through the money path: a product NAME carrying a placeholder
+  //    reaches the page as text, not as a fill.
+  const sneaky = { ...PRO, name: '{{store_name}}' };
+  const out = tpl(layout, { title: 'T', content: renderMarkdown('{{buy:honorbox-pro}}', buyOpts([sneaky], [])), store_name: 'REAL' });
+  assert.ok(out.includes('Buy {{store_name}} · $29'), out);
+  assert.ok(!out.includes('Buy REAL'), 'a product field must never be filled as a placeholder');
+});
+
+test('buy token: the real builder resolves it in pages/ and stops on a bad id', () => {
+  // Driven through the real build, in a child process, because the two claims
+  // that matter are wiring claims: that a pages/ file gets the token at all,
+  // and that a bad id reaches the problem gate that exits the process. A unit
+  // test on buyToken cannot see either.
+  const { spawnSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const ROOT = path.join(__dirname, '..', '..');
+  const fixture = path.join(ROOT, 'pages', 'buy-token-fixture.md');
+  const build = () => {
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build.js')], { cwd: ROOT, encoding: 'utf8' });
+    return { code: r.status, err: String(r.stderr || '') };
+  };
+  const page = (token) => `---\ntitle: Fixture\n---\n\nProse above.\n\n${token}\n`;
+
+  try {
+    fs.writeFileSync(fixture, page('{{buy:honorbox-prow}}'));
+    let r = build();
+    assert.equal(r.code, 2, 'an unknown product id must stop the build');
+    assert.match(r.err, /pages\/buy-token-fixture\.md: \{\{buy:honorbox-prow\}\} does not name a product/);
+
+    fs.writeFileSync(fixture, page('{{buy:honorbox-pro}}'));
+    r = build();
+    assert.equal(r.code, 0, `a real id must build clean:\n${r.err}`);
+    const html = fs.readFileSync(path.join(ROOT, 'dist', 'buy-token-fixture.html'), 'utf8');
+    assert.match(html, /<div class="pc-buy standalone"><a class="btn btn-buy btn-big" href="https:\/\/buy\.stripe\.com\//);
+    assert.ok(!html.includes('{{buy'), 'no token reaches a built page');
+    assert.ok(!/\{\{[a-z_]+\}\}/.test(html), 'and no layout placeholder is left unfilled');
+  } finally {
+    fs.rmSync(fixture, { force: true });
+    fs.rmSync(path.join(ROOT, 'dist', 'buy-token-fixture.html'), { force: true });
+  }
 });

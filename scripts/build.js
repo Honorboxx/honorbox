@@ -522,6 +522,38 @@ function buyButton(p, big = false) {
   return `<a class="btn btn-buy${big ? ' btn-big' : ''}" href="${safeHref(p.payment_link)}">Buy ${escapeHtml(p.name)} · ${escapeHtml(p.price)}</a>`;
 }
 
+// What a {{buy:<product id>}} line in a doc or page resolves to (md.js parses
+// the token, this decides what it means). Everything visible comes off the
+// product record, so a page cannot go on quoting a name, a price or a checkout
+// url that products/<id>.md has since changed, and the href reaches the reader
+// through buyButton, the one funnel every other checkout link on this site
+// goes through. A page that spelled its own <a href> would be a second money
+// path, and the second path is always the one nobody re-reads.
+//
+// An id naming no product is fatal, because both of the quiet alternatives are
+// what this repo exists to refuse: printing the token ships a store showing its
+// own markup where the button belongs, and dropping the line ships the page
+// that argues for the product with nothing on it to buy.
+// id is null when the line opened a token but did not close it; raw is always
+// the line as the author wrote it, so the message quotes their text rather
+// than a reconstruction of it. One message covers a typo'd id and a malformed
+// token because the author's next move is the same either way, and it names
+// what DOES exist, the way a bad theme name does.
+function buyToken(products, problems, where) {
+  const byId = new Map(products.map((p) => [String(p.id), p]));
+  return (id, raw) => {
+    const p = id == null ? null : byId.get(id);
+    if (!p) {
+      const known = [...byId.keys()].map((k) => `"${k}"`).join(', ') || 'none';
+      problems.push(`${where}: ${raw} does not name a product (products/ has ${known}; a buy token is {{buy:<product id>}} alone on a line)`);
+      return '';
+    }
+    // The element the product page already closes with. No price beside it, so
+    // both themes drop the panel and render the bare call to action.
+    return `<div class="pc-buy standalone">${buyButton(p, true)}</div>`;
+  };
+}
+
 // variant: '' (default) | 'flagship' | 'companion'. Additive modifier classes
 // only: every theme keeps styling .product-card; a theme that knows the
 // variants steps the companion down visually.
@@ -677,13 +709,21 @@ function main() {
         problems.push(`products/${f}: og_image "${data.og_image}" does not exist`);
       }
     }
-    return { ...data, features: data.features || [], body, html: renderMarkdown(body, MD_OPTS) };
+    return { ...data, features: data.features || [], body, file: `products/${f}` };
   }).sort((a, b) => (Number(a.order || 999) - Number(b.order || 999)) || String(a.name).localeCompare(b.name, 'en'));
   const ids = new Set();
   for (const p of products) {
     if (ids.has(p.id)) problems.push(`products: duplicate id "${p.id}" (pages would overwrite each other)`);
     ids.add(p.id);
   }
+
+  // Markdown renders only now, because a {{buy:<id>}} token resolves against
+  // the finished product list and a product body cannot be rendered inside the
+  // map still building that list. Every body goes through the same options, so
+  // the token means one thing everywhere instead of working in the directories
+  // somebody remembered to wire.
+  const mdOpts = (where) => ({ ...MD_OPTS, buy: buyToken(products, problems, where) });
+  for (const p of products) p.html = renderMarkdown(p.body, mdOpts(p.file));
 
   const pages = listMd(path.join(ROOT, 'pages')).map((f) => {
     const { data, body, error } = parseFrontmatter(read(path.join(ROOT, 'pages', f)));
@@ -695,7 +735,7 @@ function main() {
       meta_title: data.meta_title,
       description: data.description,
       body,
-      html: renderMarkdown(body, MD_OPTS),
+      html: renderMarkdown(body, mdOpts(`pages/${f}`)),
     };
   });
 
@@ -711,7 +751,7 @@ function main() {
     const raw = read(file);
     const { title, body } = docTitle(raw, slug);
     const src = rewriteDocLinks(body, { repo: config.repo });
-    return [{ slug, title, body: src, html: renderMarkdown(src, MD_OPTS) }];
+    return [{ slug, title, body: src, html: renderMarkdown(src, mdOpts(`docs/${slug}.md`)) }];
   });
 
   problems.push(...slugProblems(ids, pages.map((p) => p.slug)));
@@ -992,7 +1032,7 @@ files that ship in the repo.</p>
 }
 
 module.exports = {
-  escapeHtml, buyButton, productCard, hero, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore, section,
+  escapeHtml, buyButton, buyToken, productCard, hero, productProblems, configProblems, slugProblems, templateProblems, isUpstreamStore, section,
   themeProblems, internalRefs,
   usdPrice, absUrl, tpl, injectHead, setMeta, jsonLdScript, guideSlugs, trustArticle,
   productJsonLd, homeJsonLd, articleJsonLd, sitemapXml, decoratePage,
