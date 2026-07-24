@@ -40,6 +40,18 @@ account and an activated Stripe account (charges enabled).
    a warning for every internal link left pointing at nothing.
 5. `node scripts/build.js` locally and open `dist/index.html` to preview.
 
+Any product, page or doc can show the store's real Buy button by putting a token
+naming one of your product ids alone on a line:
+
+```
+{{buy:my-tool}}
+```
+
+The label, the price and the checkout link all come from that product's file, so
+a page cannot go on quoting a price you have since changed. An id naming no
+product fails the build rather than printing the token to a buyer, and so does a
+token that opens and never closes.
+
 ## 2. Stripe
 
 **Fast path:** `STRIPE_SECRET_KEY=rk_... node scripts/init.js --name "My Tool"

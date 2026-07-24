@@ -320,16 +320,18 @@ function renderMarkdown(src, opts = {}) {
       continue;
     }
 
-    // A buy token, resolved HERE, while the page is still markdown and long
-    // before the theme layout's own {{placeholder}} fill runs. That order is
-    // the whole reason the two cannot meet: by the time a layout is filled,
-    // nothing a doc author wrote is a placeholder any more.
-    // A BLOCK rule, and that is the whole of how a doc documents this syntax.
-    // A fence consumes its own lines in the branch above, so a token inside
-    // one is never a line this rule sees, and a code span keeps the line from
-    // being only the token. The tempting alternative, a pass over the source
-    // before the loop, has neither property: it rewrites the token wherever it
-    // appears, and the first doc to print the syntax prints a button instead.
+    // A buy token, resolved here, while the page is still markdown and long
+    // before the theme layout's own {{placeholder}} fill runs. Two systems
+    // spell a placeholder {{...}} and that order is why they never meet: by
+    // the time a layout is filled, nothing a doc author wrote is still a
+    // placeholder.
+    // Being a BLOCK rule is what lets a doc print this syntax instead of
+    // firing it. A fence consumes its own lines in the branch above, so a
+    // token inside one is never a line this rule sees, and a code span stops
+    // the line from being only the token. The tempting alternative, a pass
+    // over the source before the loop, has neither property: it rewrites the
+    // token wherever it appears, and the first doc to document the syntax
+    // ships a button where the example belonged.
     // opts.buy is called with no typeof guard, unlike opts.sizeOf. sizeOf is
     // an optimization and degrades honestly when it is absent; this decides
     // whether a page has a Buy button at all, so a caller that forgets it gets
