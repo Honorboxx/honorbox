@@ -12,13 +12,16 @@ Delivering a sale is two calls, both visible in
 
 Keeping that sale delivered adds three more, in
 [`scripts/renew-invites.js`](../scripts/renew-invites.js). GitHub expires an
-unaccepted invitation after seven days, so the fulfillment workflow re-issues
-one before that happens ([how-it-works](how-it-works.md#delivery-model)):
+unaccepted invitation after seven days ([changelog, 5 February
+2020](https://github.blog/changelog/2020-02-05-self-expiring-repository-and-organization-invitations/)),
+so the fulfillment workflow re-issues one before that happens, and sooner than
+that if GitHub is ever seen to expire one sooner
+([how-it-works](how-it-works.md#delivery-model)):
 
 | Call | Why | Secret |
 |---|---|---|
 | `GET /repos/{repo}/invitations` | find invitations about to lapse | `GH_FULFILL_TOKEN` |
-| `PUT /repos/{repo}/collaborators/{user}` | re-issue, restarting the 7-day clock | `GH_FULFILL_TOKEN` |
+| `PUT /repos/{repo}/collaborators/{user}` | re-issue, restarting the expiry clock | `GH_FULFILL_TOKEN` |
 | `DELETE /repos/{repo}/invitations/{id}` | remove the invitation it just superseded | `GH_FULFILL_TOKEN` |
 
 No Stripe key is involved: renewal never looks at money, so the step that runs
@@ -120,6 +123,7 @@ Stripe on every run.
 | PAT missing the product repo | GitHub answers 404 (fine-grained tokens don't see repos outside their list) | same flagged path as above |
 | PAT lacks storefront Contents write (ledger publishing on) | the publish step fails | delivery already done; only the public trust page lags |
 | PAT loses Administration write later | renewal logs `WARN: re-invite ... GitHub returned 403` and does not spend the buyer's renewal allowance; it retries about once a day | the invitation still expires on its original schedule, so fix the token within a few days or re-invite by hand |
+| Repo has spent GitHub's 50 invitations for the day | renewal names the cap rather than the status, stops sweeping that repo, and reports how many buyers it did not reach | nothing is spent and nothing is lost; later polls renew them as the 24-hour window rolls off |
 
 ## Blast radius, honestly
 

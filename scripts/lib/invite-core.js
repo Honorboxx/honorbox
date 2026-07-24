@@ -4,12 +4,12 @@
 // when they ACCEPT. Between those two points every system a seller owns reads
 // "delivered": Stripe says paid, the ledger has a row, the run is green. If the
 // buyer never opens the email, that stays true right up to the moment GitHub
-// expires the invitation seven days after it was created. Then they have
-// nothing, permanently, with nothing anywhere saying so. They paid.
+// expires the invitation. Then they have nothing, permanently, with nothing
+// anywhere saying so. They paid.
 //
-// Re-issuing an invitation restarts the seven-day clock, so an invitation can
-// be held open for as long as we are willing to keep emailing. That is the
-// whole feature: plan the re-issues here, perform them in
+// Re-issuing an invitation restarts its clock, so an invitation can be held
+// open for as long as we are willing to keep emailing. That is the whole
+// feature: plan the re-issues here, perform them in
 // scripts/renew-invites.js.
 //
 // A note on where this sits. HonorBox Pro's ops bots sweep invitations too, and
@@ -29,15 +29,28 @@
 
 const { inviteKey, findRecord, capRecords } = require('./access-record.js');
 
-// GitHub expires a repository invitation SEVEN DAYS after it is created.
+// GitHub's published window is SEVEN DAYS, and it is a starting assumption
+// here, never a fact this code depends on.
+//
 // Cited rather than remembered, because the REST reference does not state it
-// anywhere: GitHub's changelog "Self-expiring repository and organization
-// invitations" (2020-02-05) says "Invitations to join an organization or become
-// a collaborator on a repository will expire seven days after they are
-// created", and the organization-invitations docs page repeats it.
-const INVITE_EXPIRY_HOURS = 7 * 24;
+// anywhere. GitHub's changelog "Self-expiring repository and organization
+// invitations" (2020-02-05, https://github.blog/changelog/2020-02-05-self-
+// expiring-repository-and-organization-invitations/) says "Invitations to join
+// an organization or become a collaborator on a repository will expire seven
+// days after they are created". That sentence covers repository collaborators
+// explicitly, which matters because the docs pages it links to no longer
+// restate it and the OpenAPI description of the invitation's own `expired`
+// flag is just "Whether or not the invitation has expired", with no period.
+//
+// So the number is published but it is not part of the API contract, which
+// means GitHub can shorten it without telling anyone and every store running
+// this would renew too late, silently, forever. A paid access path must not
+// hinge on that. The engine therefore treats seven days as the window until
+// GitHub itself demonstrates otherwise, and revises DOWNWARD from GitHub's own
+// `expired` flag: see renewalThresholdHours and learnExpiry below.
+const DOCUMENTED_EXPIRY_HOURS = 7 * 24;
 
-// Renew at six days, a full day before the lapse.
+// How far ahead of the window an invitation is re-issued.
 //
 // The margin has to cover the worst case for "the renewal step never ran",
 // because renewing late is the one failure that costs the buyer everything.
@@ -52,7 +65,12 @@ const INVITE_EXPIRY_HOURS = 7 * 24;
 // Renewing earlier would buy margin we do not need and pay for it in buyer
 // emails, which is the scarcer resource: every renewal is another message to
 // somebody who has already ignored one.
-const REINVITE_AFTER_HOURS = 6 * 24;
+const RENEWAL_MARGIN_HOURS = 24;
+
+// The standing cadence: six days, a full day before a seven-day window lapses.
+// This is the ceiling, not the rule. A store that has watched GitHub expire an
+// invitation sooner renews sooner, permanently.
+const REINVITE_AFTER_HOURS = DOCUMENTED_EXPIRY_HOURS - RENEWAL_MARGIN_HOURS;
 
 // Four emails total (the original invite plus three renewals) spread over about
 // 24 days, then we stop and say so. A buyer who has ignored four invitations
@@ -81,10 +99,92 @@ const REINVITE_COOLDOWN_HOURS = 24;
 const REVOKED_FIELD = 'revoked_access';
 const REINVITES_FIELD = 'reinvites';
 
+// The shortest age, in hours, at which GitHub has been seen to expire an
+// invitation on this store. Absent until GitHub proves the window is shorter
+// than its published one, which on a healthy store is never.
+const EXPIRY_FIELD = 'invite_expiry_hours';
+
+// How much shorter a sighting must be before it is treated as GitHub having
+// changed the window rather than as clock skew. See learnExpiry.
+const EXPIRY_NEWS_TOLERANCE_HOURS = 1;
+
 function ageHours(inv, now) {
   const created = Date.parse(inv && inv.created_at);
   if (!Number.isFinite(created)) return null; // unparseable: the caller decides
   return (now - created) / 3_600_000;
+}
+
+// --- what GitHub actually does, as opposed to what it published ------------
+
+// The shortest age at which GitHub has been caught calling an invitation
+// `expired`. That age is an UPPER bound on the real window, because we can only
+// notice on the next poll and it therefore reads at most one poll interval too
+// long. Over-reading is the safe direction, and taking the minimum across
+// sightings converges on the truth from above.
+//
+// Read from the raw list, before grouping: a duplicate, or an invitation
+// belonging to a buyer whose access was revoked, is still GitHub telling us
+// when it expires things.
+function observedExpiryHours(invitations, now = Date.now()) {
+  let shortest = null;
+  for (const inv of Array.isArray(invitations) ? invitations : []) {
+    if (!inv || inv.expired !== true) continue;
+    const age = ageHours(inv, now);
+    if (!Number.isFinite(age) || age <= 0) continue; // unparseable, or a clock ahead of ours
+    if (shortest === null || age < shortest) shortest = age;
+  }
+  // Floored to a hundredth of an hour, 36 seconds. Enough precision to be a
+  // real measurement, little enough that what lands in the state file and the
+  // log is a number an operator can act on rather than a float with a
+  // scheduling delay printed on the end. Floored rather than rounded because
+  // under-reading the window renews earlier, and that is the safe direction.
+  return shortest === null ? null : Math.floor(shortest * 100) / 100;
+}
+
+// When to re-issue, given what this store has observed.
+//
+// With no observation this is the standing six days, so a store running today
+// behaves exactly as it did. With one, the cadence is the observed window minus
+// the same margin, so the margin scales with the window instead of being a day
+// subtracted from a number nobody controls.
+//
+// Both ends are clamped. Never later than the standing cadence, so a freak
+// long reading cannot loosen renewal. Never inside the cooldown, so a freak
+// short one cannot turn renewal into a mail loop: at that floor renewal is
+// re-issuing as fast as it is ever willing to email, and if the window is
+// genuinely shorter than that, no cadence saves the buyer and the run says so.
+function renewalThresholdHours(observed) {
+  const obs = Number(observed);
+  const observedWindow = Number.isFinite(obs) && obs > 0 ? obs : DOCUMENTED_EXPIRY_HOURS;
+  return Math.max(REINVITE_COOLDOWN_HOURS, Math.min(REINVITE_AFTER_HOURS, observedWindow - RENEWAL_MARGIN_HOURS));
+}
+
+// Fold a sighting into what the store already believes.
+//
+// Only a sighting SHORTER than the current belief changes anything, and that is
+// the whole point: an invitation that expired at seven days says our cadence
+// was fine and something else went wrong (the step did not run, the token was
+// refused), and tightening the cadence would not have helped. An invitation
+// that expired at three days says the published window is not the window here,
+// and every buyer after this one must be renewed sooner.
+//
+// `tightened` is what the caller turns into a warning. It is true exactly once
+// per new low, so learning stays an event rather than a line the log repeats
+// for the rest of the repository's life.
+// A sighting has to be shorter by a clear hour before it counts as news. The
+// age is computed from GitHub's `created_at` against our own clock, and those
+// two are not the same clock: a few seconds of skew either way is normal. That
+// is invisible against a genuinely different policy, which moves in days, and
+// would otherwise let an ordinary seven-day expiry read as "GitHub expires
+// sooner than it publishes" and warn every seller who ever has one lapse.
+function learnExpiry(current, observed) {
+  const cur = Number(current);
+  const held = Number.isFinite(cur) && cur > 0 ? cur : null;
+  const obs = Number(observed);
+  if (!Number.isFinite(obs) || obs <= 0) return { hours: held, tightened: false };
+  const known = held === null ? DOCUMENTED_EXPIRY_HOURS : held;
+  if (obs >= known - EXPIRY_NEWS_TOLERANCE_HOURS) return { hours: held, tightened: false };
+  return { hours: obs, tightened: true };
 }
 
 // --- renewal planning -------------------------------------------------------
@@ -131,7 +231,16 @@ function planInviteActions(repo, invitations, state, { now = Date.now() } = {}) 
     );
   }
   const reinvites = state[REINVITES_FIELD];
-  const plan = { reinvite: [], giveUp: [], cleanup: [], blocked: [], superseded: [] };
+  // What GitHub does here, not what GitHub published. `observed` is this
+  // sweep's sighting for the caller to fold into the store's record; `threshold`
+  // is the cadence every age test below is measured against.
+  const observed = observedExpiryHours(invitations, now);
+  const thresholdHours = renewalThresholdHours(state[EXPIRY_FIELD]);
+  const plan = {
+    reinvite: [], giveUp: [], cleanup: [], blocked: [], superseded: [],
+    observedExpiryHours: observed,
+    thresholdHours,
+  };
 
   // Group by buyer before deciding anything. One buyer can end up holding two
   // pending invitations (we add before we remove, so a crash in between leaves
@@ -176,7 +285,7 @@ function planInviteActions(repo, invitations, state, { now = Date.now() } = {}) 
     const entry = { inv, key, login, repo };
 
     const age = ageHours(inv, now);
-    if (inv.expired !== true && age < REINVITE_AFTER_HOURS) continue;
+    if (inv.expired !== true && age < thresholdHours) continue;
 
     const n = rec ? Number(rec.n) || 0 : 0;
     if (rec && rec.gave_up) continue; // already reported, stay quiet
@@ -242,14 +351,39 @@ function reinviteAlertLines(repo, plan) {
   return lines;
 }
 
+// GitHub expires invitations sooner here than it says it does. Said once, when
+// it is learned, because it changes how every future buyer is treated and
+// because it is the only place anybody will ever find the real number.
+function expiryLearnedLine(repo, observedHours, thresholdHours) {
+  const at = observedHours.toFixed(1);
+  const now = thresholdHours.toFixed(1);
+  const floored = thresholdHours <= REINVITE_COOLDOWN_HOURS && observedHours - RENEWAL_MARGIN_HOURS < REINVITE_COOLDOWN_HOURS;
+  return (
+    `WARN: GitHub expired an invitation on ${repo} after ${at}h, sooner than the ${REINVITE_AFTER_HOURS}h ` +
+    `renewal cadence and sooner than the seven days it publishes. Renewal now re-issues at ${now}h on this store` +
+    (floored
+      ? ', which is the closest spacing it will ever email a buyer at: a window this short cannot be renewed ' +
+        'ahead of reliably, so check pending invitations by hand'
+      : '. Buyers whose invitation lapsed are re-issued one on this run') +
+    '.'
+  );
+}
+
 module.exports = {
-  INVITE_EXPIRY_HOURS,
+  DOCUMENTED_EXPIRY_HOURS,
+  EXPIRY_NEWS_TOLERANCE_HOURS,
+  RENEWAL_MARGIN_HOURS,
   REINVITE_AFTER_HOURS,
   MAX_REINVITES,
   REINVITE_COOLDOWN_HOURS,
   REVOKED_FIELD,
   REINVITES_FIELD,
+  EXPIRY_FIELD,
   ageHours,
+  observedExpiryHours,
+  renewalThresholdHours,
+  learnExpiry,
+  expiryLearnedLine,
   planInviteActions,
   recordReinvite,
   forgetReinvites,

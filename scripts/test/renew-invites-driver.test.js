@@ -20,8 +20,9 @@ const path = require('node:path');
 
 const driver = require('../renew-invites.js');
 const reconciler = require('../reconcile-subs.js');
-const { REINVITE_AFTER_HOURS, MAX_REINVITES } = require('../lib/invite-core.js');
+const { REINVITE_AFTER_HOURS, MAX_REINVITES, EXPIRY_FIELD } = require('../lib/invite-core.js');
 const { inviteKey, revocationSource } = require('../lib/access-record.js');
+const { INVITE_CAP_PER_REPO_PER_DAY } = require('../lib/fulfill-core.js');
 
 // Renewal defaults --state to state/bots-state.json, which in a real ops repo is
 // LIVE entitlement data. A harness bug that forgets to redirect it would write
@@ -355,7 +356,7 @@ test('a stale invitation is replaced and the superseded one deleted, in that ord
   assert.equal(state.reinvites.length, 1);
   assert.equal(state.reinvites[0].n, 1, 'one email spent');
   assert.equal(state.reinvites[0].key, inviteKey(REPO, 'buyer'));
-  assert.ok(out.lines.some((l) => /invite RENEWED for buyer on o\/r \(1\/3, invitation 1 -> \d+\); 7-day clock restarted/.test(l)), out.lines.join('\n'));
+  assert.ok(out.lines.some((l) => /invite RENEWED for buyer on o\/r \(1\/3, invitation 1 -> \d+\); expiry clock restarted/.test(l)), out.lines.join('\n'));
 });
 
 test('a second poll minutes later does not email the buyer again', async () => {
@@ -553,6 +554,121 @@ test('--revoke refuses anything it cannot parse rather than guessing', async () 
   }
   assert.deepEqual(driver.parseRevokeTarget('o/r:octocat'), { repo: 'o/r', login: 'octocat' });
   assert.deepEqual(driver.parseRevokeTarget('Honorboxx/honorbox-pro:Octo-Cat'), { repo: 'Honorboxx/honorbox-pro', login: 'Octo-Cat' });
+});
+
+test('INTEGRATION: GitHub expiring an invitation early retunes the store, through the file', async () => {
+  // The load-bearing test for the whole change. GitHub's seven days is
+  // published in a 2020 changelog and stated nowhere in the API contract, so it
+  // can be shortened without notice. If that happened, a renewal keyed to the
+  // published number would fire after the lapse on every store, silently and
+  // forever. Instead the store learns from GitHub's own `expired` flag and
+  // renews sooner from then on.
+  //
+  // Both halves are the real program, wired only through the state file: sweep
+  // one sees the lapse, sweep two must act on what sweep one wrote down.
+  const dir = tmp();
+  const hoursAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+  // Sweep one: an invitation GitHub flagged expired at 60 hours, well short of
+  // the published week.
+  const gh1 = fakeGitHub([{ id: 1, invitee: { login: 'lapsed' }, created_at: hoursAgo(60), expired: true }]);
+  const err1 = captureErr();
+  const out1 = captureLog();
+  try { await runMain(dir, [], { fetchStub: gh1 }); } finally { out1.restore(); err1.restore(); }
+
+  assert.deepEqual(gh1.putsTo(), ['lapsed'], 'an expired invitation is re-issued, not abandoned');
+  const learned = err1.lines.find((l) => l.includes('sooner than'));
+  assert.ok(learned, err1.lines.join('\n'));
+  assert.match(learned, /^WARN:/, 'the published window being wrong is a WARN, not a log line');
+  assert.match(learned, /after 60\.0h/, 'name the number actually observed');
+  assert.match(learned, /Renewal now re-issues at 36\.0h/, 'and the cadence it now uses');
+
+  // The run must not say two different things about its own sweep: having
+  // announced the new cadence, the count line reports that one, not the old.
+  assert.ok(out1.lines.some((l) => /renewal at 36h/.test(l)), out1.lines.join('\n'));
+
+  // It reached disk under a name the writer chose alone.
+  assert.equal(readState(dir)[EXPIRY_FIELD], 60, `nothing was learned: ${JSON.stringify(readState(dir))}`);
+
+  // Sweep two, a fresh run reading only that file. This buyer's invitation is
+  // 50 hours old: younger than the shipped six-day cadence, older than the
+  // 36-hour cadence the store has earned. Under the old code it would sit here
+  // until it lapsed.
+  const gh2 = fakeGitHub([{ id: 2, invitee: { login: 'next-buyer' }, created_at: hoursAgo(50) }]);
+  const err2 = captureErr();
+  const out2 = captureLog();
+  try { await runMain(dir, [], { fetchStub: gh2 }); } finally { out2.restore(); err2.restore(); }
+
+  assert.deepEqual(gh2.putsTo(), ['next-buyer'], 'the next buyer is renewed on the window this store has seen');
+  assert.ok(out2.lines.some((l) => /renewal at 36h/.test(l)), out2.lines.join('\n'));
+  // Learning is an event. Saying it every poll forever is how a log stops being read.
+  assert.ok(!err2.lines.some((l) => l.includes('sooner than')), `warned twice:\n${err2.lines.join('\n')}`);
+  assert.equal(readState(dir)[EXPIRY_FIELD], 60, 'and the store does not forget between runs');
+});
+
+test('a learned window that is not a positive number of hours is ignored, not obeyed', async () => {
+  // This field can only ever make renewal fire sooner, so a corrupt value costs
+  // extra emails rather than a lost buyer. It still must not be acted on: a
+  // string would make every age comparison false and stop renewal dead.
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(statePath(dir), JSON.stringify({ revoked_access: [], reinvites: [], [EXPIRY_FIELD]: 'soon' }));
+
+  const gh = fakeGitHub([{ id: 1, invitee: { login: 'buyer' }, created_at: stale() }]);
+  const err = captureErr();
+  const out = captureLog();
+  try { await runMain(dir, [], { fetchStub: gh }); } finally { out.restore(); err.restore(); }
+
+  assert.ok(err.lines.some((l) => /ignoring invite_expiry_hours="soon"/.test(l)), err.lines.join('\n'));
+  assert.deepEqual(gh.putsTo(), ['buyer'], 'renewal still runs, on the standing cadence');
+  assert.ok(out.lines.some((l) => new RegExp(`renewal at ${REINVITE_AFTER_HOURS}h`).test(l)), out.lines.join('\n'));
+  // And the junk is gone from the file rather than written back and warned
+  // about again on every poll for the rest of the store's life.
+  assert.ok(!(EXPIRY_FIELD in readState(dir)), `the unusable value was persisted: ${JSON.stringify(readState(dir))}`);
+});
+
+test('a repo that has spent its daily invitations stops the sweep instead of burning the queue', async () => {
+  // GitHub allows 50 invitations to a repository per 24 hours. Which status
+  // carries that verdict is undocumented, so the engine matches the sentence in
+  // the body, in exactly one place (fulfill-core), and renewal reuses it.
+  //
+  // Two things must happen. The seller must be told it is the cap and not a
+  // broken token, because "GitHub returned 403" sends them hunting a permission
+  // that is perfectly fine. And the sweep must stop: every buyer behind this one
+  // gets the identical refusal, so continuing spends the seller's Actions
+  // minutes to collect the same answer once per buyer.
+  const dir = tmp();
+  const orig = globalThis.fetch;
+  const puts = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    if (method === 'GET') {
+      return res(200, ['a', 'b', 'c'].map((login, i) => ({ id: i + 1, invitee: { login }, created_at: stale() })));
+    }
+    puts.push(String(url));
+    return res(403, { message: 'You are limited to sending 50 invitations to a repository per 24 hour period.' });
+  };
+  const err = captureErr();
+  try {
+    await runMain(dir, [], { fetchStub: { restore: () => { globalThis.fetch = orig; } } });
+  } finally { err.restore(); }
+
+  assert.equal(puts.length, 1, `the sweep kept going after the cap: ${JSON.stringify(puts)}`);
+  const perBuyer = err.lines.find((l) => l.includes('re-invite of a'));
+  assert.ok(perBuyer, err.lines.join('\n'));
+  assert.match(perBuyer, new RegExp(`spent its ${INVITE_CAP_PER_REPO_PER_DAY} invitations for the day`), 'name the cap, not just the status');
+  assert.match(perBuyer, /still expires on its original schedule/, 'do not imply the buyer is fine');
+  const repoLine = err.lines.find((l) => l.includes('per 24 hours'));
+  assert.ok(repoLine, err.lines.join('\n'));
+  assert.match(repoLine, /2 more due renewal were not attempted/, 'say how many buyers were left behind');
+
+  // No email went out, so no allowance is spent, and only the buyer actually
+  // attempted is cooled down: the two never reached must be retried on the very
+  // next poll, not held off for a day.
+  const rows = readState(dir).reinvites;
+  assert.equal(rows.length, 1, `only the attempted buyer may be recorded: ${JSON.stringify(rows)}`);
+  assert.equal(rows[0].key, inviteKey(REPO, 'a'));
+  assert.equal(rows[0].n, 0, 'a refusal costs the buyer nothing');
 });
 
 test('every pending invitation is swept, not just GitHub\'s first page', async () => {

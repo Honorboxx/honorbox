@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 // HonorBox invitation renewal.
 //
-// GitHub expires an unaccepted repository invitation seven days after it is
-// created. A buyer who paid, got the invite, and never opened the email is
-// indistinguishable from a delivered sale until that moment, and then they have
-// nothing. This re-issues the invitation before the clock runs out, which
-// restarts it, so the door stays open until the buyer walks through it or we
-// run out of polite ways to ask (three renewals, then it says so and stops).
+// GitHub expires an unaccepted repository invitation. A buyer who paid, got the
+// invite, and never opened the email is indistinguishable from a delivered sale
+// until that moment, and then they have nothing. This re-issues the invitation
+// before the clock runs out, which restarts it, so the door stays open until the
+// buyer walks through it or we run out of polite ways to ask (three renewals,
+// then it says so and stops).
+//
+// The window is GitHub's, it is published but not part of the API contract, and
+// this program does not depend on it: the cadence starts at GitHub's published
+// seven days and is revised down from GitHub's own `expired` flag whenever this
+// store sees an invitation lapse sooner. invite-core.js carries the citation and
+// the arithmetic.
 //
 // Runs as a step inside the fulfillment workflow rather than on a schedule of
 // its own: a private-repo Actions job is billed rounded up to a whole minute,
@@ -36,17 +42,29 @@
 
 const fs = require('fs');
 const path = require('path');
-const { validUsername, REQUEST_TIMEOUT_MS } = require('./lib/fulfill-core.js');
+// The invitation cap is fulfillment's, deliberately. "Is this GitHub's
+// per-repository invitation quota" must have exactly one implementation, or
+// renewal ends up with a second one that recognises a different set of
+// responses and reports a capped repo as a broken token.
+const {
+  validUsername,
+  REQUEST_TIMEOUT_MS,
+  INVITE_CAP_PER_REPO_PER_DAY,
+  isInvitationCapError,
+} = require('./lib/fulfill-core.js');
 const { inviteKey, recordRevocation } = require('./lib/access-record.js');
 const {
   REVOKED_FIELD,
   REINVITES_FIELD,
+  EXPIRY_FIELD,
   MAX_REINVITES,
-  REINVITE_AFTER_HOURS,
   planInviteActions,
   recordReinvite,
   forgetReinvites,
   reinviteAlertLines,
+  learnExpiry,
+  expiryLearnedLine,
+  renewalThresholdHours,
 } = require('./lib/invite-core.js');
 
 function arg(name, fallback) {
@@ -93,6 +111,18 @@ function loadState(file) {
   for (const k of [REVOKED_FIELD, REINVITES_FIELD]) {
     if (!Array.isArray(state[k])) state[k] = [];
   }
+  // A learned expiry that is not a positive number is dropped rather than
+  // obeyed. This one field can only ever make renewal fire SOONER, so a corrupt
+  // value costs extra emails and never a lost buyer, which is why it is
+  // tolerated here where an unreadable denylist is not.
+  const learned = Number(state[EXPIRY_FIELD]);
+  if (state[EXPIRY_FIELD] !== undefined && !(Number.isFinite(learned) && learned > 0)) {
+    console.error(
+      `WARN: ignoring ${EXPIRY_FIELD}=${JSON.stringify(state[EXPIRY_FIELD])} in ${file}: ` +
+        'not a positive number of hours; renewal falls back to its standing cadence'
+    );
+    delete state[EXPIRY_FIELD];
+  }
   return state;
 }
 
@@ -105,6 +135,12 @@ function loadState(file) {
 function persist(file, state) {
   const fresh = readJson(file, {}) || {};
   fresh[REINVITES_FIELD] = state[REINVITES_FIELD];
+  // Renewal owns the learned window outright, so it is written when set and
+  // REMOVED when not. Only writing it would mean a value loadState rejected as
+  // unusable is re-read from disk on the next poll, warned about again, and
+  // carried forever: the fresh copy this merges into came off disk complete.
+  if (state[EXPIRY_FIELD] === undefined) delete fresh[EXPIRY_FIELD];
+  else fresh[EXPIRY_FIELD] = state[EXPIRY_FIELD];
   writeJson(file, fresh);
 }
 
@@ -134,10 +170,10 @@ async function gh(method, pathname, token, body) {
 // Every pending invitation on a repo, not just the first page.
 //
 // GitHub returns 30 by default. A store that sells steadily can easily hold
-// more than that unaccepted at once (they live for seven days, and renewal
-// keeps them alive for weeks), and reading one page would mean the buyers past
-// the first thirty are never renewed. That failure is invisible: the log would
-// report a clean sweep of the page it happened to see.
+// more than that unaccepted at once (they live for days, and renewal keeps them
+// alive for weeks), and reading one page would mean the buyers past the first
+// thirty are never renewed. That failure is invisible: the log would report a
+// clean sweep of the page it happened to see.
 const PER_PAGE = 100;
 
 async function listInvitations(repo, token) {
@@ -152,7 +188,13 @@ async function listInvitations(repo, token) {
   return all;
 }
 
-// Re-issue one buyer's invitation, restarting GitHub's seven-day clock.
+// Re-issue one buyer's invitation, restarting GitHub's clock on it.
+//
+// Answers `{ renewed, capped }`. `capped` is not a failure of this buyer's
+// renewal, it is a statement about the whole repository: GitHub allows 50
+// invitations to a repository per 24 hours and this one has spent them, so
+// every buyer behind this one in the sweep would get the same refusal. The
+// caller stops rather than spending 50 more calls to be told so 50 more times.
 //
 // The order is the whole safety argument. We ADD first and only then remove the
 // invitation we superseded, never the other way round. Deleting first would
@@ -177,7 +219,7 @@ async function renewInvite(state, r, token, flush) {
       `WARN: refusing to re-invite ${JSON.stringify(r.login)} on ${r.repo}: not a valid GitHub username; ` +
         'invite them by hand or refund them'
     );
-    return false;
+    return { renewed: false, capped: false };
   }
   const wasCreated = Date.parse(r.inv.created_at);
   const res = await ghRequest('PUT', `/repos/${r.repo}/collaborators/${encodeURIComponent(r.login)}`, token, { permission: 'pull' });
@@ -188,7 +230,7 @@ async function renewInvite(state, r, token, flush) {
   if (res.status === 204) {
     state[REINVITES_FIELD] = forgetReinvites(state[REINVITES_FIELD], r.key);
     console.log(`invite ${r.login} on ${r.repo}: already a collaborator, nothing to renew`);
-    return false;
+    return { renewed: false, capped: false };
   }
 
   // 404: there is no such account any more, so this buyer cannot be reached at
@@ -200,22 +242,33 @@ async function renewInvite(state, r, token, flush) {
       `WARN: giving up on re-inviting ${r.login} to ${r.repo}: GitHub no longer knows that account ` +
         '(renamed or deleted); check the username they gave at checkout, or refund them'
     );
-    return false;
+    return { renewed: false, capped: false };
   }
 
   if (res.status !== 201) {
     // Transient or fixable (a rate limit, a token that lost admin). No email
     // went out, so the allowance is untouched; `last` still moves, so a repo
     // that refuses us costs one call a day rather than one per poll. There is
-    // no in-run retry here on purpose: renewal has a 24-hour margin and dozens
+    // no in-run retry here on purpose: renewal has a day of margin and dozens
     // of polls left to succeed in, so waiting inside the job would spend the
     // seller's Actions minutes to buy time we already have.
+    //
+    // The body is read before anything is decided, because GitHub does not
+    // document which status the per-repository invitation cap arrives with and
+    // the sentence in the body is the only signal it emits consistently. Naming
+    // it matters: "GitHub returned 403" sends a seller hunting a token that is
+    // perfectly fine.
+    const body = await res.text().catch(() => '');
+    const capped = isInvitationCapError({ status: res.status, body });
     state[REINVITES_FIELD] = recordReinvite(state[REINVITES_FIELD], r.key);
     console.error(
-      `WARN: re-invite of ${r.login} on ${r.repo} failed: GitHub returned ${res.status}; ` +
-        'their invitation still expires on its original schedule'
+      `WARN: re-invite of ${r.login} on ${r.repo} failed: GitHub returned ${res.status}` +
+        (capped
+          ? ` because the repo has spent its ${INVITE_CAP_PER_REPO_PER_DAY} invitations for the day`
+          : '') +
+        '; their invitation still expires on its original schedule'
     );
-    return false;
+    return { renewed: false, capped };
   }
 
   const fresh = await res.json().catch(() => null);
@@ -227,12 +280,12 @@ async function renewInvite(state, r, token, flush) {
   if (newId != null && newId !== r.inv.id) {
     // Best effort: a 404 here just means GitHub already retired the old row.
     await gh('DELETE', `/repos/${r.repo}/invitations/${r.inv.id}`, token).catch(() => {});
-    console.log(`invite RENEWED for ${r.login} on ${r.repo} (${r.attempt}/${MAX_REINVITES}, invitation ${r.inv.id} -> ${newId}); 7-day clock restarted`);
-    return true;
+    console.log(`invite RENEWED for ${r.login} on ${r.repo} (${r.attempt}/${MAX_REINVITES}, invitation ${r.inv.id} -> ${newId}); expiry clock restarted`);
+    return { renewed: true, capped: false };
   }
   if (Number.isFinite(newCreated) && Number.isFinite(wasCreated) && newCreated > wasCreated) {
-    console.log(`invite RENEWED in place for ${r.login} on ${r.repo} (${r.attempt}/${MAX_REINVITES}); 7-day clock restarted`);
-    return true;
+    console.log(`invite RENEWED in place for ${r.login} on ${r.repo} (${r.attempt}/${MAX_REINVITES}); expiry clock restarted`);
+    return { renewed: true, capped: false };
   }
   if (newId == null && !Number.isFinite(newCreated)) {
     // 201 with a body we could not read. GitHub documents 201 as "Response when
@@ -240,7 +293,7 @@ async function renewInvite(state, r, token, flush) {
     // worked than one that did nothing, and it is logged rather than alerted: a
     // warning nobody can act on is how a log stops being read.
     console.log(`invite renewed for ${r.login} on ${r.repo} (${r.attempt}/${MAX_REINVITES}); GitHub returned 201 with no readable invitation body`);
-    return true;
+    return { renewed: true, capped: false };
   }
   // GitHub accepted the call and changed nothing. Renewal does not work the way
   // this code believes it does, which is worth saying loudly exactly once per
@@ -249,7 +302,7 @@ async function renewInvite(state, r, token, flush) {
     `WARN: re-invite of ${r.login} on ${r.repo} did not restart the clock ` +
       `(invitation ${r.inv.id} still reads created ${r.inv.created_at}); invite them by hand before it expires`
   );
-  return false;
+  return { renewed: false, capped: false };
 }
 
 // Take access away and write it down so renewal can never hand it back.
@@ -325,6 +378,23 @@ async function sweepRepo(statePath, repo, token, { now = Date.now(), dryRun = fa
 
   const plan = planInviteActions(repo, invitations, state, { now });
   for (const line of reinviteAlertLines(repo, plan)) console.error(line);
+
+  // What GitHub just demonstrated about its own window, folded in before
+  // anything acts on it. A store that learns GitHub expires sooner than it
+  // publishes keeps that permanently and renews sooner for every buyer after
+  // this one; a sighting no tighter than what we already believe changes
+  // nothing and says nothing.
+  const learned = learnExpiry(state[EXPIRY_FIELD], plan.observedExpiryHours);
+  // The cadence in force from here on. It is what the count line at the bottom
+  // reports, because a run that has just said "renewal now re-issues at 37h"
+  // and then prints "renewal at 144h" two lines later has told an operator two
+  // different things about the same sweep.
+  let thresholdHours = plan.thresholdHours;
+  if (learned.tightened) {
+    state[EXPIRY_FIELD] = learned.hours;
+    thresholdHours = renewalThresholdHours(learned.hours);
+    console.error(expiryLearnedLine(repo, learned.hours, thresholdHours));
+  }
   for (const g of plan.giveUp) {
     state[REINVITES_FIELD] = recordReinvite(state[REINVITES_FIELD], g.key, { gaveUp: true });
   }
@@ -355,13 +425,29 @@ async function sweepRepo(statePath, repo, token, { now = Date.now(), dryRun = fa
         console.error(`WARN: could not remove superseded duplicate invitation ${s.inv.id} on ${repo}: ${e.message}`);
       }
     }
-    for (const r of plan.reinvite) {
+    for (const [i, r] of plan.reinvite.entries()) {
       // One buyer's renewal must never take out the buyers behind them.
-      const ok = await renewInvite(state, r, token, flush).catch((e) => {
+      const out = await renewInvite(state, r, token, flush).catch((e) => {
         console.error(`WARN: re-invite of ${r.login} on ${repo} failed: ${e.message}`);
-        return false;
+        return { renewed: false, capped: false };
       });
-      if (ok) renewed++;
+      if (out.renewed) renewed++;
+      // The cap is a fact about the repository, not about this buyer, so the
+      // rest of the queue would only collect the same refusal. Stop, say how
+      // many were left, and let a later poll take them: the cap is a rolling
+      // 24-hour window and the poll runs every half hour, so the queue drains
+      // itself as long as the store is not selling faster than GitHub will
+      // deliver. If it is, that is the sentence a seller needs to read.
+      if (out.capped) {
+        const left = plan.reinvite.length - i - 1;
+        console.error(
+          `WARN: ${repo} has spent GitHub's ${INVITE_CAP_PER_REPO_PER_DAY} invitations per 24 hours; ` +
+            `${left} more due renewal ${left === 1 ? 'was' : 'were'} not attempted this run. ` +
+            'They are retried on later polls as the cap rolls off; if this repeats every day, ' +
+            'the store is selling faster than GitHub will invite and those buyers need inviting by hand.'
+        );
+        break;
+      }
     }
   }
 
@@ -372,7 +458,9 @@ async function sweepRepo(statePath, repo, token, { now = Date.now(), dryRun = fa
   // without waking anyone for a buyer who is simply still asleep.
   if (invitations.length) {
     const held = plan.blocked.length ? `, ${plan.blocked.length} held back (access revoked)` : '';
-    console.log(`invites ${repo}: ${invitations.length} pending, renewal at ${REINVITE_AFTER_HOURS}h${held}`);
+    // The cadence is printed rather than assumed, because on a store that has
+    // watched GitHub expire something early it is no longer the shipped one.
+    console.log(`invites ${repo}: ${invitations.length} pending, renewal at ${thresholdHours}h${held}`);
   }
   return renewed;
 }

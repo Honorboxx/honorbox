@@ -40,17 +40,32 @@ product repo. That's deliberate:
 
 **Sending the invite is not the same as delivering it.** The buyer has access
 only once they *accept*, and GitHub expires an unaccepted invitation seven days
-after it was created. Until they accept, every system you own reads "delivered":
-Stripe says paid, the ledger has a row, the run is green. If they never open the
-email, that stays true right up to the moment the invitation lapses, and then
-they have nothing permanently, with nothing anywhere saying so.
+after it was created ([GitHub changelog, 5 February
+2020](https://github.blog/changelog/2020-02-05-self-expiring-repository-and-organization-invitations/):
+"Invitations to join an organization or become a collaborator on a repository
+will expire seven days after they are created"). Until they accept, every system
+you own reads "delivered": Stripe says paid, the ledger has a row, the run is
+green. If they never open the email, that stays true right up to the moment the
+invitation lapses, and then they have nothing permanently, with nothing anywhere
+saying so.
 
-**The engine fixes this for you.** Re-issuing an invitation restarts the
-seven-day clock, so `scripts/renew-invites.js` re-issues one at six days, a full
-day before it would lapse. It runs as a step in the fulfillment workflow, on the
-same poll and at no extra cost in Actions minutes
+**The engine fixes this for you.** Re-issuing an invitation restarts that clock,
+so `scripts/renew-invites.js` re-issues one at six days, a full day before it
+would lapse. It runs as a step in the fulfillment workflow, on the same poll and
+at no extra cost in Actions minutes
 ([setup.md § 7](setup.md#7-what-this-costs)). The buyer gets a fresh invitation
 email and the door stays open.
+
+**Six days is where it starts, not a number it trusts.** GitHub publishes the
+seven-day window in that changelog, but the API itself states no period: the
+invitation's own `expired` flag is documented only as "whether or not the
+invitation has expired". A window that is published rather than contracted can
+be shortened without notice, and a renewal keyed to it would then fire after the
+lapse on every store running this, quietly. So renewal reads GitHub's flag
+instead of trusting the calendar. If an invitation on your store is ever expired
+sooner than the published week, the run says so, records the window it actually
+observed, re-issues that buyer an invitation, and puts every later invitation on
+the shorter clock from then on.
 
 It is not an infinite mail loop. Three renewals is the limit, so a buyer gets
 four contacts in total across about 24 days, and then the run says so on
@@ -123,7 +138,9 @@ invitations, not pulls.
   delivered as soon as a slot frees.
 - Once a repo reports the cap, the run stops inviting to that repo for the
   rest of that cycle. Sixty sales in an hour deliver fifty and queue ten,
-  rather than making ten more calls GitHub has asked us not to make.
+  rather than making ten more calls GitHub has asked us not to make. Renewal
+  stops on the same signal and reports how many buyers it did not reach, so a
+  capped repo costs one refusal rather than one per pending invitation.
 - You are told on the run that sees it, not by the buyer:
 
 ```
@@ -194,7 +211,7 @@ transparency; keeping it private is the default.
 | Failure | What happens |
 |---|---|
 | Buyer typos username | Order flagged `needs_attention`; fix by hand from Stripe dashboard (buyer email is there); refund if unreachable |
-| Buyer never accepts the invite | Renewed automatically at 6 days, up to 3 times. After that the run warns with the buyer's name and stops; email them or refund. See [Delivery model](#delivery-model) |
+| Buyer never accepts the invite | Renewed automatically at 6 days, or sooner if GitHub is ever seen to expire an invitation sooner, up to 3 times. After that the run warns with the buyer's name and stops; email them or refund. See [Delivery model](#delivery-model) |
 | GitHub cron delayed | Delivery late by minutes to hours; confirmation message sets expectation |
 | Actions outage | Sales queue up; next run drains the backlog (poll + idempotency) |
 | More than 50 sales to one repo in 24h | GitHub's [invitation cap](#githubs-invitation-cap-50-per-repo-per-day). Buyers past the 50th are queued and delivered automatically as the window frees, and the run warns with the number waiting. This ceiling cannot be removed; org membership is capped too |

@@ -1,4 +1,4 @@
-# Bring your own store: what Pro runs on a setup you built yourself
+# Bring your own store: what Pro runs, and what skips
 
 You made your payment links in the Stripe dashboard. You deliver by inviting the
 buyer to a private repo, with glue you wrote or by hand. Before spending $29 the
@@ -93,6 +93,9 @@ revenue actually collected: 58 USD across 2 paid orders
 
 Nothing is lost yet. The WARN rows become losses if nobody chases them.
 ```
+
+The hint under a verdict prints on one line. It is wrapped above to fit this
+page, and nothing else about the block is changed.
 
 It is a warn and not a loss on purpose. An absent username proves only that the
 session cannot be mapped to a GitHub account, and a hand-rolled store may well
@@ -329,8 +332,11 @@ of the config and the bot prints its reason and moves on, with the guards still
 running:
 
 ```
-bots: issue triage skipped: no "repo" in config, so there is no storefront repo to watch (refund and dispute guards still run)
+bots: issue triage skipped: no "repo" in config, so there is no storefront
+repo to watch (refund and dispute guards still run)
 ```
+
+That is one line in the log, wrapped here for the page.
 
 **The guard's own secrets.** The scheduled guard is a workflow for your private
 ops repo. It takes a read-only Stripe key and the same GitHub token, runs the
