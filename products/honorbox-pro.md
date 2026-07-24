@@ -16,6 +16,7 @@ og_image: ./assets/previews/stand.png
 features:
   - "Conformance suite: 16 checks for the known ways this architecture loses money quietly, each proven able to fail, wired to a CI gate that goes red when your setup drifts"
   - "Catches a dead buy button (a deactivated link still answers HTTP 200), a price on the page that differs from what the link charges, a pasted URL that makes every sale unmatchable, and a live 100%-off coupon"
+  - "Bring your own store: runs against a hand-rolled Stripe + GitHub setup from a minimal config naming your existing payment links and repos, no engine adoption; engine-layout checks skip and print why"
   - "Scheduled guard: a drop-in Actions workflow that runs the suite and reconcile four times a day and raises one self-closing GitHub issue in your ops repo naming exactly what went red. A run that could not reach Stripe alarms too; it never reads as healthy"
   - "Store doctor: preflight your config, payment links, and fulfillment permissions before launch"
   - "Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't"
