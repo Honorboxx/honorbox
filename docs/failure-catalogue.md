@@ -69,7 +69,11 @@ before anybody clicks it.
 · cost: none, has not happened to us
 
 GitHub expires an unaccepted repository invitation after 7 days. That is
-documented behaviour, not a secret. The non-obvious part is architectural:
+documented behaviour, not a secret: GitHub's changelog of 5 February 2020,
+"Self-expiring repository and organization invitations", says invitations to
+become a collaborator on a repository expire seven days after they are created.
+The REST API states no period of its own, so the engine also watches GitHub's
+`expired` flag rather than only the calendar. The non-obvious part is architectural:
 NOTHING IN THE PIPELINE EVER REVISITS AN INVITATION IT SENT.
 
 The engine invites the buyer and writes the ledger row in the same breath.

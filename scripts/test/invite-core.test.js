@@ -13,10 +13,16 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const {
+  DOCUMENTED_EXPIRY_HOURS,
+  RENEWAL_MARGIN_HOURS,
   REINVITE_AFTER_HOURS,
   MAX_REINVITES,
   REINVITE_COOLDOWN_HOURS,
   REVOKED_FIELD,
+  EXPIRY_FIELD,
+  observedExpiryHours,
+  renewalThresholdHours,
+  learnExpiry,
   planInviteActions,
   recordReinvite,
   forgetReinvites,
@@ -63,6 +69,81 @@ test("GitHub's own expired flag overrides the age arithmetic", () => {
   // If GitHub says expired we believe GitHub, whatever created_at reads.
   const p = plan([inv(1, 'buyer', 2, { expired: true })]);
   assert.equal(p.reinvite.length, 1, 'an expired invitation is renewable regardless of its age');
+});
+
+// --- the window is GitHub's, and it is watched rather than assumed ----------
+//
+// The seven days is published (changelog, 2020-02-05) but is not part of the
+// API contract: the OpenAPI description of `expired` states no period at all.
+// GitHub can therefore shorten it without telling anyone, and a paid access
+// path that hardcoded it would renew too late on every store, silently and
+// forever. These tests pin the machinery that stops that.
+
+test('the shortest expiry GitHub is actually seen to enforce is what gets believed', () => {
+  // An expired invitation's age is an UPPER bound on the real window: we can
+  // only notice on the next poll. The minimum across sightings converges on the
+  // truth from above, which is the safe direction.
+  assert.equal(observedExpiryHours([inv(1, 'a', 90, { expired: true }), inv(2, 'b', 70, { expired: true })], NOW), 70);
+  // A duplicate, or a buyer whose access was revoked, is still GitHub telling
+  // us when it expires things.
+  assert.equal(observedExpiryHours([inv(1, 'a', 50, { expired: true }), inv(2, 'a', 200, { expired: true })], NOW), 50);
+  // Nothing to learn from.
+  assert.equal(observedExpiryHours([inv(1, 'a', 300)], NOW), null, 'a live invitation says nothing about the window');
+  assert.equal(observedExpiryHours([], NOW), null);
+  assert.equal(observedExpiryHours(null, NOW), null);
+  assert.equal(
+    observedExpiryHours([{ id: 1, invitee: { login: 'a' }, created_at: 'not a date', expired: true }], NOW),
+    null,
+    'an unreadable created_at is not a measurement'
+  );
+  assert.equal(observedExpiryHours([inv(1, 'a', -5, { expired: true })], NOW), null, 'a clock ahead of ours is not a measurement');
+});
+
+test('the cadence tracks the observed window, and is clamped at both ends', () => {
+  assert.equal(renewalThresholdHours(undefined), REINVITE_AFTER_HOURS, 'no sighting: the standing six days');
+  for (const junk of [null, 0, -1, 'soon', NaN]) {
+    assert.equal(renewalThresholdHours(junk), REINVITE_AFTER_HOURS, `unusable sighting: ${junk}`);
+  }
+  assert.equal(
+    renewalThresholdHours(DOCUMENTED_EXPIRY_HOURS),
+    REINVITE_AFTER_HOURS,
+    'the published window reproduces the shipped cadence exactly, so nothing regresses'
+  );
+  assert.equal(renewalThresholdHours(72), 72 - RENEWAL_MARGIN_HOURS, 'the margin scales with the window');
+  // Never later than the standing cadence: a freak long reading must not be
+  // able to loosen renewal.
+  assert.equal(renewalThresholdHours(10_000), REINVITE_AFTER_HOURS);
+  // Never inside the cooldown: a freak short one must not turn renewal into a
+  // mail loop. At the floor renewal is already emailing as often as it ever will.
+  assert.equal(renewalThresholdHours(30), REINVITE_COOLDOWN_HOURS);
+  assert.equal(renewalThresholdHours(1), REINVITE_COOLDOWN_HOURS);
+});
+
+test('only a window SHORTER than the one we believe in changes anything', () => {
+  // An invitation that expired at seven days says the cadence was fine and
+  // something else went wrong (the step never ran, the token was refused).
+  // Tightening on that would punish every buyer for an unrelated fault.
+  assert.deepEqual(learnExpiry(undefined, DOCUMENTED_EXPIRY_HOURS), { hours: null, tightened: false });
+  assert.deepEqual(learnExpiry(undefined, 300), { hours: null, tightened: false });
+  assert.deepEqual(learnExpiry(undefined, 72), { hours: 72, tightened: true }, 'this one is news');
+  assert.deepEqual(learnExpiry(72, 90), { hours: 72, tightened: false }, 'a looser sighting never loosens us');
+  assert.deepEqual(learnExpiry(72, 48), { hours: 48, tightened: true }, 'a tighter one does');
+  for (const junk of [null, undefined, 0, -3, 'soon']) {
+    assert.deepEqual(learnExpiry(72, junk), { hours: 72, tightened: false }, `unusable sighting: ${junk}`);
+  }
+});
+
+test('a store that has watched GitHub expire early renews on the window it saw, not the one GitHub publishes', () => {
+  // The whole point, in one assertion. This invitation is younger than the
+  // shipped six-day cadence, so a renewal keyed to the published number leaves
+  // it alone and the buyer loses what they paid for.
+  const young = [inv(1, 'buyer', 50)];
+  assert.deepEqual(plan(young).reinvite, [], 'against the published window it is not due');
+
+  const taught = freshState({ [EXPIRY_FIELD]: 72 });
+  const p = plan(young, taught);
+  assert.equal(p.reinvite.length, 1, 'against the window this store has actually seen, it is overdue');
+  assert.equal(p.thresholdHours, 48, 'and the plan says which cadence it used');
 });
 
 test('the email allowance is spent, then it gives up and says so exactly once', () => {

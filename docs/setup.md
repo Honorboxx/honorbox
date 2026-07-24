@@ -240,8 +240,11 @@ billable minute. A separate cron would have bought nothing and cost more than
 the headroom.
 
 This also means renewal inherits the poll's cadence, which is the margin it
-needs. Renewal fires at 6 days against a 7-day expiry, so it has 24 hours and
-~48 scheduled attempts to land even one run.
+needs. Renewal fires at 6 days against GitHub's published 7-day expiry, so it
+has 24 hours and ~48 scheduled attempts to land even one run. That margin is
+kept rather than assumed: if GitHub ever expires an invitation on your store
+sooner than it publishes, the run reports the window it saw and renews on that
+instead (§ [how-it-works.md](how-it-works.md#delivery-model)).
 
 If you turn on the optional heartbeat (§ [instant-delivery.md](instant-delivery.md)),
 loosen this cron to hourly: heartbeat nudges cost an ops-repo minute each, and
