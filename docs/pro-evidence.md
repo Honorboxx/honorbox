@@ -103,11 +103,11 @@ config  /tmp/widget-store/store.config.json
          shipped defect: real bug, reproduced, no victim (2026-07-20)
          no force-push guard that misses the refspec form
 
-Live checks skipped (--static-only): payment-link coverage, forked-checkout
-detection, dead buy buttons, advertised-price drift, coupon exposure and
-invitation expiry all need read credentials. An entry above marked OK was
-judged on its static half only, and an entry with no live-checkable half
-is not listed at all.
+Live checks skipped (--static-only): payment-link coverage, unreadable
+checkouts, forked-checkout detection, dead buy buttons, advertised-price
+drift, coupon exposure and invitation expiry all need read credentials. An
+entry above marked OK was judged on its static half only, and an entry with
+no live-checkable half is not listed at all.
 
 10 entries checked: 4 exposed · 0 warn · 0 unchecked · 6 guarded
 The 4 exposed hold 5 separate findings, each listed above with its fix.
@@ -115,7 +115,7 @@ The 4 exposed hold 5 separate findings, each listed above with its fix.
 Each EXPOSED line above is a specific way this store loses a sale without
 telling you. They are listed with the fix; there is no score to improve.
 
-13 catalogue entries · 5 from incidents here, 4 from defects we shipped and caught, 4 guarded before they happened.
+14 catalogue entries · 5 from incidents here, 5 from defects we shipped and caught, 4 guarded before they happened.
 Known gaps we have NOT closed (1). Read audit/CATALOGUE.md:
   - A 200 that acknowledges dispatch, not delivery: A short secondary throttle is retried in-run (30s per wait, 60s per run, 3 attempts); anything longer, including a primary rate limit, is declined by design and falls to the scheduled poll, whose real recovery time is the next run that actually fires, measured here at up to 3h08m on a quiet private repo.
 ```
@@ -187,15 +187,15 @@ config  /tmp/widget-store/store.config.json
          shipped defect: real bug, reproduced, no victim (2026-07-20)
          no force-push guard that misses the refspec form
 
-Live checks skipped (--static-only): payment-link coverage, forked-checkout
-detection, dead buy buttons, advertised-price drift, coupon exposure and
-invitation expiry all need read credentials. An entry above marked OK was
-judged on its static half only, and an entry with no live-checkable half
-is not listed at all.
+Live checks skipped (--static-only): payment-link coverage, unreadable
+checkouts, forked-checkout detection, dead buy buttons, advertised-price
+drift, coupon exposure and invitation expiry all need read credentials. An
+entry above marked OK was judged on its static half only, and an entry with
+no live-checkable half is not listed at all.
 
 10 entries checked: 0 exposed · 0 warn · 0 unchecked · 10 guarded
 
-13 catalogue entries · 5 from incidents here, 4 from defects we shipped and caught, 4 guarded before they happened.
+14 catalogue entries · 5 from incidents here, 5 from defects we shipped and caught, 4 guarded before they happened.
 Known gaps we have NOT closed (1). Read audit/CATALOGUE.md:
   - A 200 that acknowledges dispatch, not delivery: A short secondary throttle is retried in-run (30s per wait, 60s per run, 3 attempts); anything longer, including a primary rate limit, is declined by design and falls to the scheduled poll, whose real recovery time is the next run that actually fires, measured here at up to 3h08m on a quiet private repo.
 ```

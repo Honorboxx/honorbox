@@ -4,6 +4,8 @@ const assert = require('node:assert');
 const {
   validUsername,
   extractGithubUsername,
+  resolveBuyerField,
+  buyerFieldProblem,
   pickNewPaidSessions,
   ledgerRow,
   nextCursor,
@@ -72,6 +74,129 @@ test('extracts username from a pasted GitHub profile URL', () => {
   }
   const deep = extractGithubUsername(withValue('https://github.com/octocat/some-repo'));
   assert.ok(!validUsername(deep), 'a non-profile URL must fail validation, not get guessed at');
+});
+
+// --- finding the buyer field on a link the seller built by hand -------------
+//
+// A seller who adds the custom field through the Stripe dashboard never types
+// a key: Stripe's documented flow is type, label, optionally required. Every
+// tool here used to demand the exact key `github_username`, so that seller's
+// field read as no field at all and every sale through the link was skipped
+// with a green run. These pin the tolerance that fixes it AND the refusals
+// that keep it from becoming a guess.
+const withFields = (custom_fields) => session({ custom_fields });
+
+test('the buyer field is found by its key however the key is punctuated', () => {
+  for (const key of ['github_username', 'githubusername', 'github-username',
+    'GitHubUsername', 'GITHUB_USERNAME', 'github.username', 'github username']) {
+    assert.equal(extractGithubUsername(withFields([{ key, text: { value: 'octocat' } }])), 'octocat', key);
+  }
+  // Punctuation and case are the part a seller does not control. A different
+  // WORD still has to miss, or the tolerance has stopped discriminating.
+  for (const key of ['github_repo', 'gitlab_username', 'username', 'discord']) {
+    assert.equal(extractGithubUsername(withFields([{ key, text: { value: 'octocat' } }])), null, key);
+  }
+});
+
+test('the label finds the field when the key is unrecognisable', () => {
+  const label = (custom) => ({ key: 'field_1', label: { type: 'custom', custom }, text: { value: 'octocat' } });
+  for (const l of ['GitHub username (for repo access)', 'GitHub username', 'Your GitHub handle',
+    'github account', 'GitHub login name']) {
+    assert.equal(extractGithubUsername(withFields([label(l)])), 'octocat', l);
+  }
+  // Both halves or nothing. A field that merely mentions GitHub is not a
+  // username field, and inviting whatever was typed into it is worse than
+  // inviting nobody.
+  for (const l of ['GitHub', 'The GitHub repo you want', 'Your username', 'Company name', '']) {
+    assert.equal(extractGithubUsername(withFields([label(l)])), null, l);
+  }
+});
+
+test('a stronger signal wins outright and never pools with a weaker one', () => {
+  const fields = [
+    { key: 'notes', label: { custom: 'GitHub account notes' }, text: { value: 'wrong-one' } },
+    { key: 'github_username', label: { custom: 'Handle' }, text: { value: 'right-one' } },
+  ];
+  const r = resolveBuyerField(withFields(fields));
+  assert.equal(r.username, 'right-one');
+  assert.equal(r.via, 'its key');
+  assert.equal(r.ambiguous, false);
+});
+
+test('two fields tied on the same signal are broken by the shape of the value', () => {
+  // The tie is real: both labels carry the platform and the noun. Only one
+  // holds something that could ever be a GitHub username, so that one is the
+  // answer and the other was somebody answering a different question.
+  const r = resolveBuyerField(withFields([
+    { key: 'a', label: { custom: 'GitHub account email' }, text: { value: 'buyer@example.com' } },
+    { key: 'b', label: { custom: 'GitHub username' }, text: { value: 'octocat' } },
+  ]));
+  assert.equal(r.username, 'octocat');
+  assert.equal(r.ambiguous, false);
+  assert.match(r.via, /shape of the value/);
+});
+
+test('a tie the value cannot break is refused, loudly, and never guessed', () => {
+  const both = resolveBuyerField(withFields([
+    { key: 'gh_a', label: { custom: 'GitHub username' }, text: { value: 'octocat' } },
+    { key: 'gh_b', label: { custom: 'GitHub account' }, text: { value: 'hubot' } },
+  ]));
+  assert.equal(both.username, null, 'two plausible usernames must never be coin-flipped');
+  assert.equal(both.ambiguous, true);
+  assert.deepEqual(both.candidates, ['gh_a', 'gh_b'], 'the operator is told which fields collide');
+  assert.match(buyerFieldProblem(both), /more than one field/);
+  assert.match(buyerFieldProblem(both), /"gh_a", "gh_b"/);
+
+  // Neither shaped is the same refusal: nothing here could have been invited.
+  const neither = resolveBuyerField(withFields([
+    { key: 'gh_a', label: { custom: 'GitHub username' }, text: { value: 'not a name!' } },
+    { key: 'gh_b', label: { custom: 'GitHub account' }, text: { value: 'also bad!' } },
+  ]));
+  assert.equal(neither.ambiguous, true);
+});
+
+test('a lone field is answered as typed, so a bad value stays a reportable fact', () => {
+  // Downgrading a typo to "no field" would hide an order that needs a human
+  // today behind one that needs the payment link edited.
+  const r = resolveBuyerField(withFields([{ key: 'github_username', text: { value: 'not a name!' } }]));
+  assert.equal(r.username, 'not a name!');
+  assert.equal(r.ambiguous, false);
+  assert.ok(!validUsername(r.username));
+  assert.match(buyerFieldProblem(r), /invalid github username/);
+});
+
+test('no field at all says so, and says what to add', () => {
+  for (const fields of [[], undefined, [{ key: 'company', text: { value: 'Acme' } }]]) {
+    const r = resolveBuyerField(withFields(fields));
+    assert.equal(r.username, null);
+    assert.equal(r.ambiguous, false);
+    assert.deepEqual(r.candidates, []);
+    assert.match(buyerFieldProblem(r), /no field that reads as a GitHub username/);
+    assert.match(buyerFieldProblem(r), /GitHub username \(for repo access\)/);
+  }
+});
+
+test('a field with no text value carries nothing to invite', () => {
+  // A dropdown or numeric answer never lives at text.value, and an unanswered
+  // optional field has none either. Falling through to a weaker signal is
+  // right: the next field down may be the one that was actually filled in.
+  const r = resolveBuyerField(withFields([
+    { key: 'github_username', type: 'dropdown', dropdown: { value: 'yes' } },
+    { key: 'gh', label: { custom: 'GitHub username' }, text: { value: 'octocat' } },
+  ]));
+  assert.equal(r.username, 'octocat');
+  for (const empty of [{ text: { value: '' } }, { text: { value: '   ' } }, { text: { value: null } }, {}]) {
+    assert.equal(extractGithubUsername(withFields([{ key: 'github_username', ...empty }])), null);
+  }
+});
+
+test('a seller who set their own key can still name it, and it outranks the rest', () => {
+  const fields = [
+    { key: 'buyer_gh', text: { value: 'right-one' } },
+    { key: 'github_username', text: { value: 'wrong-one' } },
+  ];
+  assert.equal(extractGithubUsername(withFields(fields), 'buyer_gh'), 'right-one');
+  assert.equal(extractGithubUsername(withFields(fields)), 'wrong-one');
 });
 
 test('invite failures classify as transient (retry) or permanent (attention)', () => {

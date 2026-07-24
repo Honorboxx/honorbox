@@ -71,18 +71,135 @@ function validUsername(u) {
   return typeof u === 'string' && USERNAME_RE.test(u) && !u.includes('--');
 }
 
-function extractGithubUsername(session, fieldKey = 'github_username') {
-  const fields = session.custom_fields || [];
-  const f = fields.find((x) => x.key === fieldKey);
-  const raw = f && f.text && f.text.value;
-  if (!raw) return null;
-  let u = raw.trim().replace(/^@/, '');
-  // Buyers paste their profile URL often enough to accept it. Only a BARE
-  // profile link yields a username; anything deeper passes through so
-  // validation rejects it instead of guessing.
+// --- finding the buyer on the checkout session ------------------------------
+//
+// WHICH CUSTOM FIELD CARRIES THE BUYER'S GITHUB USERNAME IS NOT SOMETHING THE
+// SELLER NECESSARILY CHOSE, so matching one exact key was a bet on a string
+// they may never have typed. Two observed facts. Stripe's API requires a unique
+// `key` on every custom field, so a key always exists on the object. Stripe's
+// DASHBOARD never asks for one and never shows one: its Add custom fields panel
+// offers a type, a "Label name" input and a few checkboxes, and no key appears
+// on the field afterwards either. A seller who built a link by clicking
+// therefore cannot set the key and cannot read it. What the dashboard stores
+// instead we have not measured, and nothing here guesses at it.
+//
+// Stores this engine built are unaffected, because init.js and add-tier.js set
+// the key over the API. This is for the seller who built a link by hand, whose
+// field would otherwise read as no field at all: paid orders skipped, a green
+// run, and a buyer with nothing.
+//
+// So the field is found by signals RANKED and never pooled. The strongest one
+// present decides and weaker ones are not consulted, because pooling is how a
+// checkout with several fields invites whatever was typed into the wrong box,
+// and an invitation to a private repo cannot be taken back.
+const CANONICAL_FIELD_KEY = 'github_username';
+
+// Lowercased letters and digits, nothing else. Case and punctuation are the
+// part of a key a seller does not control, so `github_username`,
+// `githubusername`, `github-username` and `GitHubUsername` reduce to one string
+// while two genuinely different keys still differ.
+const squashKey = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// The label is the ONLY signal a dashboard-made field offers, so it does real
+// work here rather than covering an edge. It is still prose written for a buyer
+// to read, so it has to carry BOTH halves of the idea: the platform, and the
+// thing being asked for. A bare "GitHub" does not, because "the GitHub repo you
+// want" is also a field about GitHub and is not a username. The nouns are a
+// short closed list of words a seller would actually write on this field.
+// "name" is absent because it also ends "repository name", and two-letter
+// tokens because once punctuation is gone they surface inside unrelated words
+// ("paid" contains "id").
+const LABEL_NOUNS = ['user', 'handle', 'account', 'login', 'profile'];
+
+// Ranked, strongest first. The text is what a report quotes as the reason a
+// field was chosen.
+const FIELD_SIGNALS = ['its key', 'its key, ignoring case and separators', 'its label'];
+
+// Which signal this field matches, or null for none.
+function fieldSignal(field, wantKey) {
+  const key = typeof field.key === 'string' ? field.key : '';
+  if (key === wantKey) return 0;
+  if (squashKey(key) === squashKey(wantKey)) return 1;
+  const l = field.label;
+  const label = squashKey(typeof l === 'string' ? l : (l && l.custom) || '');
+  if (label.includes('github') && LABEL_NOUNS.some((n) => label.includes(n))) return 2;
+  return null;
+}
+
+// Buyers type this field dirty. Trim, drop a leading @, and unwrap a BARE
+// profile link, which they paste often enough to be worth accepting. Anything
+// deeper than a bare profile passes through untouched so validation rejects it
+// instead of the code guessing.
+function cleanUsername(raw) {
+  const u = String(raw).trim().replace(/^@/, '');
   const m = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/\s]+)\/?$/i.exec(u);
-  if (m) u = m[1].replace(/^@/, '');
-  return u;
+  return m ? m[1].replace(/^@/, '') : u;
+}
+
+// The buyer field, resolved, with what resolved it:
+//   username    the cleaned value, or null when nothing resolved
+//   key         the key of the field it came from
+//   via         which signal matched, for a report to quote
+//   ambiguous   several fields matched equally well and their values could not
+//               break the tie, so nothing was chosen
+//   candidates  the keys that tied, so an operator can go and fix the link
+//
+// REFUSING IS THE SAFE DIRECTION AND IT IS DELIBERATE. Every caller already has
+// a loud branch for "no username": fulfillment files a needs-attention row, the
+// reconciler prints a finding, the refund guard warns that a buyer kept access.
+// Inviting the WRONG value has no such branch and no undo.
+function resolveBuyerField(session, wantKey = CANONICAL_FIELD_KEY) {
+  const fields = session && Array.isArray(session.custom_fields) ? session.custom_fields : [];
+  const matched = [];
+  for (const f of fields) {
+    if (!f || typeof f !== 'object') continue;
+    // No text value means nothing to invite: an unanswered field, or a numeric
+    // or dropdown one, whose answer never lives at text.value. That absence is
+    // read rather than the field's `type`, because it is the same fact and it
+    // holds for any session shape.
+    const raw = f.text && typeof f.text.value === 'string' ? f.text.value.trim() : '';
+    if (!raw) continue;
+    const signal = fieldSignal(f, wantKey);
+    if (signal !== null) {
+      matched.push({ signal, value: cleanUsername(raw), key: typeof f.key === 'string' ? f.key : '' });
+    }
+  }
+  if (!matched.length) return { username: null, key: null, via: null, ambiguous: false, candidates: [] };
+
+  const best = Math.min(...matched.map((m) => m.signal));
+  const tied = matched.filter((m) => m.signal === best);
+  const candidates = tied.map((m) => m.key).sort();
+  const answer = (m, via) => ({ username: m.value, key: m.key, via, ambiguous: false, candidates });
+  // One match on the strongest signal present is the answer, whatever was typed
+  // into it. A value that fails validation is a REPORTABLE fact, that the buyer
+  // typed something nobody could ever be invited as, and downgrading it to "no
+  // field" would hide an order that needs a human today.
+  if (tied.length === 1) return answer(tied[0], FIELD_SIGNALS[best]);
+  // Several fields matched equally well, so the key has stopped telling them
+  // apart and the VALUE gets the casting vote: a GitHub username has a narrow
+  // shape, and a field holding something that could not be one is not the field
+  // being looked for. Exactly one survivor is an answer. None, or more than one,
+  // is a checkout nobody can read, and saying so beats a coin flip.
+  const shaped = tied.filter((m) => validUsername(m.value));
+  if (shaped.length === 1) return answer(shaped[0], `${FIELD_SIGNALS[best]}, then the shape of the value`);
+  return { username: null, key: null, via: FIELD_SIGNALS[best], ambiguous: true, candidates };
+}
+
+function extractGithubUsername(session, fieldKey = CANONICAL_FIELD_KEY) {
+  return resolveBuyerField(session, fieldKey).username;
+}
+
+// Why this order could not be delivered, in the operator's words. Three
+// different situations with three different fixes, all of which used to print
+// as `invalid github username: null`.
+function buyerFieldProblem(resolved) {
+  if (resolved.ambiguous) {
+    return `this checkout carries more than one field that could be the GitHub username (${resolved.candidates.map((k) => JSON.stringify(k)).join(', ')}), so nobody was invited rather than guessing which one the buyer answered. Leave exactly one of them on the payment link`;
+  }
+  if (resolved.username === null) {
+    return 'this checkout carries no field that reads as a GitHub username, so there is nobody to invite. Add a required text field to the payment link labelled "GitHub username (for repo access)"';
+  }
+  return `invalid github username: ${JSON.stringify(resolved.username)}`;
 }
 
 // GitHub caps a repository at 50 invitations per 24 hours. From the REST docs
@@ -463,7 +580,10 @@ module.exports = {
   isFreeFulfillment,
   grantProblems,
   validUsername,
+  CANONICAL_FIELD_KEY,
+  resolveBuyerField,
   extractGithubUsername,
+  buyerFieldProblem,
   isPaidComplete,
   matchGrant,
   pickNewPaidSessions,
