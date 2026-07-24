@@ -242,9 +242,12 @@ telling you which variable to set, and the run still exits 0.
 
 ## reconcile: what a run tells you
 
-Below is reconcile's output format, on a synthetic store: placeholder handles, a
-placeholder product, and masked session ids. The verdicts, the counts line, the
-revenue line and the exit code are exactly what the module prints.
+Below is reconcile's output on a synthetic store: placeholder handles, a
+placeholder product, and masked session ids. It is not a transcription. Both
+blocks are rendered by the same function that writes to your terminal, from
+orders run through the same verdict logic, and a test pins them byte for byte
+(`reconcile/test/evidence.test.js`), so what you read here cannot drift from
+what you would get.
 
 It is deliberately not our account's data. Publishing that would model the
 opposite of what [least-privilege.md](least-privilege.md) asks of you, and what
@@ -257,13 +260,13 @@ returns a byte-identical page for a fabricated id as for a real one.
 ```
 HonorBox reconcile: last 90 days
 
-[ OK ] 2026-05-14 Widget Pro    29.00 USD  @ada-example      delivered
+[ OK ] 2026-05-14 Widget Pro    29 USD     @ada-example      delivered
        cs_live_XXXXXXXXXXXX…
 [ OK ] 2026-05-12 Widget Pro    free       @grace-example    delivered
        cs_live_XXXXXXXXXXXX…
 
 2 paid orders in window · 2 confirmed · 0 need attention · 0 not delivered
-revenue actually collected: 29.00 USD across 1 paid order (1 zero-cost fulfillment excluded)
+revenue actually collected: 29 USD across 1 paid order (1 zero-cost fulfillment excluded)
 
 Every paid order is confirmed delivered against GitHub, not assumed from a send.
 ```
@@ -274,18 +277,22 @@ arrived. And each `delivered` is confirmed by asking GitHub whether that account
 is a collaborator on that product repo, rather than inferred from having sent an
 invite.
 
-The same live orders through a config copy carrying the two most common setup
-mistakes (a mistyped price id; a grant pointing at a repo the token cannot see):
+The same order through a config copy carrying the two most common setup
+mistakes, a mistyped payment link and a grant pointing at a repo the token
+cannot see:
 
 ```
+HonorBox reconcile: last 90 days
+
 [UNREADABLE] you/widget-pro-typo: GitHub collaborators for you/widget-pro-typo failed: Not Found
   buyers on the repo(s) above could not be checked at all.
 
-[LOST] 2026-05-12 ?            29.00 USD  @grace-example    PAID, NO GRANT
+[LOST] 2026-05-14 ?             29 USD     @ada-example      PAID, NO GRANT
        this order matches no fulfillment grant: the engine skipped it and the money is sitting in your account with nothing delivered
        cs_live_XXXXXXXXXXXX…
 
-1 paid orders in window · 0 confirmed · 0 need attention · 1 not delivered
+1 paid order in window · 0 confirmed · 0 need attention · 1 not delivered
+revenue actually collected: 29 USD across 1 paid order
 
 1 order(s) took money and delivered nothing. That is the list to act on today.
 ```
