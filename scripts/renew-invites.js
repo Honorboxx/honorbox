@@ -385,9 +385,15 @@ async function sweepRepo(statePath, repo, token, { now = Date.now(), dryRun = fa
   // this one; a sighting no tighter than what we already believe changes
   // nothing and says nothing.
   const learned = learnExpiry(state[EXPIRY_FIELD], plan.observedExpiryHours);
+  // The cadence in force from here on. It is what the count line at the bottom
+  // reports, because a run that has just said "renewal now re-issues at 37h"
+  // and then prints "renewal at 144h" two lines later has told an operator two
+  // different things about the same sweep.
+  let thresholdHours = plan.thresholdHours;
   if (learned.tightened) {
     state[EXPIRY_FIELD] = learned.hours;
-    console.error(expiryLearnedLine(repo, learned.hours, renewalThresholdHours(learned.hours)));
+    thresholdHours = renewalThresholdHours(learned.hours);
+    console.error(expiryLearnedLine(repo, learned.hours, thresholdHours));
   }
   for (const g of plan.giveUp) {
     state[REINVITES_FIELD] = recordReinvite(state[REINVITES_FIELD], g.key, { gaveUp: true });
@@ -454,7 +460,7 @@ async function sweepRepo(statePath, repo, token, { now = Date.now(), dryRun = fa
     const held = plan.blocked.length ? `, ${plan.blocked.length} held back (access revoked)` : '';
     // The cadence is printed rather than assumed, because on a store that has
     // watched GitHub expire something early it is no longer the shipped one.
-    console.log(`invites ${repo}: ${invitations.length} pending, renewal at ${plan.thresholdHours}h${held}`);
+    console.log(`invites ${repo}: ${invitations.length} pending, renewal at ${thresholdHours}h${held}`);
   }
   return renewed;
 }

@@ -583,6 +583,10 @@ test('INTEGRATION: GitHub expiring an invitation early retunes the store, throug
   assert.match(learned, /after 60\.0h/, 'name the number actually observed');
   assert.match(learned, /Renewal now re-issues at 36\.0h/, 'and the cadence it now uses');
 
+  // The run must not say two different things about its own sweep: having
+  // announced the new cadence, the count line reports that one, not the old.
+  assert.ok(out1.lines.some((l) => /renewal at 36h/.test(l)), out1.lines.join('\n'));
+
   // It reached disk under a name the writer chose alone.
   assert.equal(readState(dir)[EXPIRY_FIELD], 60, `nothing was learned: ${JSON.stringify(readState(dir))}`);
 
