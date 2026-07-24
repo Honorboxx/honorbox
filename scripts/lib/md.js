@@ -19,7 +19,8 @@ function escapeHtml(s) {
 // One definition, shared with build.js's safeHref, so the gates guarding
 // links, images, and the checkout button cannot drift apart (that drift is how
 // the buy button ended up with no scheme gate at all).
-// anchor: links may target "#section"; an image src has no use for one.
+// anchor: links may target "#section" or a mailto: (see MAILTO below); an
+// image src has no use for either.
 // See URL_STRIP below: the string is normalized the way the url parser
 // normalizes it before either gate gets to look at it.
 const URL_GATE = /^(?:https?:\/\/|\/(?![/\\])|\.)/;
@@ -34,8 +35,25 @@ const URL_GATE_ANCHOR = /^(?:https?:\/\/|\/(?![/\\])|#|\.)/;
 // approved is byte-for-byte what we emit.
 const URL_STRIP = /[\t\n\r]/g;
 
+// A link may also be a mailto:, and that is the only non-http scheme this
+// renderer emits. It earns the exception by being a purchase route: the Team
+// and Company tiers are reachable only by emailing us, and with no mailto in
+// the gate that address degraded to href="#", so the page shipped a link that
+// looked alive and jumped to the top of itself instead of opening a mail
+// client. Anchor-only, because an <img src="mailto:..."> is never anything but
+// a broken image; every image sink stays on URL_GATE.
+// Case-insensitive, and its own regex rather than an /i on the gates, so only
+// this scheme gets that: schemes are case-insensitive per RFC 3986 and
+// browsers honour "MailTo:", so rejecting it would reproduce the same silent
+// dead link, while an /i on URL_GATE would quietly move what http(s) accepts.
+// Stripping first is what keeps this narrow. A scheme is whatever precedes the
+// first colon, so "mailto:javascript:x" is an address and not script, and
+// "java<TAB>script:" still strips to "javascript:", which matches nothing here.
+const MAILTO = /^mailto:/i;
+
 function safeUrl(url, { anchor = false } = {}) {
   const u = String(url == null ? '' : url).replace(URL_STRIP, '');
+  if (anchor && MAILTO.test(u)) return u;
   return (anchor ? URL_GATE_ANCHOR : URL_GATE).test(u) ? u : null;
 }
 

@@ -51,6 +51,16 @@ function safeHref(url) {
   return escapeHtml(safeUrl(url, { anchor: true }) || '#');
 }
 
+// The same funnel for a src attribute, which is the gate WITHOUT the anchor
+// branch. An <img src="#top"> is never a picture and neither is a mailto:, so
+// only links have a use for those two; the showcase band was reaching for
+// safeHref and inherited both. Keeping one helper per attribute kind is what
+// stops an image sink from silently widening the next time links gain a
+// scheme, which is exactly how mailto arrived.
+function safeSrc(url) {
+  return escapeHtml(safeUrl(url) || '#');
+}
+
 // ---------- SEO / social plumbing (pure helpers, covered by core.test.js) ----------
 
 // "$29" / "$29.50" -> "29" / "29.50" for schema.org offers. Null when the
@@ -312,7 +322,7 @@ function configProblems(c) {
   // A subline_href the gate rejects still renders, as plain text. Say so,
   // rather than let a typo quietly cost the seller the link they asked for.
   if (c.subline_href != null && !safeUrl(c.subline_href, { anchor: true })) {
-    out.push(`"subline_href" is not a usable link (${JSON.stringify(c.subline_href)}); use an http(s), root-relative or "#" url`);
+    out.push(`"subline_href" is not a usable link (${JSON.stringify(c.subline_href)}); use an http(s), root-relative, mailto: or "#" url`);
   }
   if (c.sections != null && !Array.isArray(c.sections)) out.push('"sections" must be a list');
   (Array.isArray(c.sections) ? c.sections : []).forEach((s, i) => {
@@ -485,13 +495,28 @@ function slugProblems(productIds, pageSlugs, { dir = 'pages', what = 'product id
     .map((slug) => `${dir}/${slug}.md: slug "${slug}" collides with ${what} "${slug}" (the page would overwrite the product's checkout)`);
 }
 
+// A checkout link is always an absolute http(s) url, because that is the only
+// shape a payment processor hands one out in. The sitewide anchor gate is
+// wider than that, and every value it admits beyond this ships a Buy button
+// that looks alive and takes nobody's money: "#" jumps to the top of the page,
+// "/pricing" leaves the site's own store, and a mailto: (a link scheme since
+// md.js gained one) opens a mail client. So the money path gets its own gate
+// instead of inheriting whatever links are allowed to be this month.
+// Case-sensitive on purpose: the href is emitted through safeHref, whose gate
+// is, and a validator that accepted "HTTPS://" would pass the emitter a url it
+// then degrades to "#", which is the failure this whole check exists to stop.
+const CHECKOUT_URL = /^https?:\/\//;
+
 function buyButton(p, big = false) {
   // No usable checkout link: missing, or a URL the gate rejects. Gating a bad
   // link down to "#" would ship a Buy button that looks alive and goes
   // nowhere; from the buyer's side that is the same problem as no link at all,
   // so it gets the state this module already has. For a forker who typo'd
   // their payment_link, "Checkout coming soon" is also the readable signal.
-  if (!p.payment_link || typeof p.payment_link !== 'string' || !safeUrl(p.payment_link, { anchor: true })) {
+  // safeUrl normalizes before CHECKOUT_URL judges, so the shape being checked
+  // is the one the browser would parse, not the one we were handed.
+  const link = typeof p.payment_link === 'string' ? safeUrl(p.payment_link, { anchor: true }) : null;
+  if (!link || !CHECKOUT_URL.test(link)) {
     return `<span class="btn btn-disabled" title="Checkout not configured yet">Checkout coming soon</span>`;
   }
   return `<a class="btn btn-buy${big ? ' btn-big' : ''}" href="${safeHref(p.payment_link)}">Buy ${escapeHtml(p.name)} · ${escapeHtml(p.price)}</a>`;
@@ -603,7 +628,7 @@ function section(s, sizeOf = sizeOfLocal) {
           Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0
             ? ` width="${w}" height="${h}"`
             : '';
-        const img = `<img src="${safeHref(it.img)}" alt="${escapeHtml(it.alt || '')}" loading="lazy" decoding="async"${dims}>`;
+        const img = `<img src="${safeSrc(it.img)}" alt="${escapeHtml(it.alt || '')}" loading="lazy" decoding="async"${dims}>`;
         const fig = `<figure>${img}${it.caption ? `<figcaption>${escapeHtml(it.caption)}</figcaption>` : ''}</figure>`;
         return it.href ? `<a class="showcase-link" href="${safeHref(it.href)}">${fig}</a>` : fig;
       })

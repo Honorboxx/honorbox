@@ -956,6 +956,118 @@ test('url gate: a tab or newline cannot smuggle an authority past the path check
   assert.equal(safeUrl('#top', { anchor: true }), '#top');
 });
 
+test('url gate: mailto is a link scheme, and only a link scheme', () => {
+  // The gate had no mailto, so the only route to the Team and Company tiers,
+  // an address in honorbox-pro.md, rendered as href="#": clickable, underlined
+  // and jumping to the top of the page. A dead purchase path that looks alive
+  // is the failure this repo keeps paying for, and eighteen cold emails landed
+  // on that page before it was caught.
+  assert.equal(safeUrl('mailto:honorbox@proton.me', { anchor: true }), 'mailto:honorbox@proton.me');
+  const link = renderMarkdown('[honorbox@proton.me](mailto:honorbox@proton.me)');
+  assert.ok(link.includes('href="mailto:honorbox@proton.me"'), link);
+  assert.ok(!link.includes('href="#"'), link);
+
+  // A scheme is case-insensitive per RFC 3986 and browsers honour these, so
+  // rejecting them would rebuild the same silent dead link in a new spelling.
+  for (const ok of ['MAILTO:a@b.com', 'MailTo:a@b.com', 'mailTO:a@b.com']) {
+    assert.equal(safeUrl(ok, { anchor: true }), ok, ok);
+  }
+  // ...but only for mailto. http(s) keeps matching exactly the case it did
+  // before, so this stays a link-scheme exception and not a loosening.
+  assert.equal(safeUrl('HTTPS://ok.example/x', { anchor: true }), null);
+
+  // Not a src. An <img src="mailto:..."> is a broken image at best, so every
+  // image sink keeps the gate that has no mailto in it.
+  assert.equal(safeUrl('mailto:a@b.com'), null);
+  const img = renderMarkdown('![x](mailto:a@b.com)');
+  assert.ok(!img.includes('<img'), img);
+  assert.ok(!img.includes('href="mailto:'), img);
+  assert.equal(firstRasterImage('![x](mailto:a@b.com/cover.png)'), null);
+  // the builder's showcase band emits a src through its own helper, not the
+  // link one, so a mailto in config cannot reach an image there either
+  const show = section({
+    type: 'showcase', title: 'S',
+    items: [{ img: 'mailto:a@b.com', alt: 'a' }],
+  }, () => null);
+  assert.ok(!show.includes('src="mailto:'), show);
+  assert.ok(show.includes('src="#"'), show);
+
+  // config-authored links are the same gate, so a seller can publish a contact
+  // address anywhere a link is allowed
+  const steps = section({ type: 'steps', title: 'G', items: [{ title: 'g', text: 't', href: 'mailto:a@b.com' }] });
+  assert.ok(steps.includes('href="mailto:a@b.com"'), steps);
+  assert.ok(hero({ name: 'S', tagline: 't', subline: 'Ask us', subline_href: 'mailto:a@b.com' }, [])
+    .includes('href="mailto:a@b.com"'));
+});
+
+test('url gate: the mailto exception does not widen anything else', () => {
+  // Adding a scheme to an allow-list is the moment the rejection set has to be
+  // re-proven, not assumed. Every one of these must still die on BOTH gates:
+  // the anchor gate is the one that just grew, so it is the one at risk.
+  const hostile = [
+    'javascript:alert(1)',
+    'JaVaScRiPt:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    '//evil.example/x',
+    '/\\evil.example/x',
+    // URL_STRIP runs before the gate, so a scheme split by a control character
+    // is reassembled first. That is what makes the strip safe rather than a
+    // bypass: "javascript:" is what gets judged, and it matches nothing.
+    'java\tscript:alert(1)',
+    'java\nscript:alert(1)',
+    'java\rscript:alert(1)',
+    // near-misses on the new alternative itself
+    'mail\\to:a@b.com',
+    'xmailto:a@b.com',
+    ' mailto:a@b.com',
+    'javascript:mailto:a@b.com',
+  ];
+  for (const bad of hostile) {
+    assert.equal(safeUrl(bad), null, `safeUrl ${JSON.stringify(bad)}`);
+    assert.equal(safeUrl(bad, { anchor: true }), null, `safeUrl anchor ${JSON.stringify(bad)}`);
+    const out = hero({ name: 'S', tagline: 't', subline: 'Free engine', subline_href: bad }, []);
+    assert.ok(!/javascript:/i.test(out), `${bad}: ${out}`);
+    assert.ok(!out.includes('data:') && !out.includes('vbscript:'), `${bad}: ${out}`);
+    assert.ok(!out.includes('evil.example'), `${bad}: ${out}`);
+    assert.ok(!out.includes('<a '), `${bad}: ${out}`);
+  }
+
+  // mailto cannot be a vehicle for one of the above. The scheme is whatever
+  // precedes the FIRST colon, so the browser reads this as an address with a
+  // silly local part and hands it to a mail client; nothing executes. Assert
+  // the property that matters (it is still a mailto) rather than the absence
+  // of a substring that legitimately survives inside the address.
+  const vehicle = safeUrl('mailto:javascript:alert(1)', { anchor: true });
+  assert.ok(vehicle.startsWith('mailto:'), vehicle);
+  assert.equal(safeUrl('mailto:javascript:alert(1)'), null);
+
+  // A control character inside the scheme is reassembled and then accepted, so
+  // what we approve is byte-for-byte what we emit, matching the browser.
+  assert.equal(safeUrl('mail\tto:a@b.com', { anchor: true }), 'mailto:a@b.com');
+});
+
+test('build: a buy button only ever points at an absolute http(s) checkout', () => {
+  // The Buy button used to share the sitewide anchor gate, which admits more
+  // than a payment processor can ever hand out. Two of those shipped a button
+  // that looks alive and takes no money: "#" jumps to the top of the page, and
+  // once links gained mailto it would have opened a mail client. Both are the
+  // state the disabled button exists to replace, so this path is gated on the
+  // one shape a checkout url actually has.
+  for (const bad of ['#', '#buy', '/checkout', './checkout', 'mailto:sales@example.com', 'MAILTO:sales@example.com']) {
+    const html = buyButton({ payment_link: bad, name: 'P', price: '$1' });
+    assert.ok(html.includes('btn-disabled'), `${bad}: ${html}`);
+    assert.ok(html.includes('Checkout coming soon'), `${bad}: ${html}`);
+    assert.ok(!html.includes('<a '), `${bad}: ${html}`);
+    assert.ok(!html.includes('href='), `${bad}: ${html}`);
+  }
+  // the real thing is untouched
+  const ok = buyButton({ payment_link: 'https://buy.stripe.com/x', name: 'P', price: '$1' });
+  assert.ok(ok.includes('href="https://buy.stripe.com/x"'), ok);
+  assert.ok(buyButton({ payment_link: 'http://localhost:8000/x', name: 'P', price: '$1' })
+    .includes('href="http://localhost:8000/x"'));
+});
+
 test('templateProblems: the fork guard survives a cosmetic edit to our link', () => {
   // The guard compared with an exact-string Set, so a forker who kept our
   // payment link but appended a utm parameter, a trailing slash, or changed the
