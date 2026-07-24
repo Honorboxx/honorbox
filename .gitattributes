@@ -1,0 +1,35 @@
+# Line endings are LF in the working tree on every platform.
+#
+# This is PREVENTION, and it is labelled as prevention because the suite does
+# not currently depend on it: the whole test suite passes in a genuine CRLF
+# checkout, verified by cloning with core.autocrlf=true and running it there.
+# Nothing in this repository compares a committed file to text it generates,
+# which is the comparison that breaks.
+#
+# It is here because this repository is forked and run on other people's
+# machines, so the cost of the gap is a stranger's first impression rather than
+# one red build of ours. Two things measured on this repo rather than assumed:
+#
+#   - A Windows-style clone without this file checks out 79 of 95 tracked files
+#     with CRLF. With it, none.
+#   - Those CRLFs carry through the build into the generated HTML, so a fork
+#     built on Windows produces output that differs byte for byte from the same
+#     fork built on Linux. The pages render identically, but any future check
+#     that compares built output to a committed expectation would fail for a
+#     Windows forker and nobody else.
+#
+# The markdown and front-matter parsers accept CRLF on purpose (see the \r?\n
+# handling in scripts/lib/fm.js and scripts/lib/md.js) and that stays true: a
+# seller's own content is theirs to author however they like. This governs what
+# lands in the repository, not what the engine will read.
+* text=auto eol=lf
+
+# Nothing here is binary text, but declare the shapes the store ships so an
+# asset is never line-ending converted into a corrupt file.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
