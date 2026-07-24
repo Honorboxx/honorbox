@@ -25,8 +25,8 @@ This file is generated from `audit/lib/catalogue.js` (the same data the
 checks run against) by `node audit/audit.js --catalogue`. It is meant to be
 worth reading even if you never run the tool.
 
-**13 entries.** 5 are incidents that happened on this store's own
-infrastructure. 4 are real defects we shipped and caught by execution before
+**14 entries.** 5 are incidents that happened on this store's own
+infrastructure. 5 are real defects we shipped and caught by execution before
 a buyer hit them. 4 have never happened here and are labelled as such: they are
 guarded because the first occurrence would be unrecoverable and invisible.
 
@@ -72,8 +72,11 @@ GitHub expires an unaccepted repository invitation after 7 days. That is
 documented behaviour, not a secret: GitHub's changelog of 5 February 2020,
 "Self-expiring repository and organization invitations", says invitations to
 become a collaborator on a repository expire seven days after they are created.
-The REST API states no period of its own, so the engine also watches GitHub's
-`expired` flag rather than only the calendar. The non-obvious part is architectural:
+It is the only place GitHub says it. The REST API carries no period at all, so
+this check treats seven days as an assumption: it acts on GitHub's own `expired`
+flag, measures against a shorter window if an invitation on your store has
+actually died sooner, and says which of the two it used rather than presenting a
+deadline. The non-obvious part is architectural:
 NOTHING IN THE PIPELINE EVER REVISITS AN INVITATION IT SENT.
 
 The engine invites the buyer and writes the ledger row in the same breath.
@@ -115,6 +118,46 @@ CI.
 
 **Checked by:** `grant-shape` (static)  
 **Not checked:** None. Pure config shape, no credentials, runs on every push.
+
+## A checkout that collects nothing you can deliver against
+
+`unreadable-checkout` · shipped defect: real bug, reproduced, no victim · 2026-07-24
+· evidence: the exact-key lookup these modules shared (reconcile/lib/reconcile-core.js, ops-bots/bots.js), and the setup pages that asked a seller to type a key the dashboard does not offer (honorbox docs/setup.md, docs/bring-your-own-store.md)
+· cost: none here. Our own links are made over the API, which is the only route that can set a key at all
+
+Every module in this suite answers one question first: which GitHub account
+does this payment belong to? It reads that off a custom field on the
+checkout. Get that wrong and nothing downstream can be right, because there
+is no other thread from a payment to a person.
+
+The suite used to find that field by one exact key, `github_username`, and
+the setup instructions told you to type that key in when you added the field.
+Two facts make that instruction unfollowable. Stripe's API requires a unique
+`key` on every custom field, so a key always exists on the object. Stripe's
+DASHBOARD never asks for one and never shows one: the Add custom fields panel
+offers a field type, one "Label name" input and a few checkboxes, and no key
+appears afterwards on the field either. A seller who built their link by
+clicking cannot set the key, cannot read it, and cannot be told to use ours.
+
+Their field is therefore a field, on a working checkout, that every tool
+reads as no field at all. The buyer types their username. The money lands.
+The order is skipped, the run is green, and nobody is invited. It is the same
+silent shape as a payment link with no fulfillment row, arrived at by
+following the setup guide correctly.
+
+The fix has two halves and both are here. The modules now identify the field
+by its key OR by its label, and where more than one field could be it, they
+resolve by the shape of what the buyer typed and REFUSE where even that
+cannot separate them, because inviting a stranger to a private repo has no
+undo. This check is the other half: it reads your live links and tells you
+which ones nothing could deliver against, before a buyer finds out for you.
+
+Worth saying plainly: this did not cost us anything, because our own links
+are made over the API and carry the key explicitly. It would have cost the
+next person who set one up by hand, which is exactly who the suite is for.
+
+**Checked by:** `unreadable-checkout` (live)  
+**Not checked:** Needs a Stripe key to read your links. It judges the field DEFINITION, so it cannot tell you whether buyers are filling it in sensibly, only whether anything here could find it.
 
 ## A forked store still selling through the original author's checkout
 
@@ -234,7 +277,7 @@ so buyers stop being delivered to. And the symptom is not an error, it is a
 cron that quietly stopped. Nothing in your store reports it. You find out
 from a customer.
 
-Fixed by sizing the cadence to the tier (17,47 = 1,488 min/month, 512 minutes
+Fixed by sizing the cadence to the tier (*/30 = 1,488 min/month, 512 minutes
 of headroom) rather than by rewording the pricing claim.
 
 Now the other half, because a catalogue that only frightens people is as

@@ -84,9 +84,10 @@ buyer to a private repo, with glue you wrote once and have not opened since.
 That is the setup this was built for, and you do not have to adopt the engine to
 put Pro on it. Write a minimal config naming the payment links and product repos
 you already have, and add one custom field to your payment link asking for the
-buyer's GitHub username: a two-minute edit in the Stripe dashboard, and the link
-URL does not change, so nothing you have already published goes stale and no
-buyer sees a difference. Reconcile, stats, the refund and dispute guards, the
+buyer's GitHub username. On a link you already sell through that is one API
+call, not a dashboard edit, because Stripe offers no way to edit a payment link
+once it exists. It takes a minute, and **the link URL does not change**, so
+nothing you have already published goes stale and no buyer sees a difference. Reconcile, stats, the refund and dispute guards, the
 store doctor and the suite's money-path checks then run in full against your
 setup as it stands.
 

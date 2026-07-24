@@ -22,7 +22,8 @@ const {
   shouldRetryInvite,
   inviteAttempts,
   pickNewPaidSessions,
-  extractGithubUsername,
+  resolveBuyerField,
+  buyerFieldProblem,
   validUsername,
   matchGrant,
   ledgerRow,
@@ -273,7 +274,8 @@ async function main(sleep = defaultSleep) {
 
   for (const s of fresh) {
     const grant = matchGrant(s, config.fulfillment);
-    const username = extractGithubUsername(s);
+    const buyer = resolveBuyerField(s);
+    const username = buyer.username;
     const entry = { session: s.id, ts: new Date().toISOString() };
     const row = ledgerRow(s, grant);
     if (ledgerRefs.has(row.ref)) { state.processed.push(s.id); continue; }
@@ -302,7 +304,11 @@ async function main(sleep = defaultSleep) {
     }
     try {
       if (!validUsername(username)) {
-        throw Object.assign(new Error(`invalid github username: ${JSON.stringify(username)}`), { permanent: true });
+        // The reason is the operator's next action, and the three reasons need
+        // three different actions: fix the buyer's typo, add the field to the
+        // link, or remove one of the fields that collide. A single "invalid
+        // username: null" for all three sent them looking in the wrong place.
+        throw Object.assign(new Error(buyerFieldProblem(buyer)), { permanent: true });
       }
       if (isRepoOwner(grant.repo, username)) {
         console.log(`fulfilled ${s.id}: ${username} owns ${grant.repo}, no invite needed`);

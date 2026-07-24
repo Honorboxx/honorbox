@@ -54,8 +54,39 @@ correctly-configured Payment Link, and wires `store.config.json` +
    [subscription enforcement](subscriptions.md). Delivery works either way, but
    without enforcement a cancellation does nothing and access stays forever.
 2. Create a **Payment Link** for that price:
-   - Add a **custom field**: label "GitHub username (for delivery)",
-     key `github_username`, type text, **required**.
+   - Add a **custom field**, type text, **required**, labelled exactly
+     **GitHub username (for repo access)**. Copy the label, because on a link
+     made in the dashboard the label is the only part you control: Stripe's API
+     requires every custom field to carry a `key`, and the dashboard neither
+     asks for one nor shows you the one it stores. Fulfillment handles both
+     cases. It matches the key `github_username` where the field was created
+     over the API (which is what `init.js` does), it matches that key through
+     differences of case and punctuation, and where the key is not one it
+     recognises it identifies the field by that label. Keep to one such field
+     per link: where two could each be the username, an order is resolved by
+     the shape of what the buyer typed if that separates them, and stopped for
+     a human if it does not, because an invitation to a private repo cannot be
+     taken back.
+
+     **Adding this field to a link that already exists is not a dashboard
+     job.** Once a link is created, Edit is unavailable on it, so there is no
+     dashboard route to add a field. One API call does it, and the link URL is
+     unchanged, so nothing you have already published goes stale:
+
+     ```bash
+     curl https://api.stripe.com/v1/payment_links/plink_YOURLINKID \
+       -u "$STRIPE_SECRET_KEY:" \
+       -d "custom_fields[0][key]=github_username" \
+       -d "custom_fields[0][type]=text" \
+       -d "custom_fields[0][label][type]=custom" \
+       -d "custom_fields[0][label][custom]=GitHub username (for repo access)"
+     ```
+
+     Send every field the link should end up with, not only the new one: read
+     what is already there with `GET /v1/payment_links/<id>` first. This is a
+     write, so it needs a key with write access to Payment Links. Fulfillment
+     itself never writes to Stripe, so go back to the read scopes in
+     [least-privilege.md](least-privilege.md) once the field exists.
    - After payment → show a confirmation message like: *"You're in. Your GitHub
      account will be invited to the private repo, usually within minutes and
      always within a few hours. Watch for the email from GitHub and accept the

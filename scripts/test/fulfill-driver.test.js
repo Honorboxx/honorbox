@@ -176,6 +176,52 @@ test('permanent invite failure (404 user) goes straight to needs_attention with 
   assert.equal(ledger.rows[0].needs_attention, true);
 });
 
+test('an order the checkout cannot identify is settled with the reason, not "null"', async () => {
+  // Three ways the buyer field can fail to produce a username, and three
+  // different things the operator has to go and do: fix the buyer's typo, add
+  // the field to the payment link, or remove one of two fields that collide.
+  // They all used to arrive as `invalid github username: null`, which sends
+  // someone hunting through Stripe for a buyer who typed nothing wrong.
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'store.config.json'), JSON.stringify({
+    fulfillment: [{ payment_link: 'plink_1', product: 'P', repo: 'octo/product' }],
+  }));
+  const sessions = [
+    paidSession('cs_typo', 1_700_000_000, {
+      custom_fields: [{ key: 'github_username', text: { value: 'not a username!' } }] }),
+    paidSession('cs_nofield', 1_700_000_001, {
+      custom_fields: [{ key: 'company', text: { value: 'Acme' } }] }),
+    paidSession('cs_two', 1_700_000_002, {
+      custom_fields: [
+        { key: 'gh_a', label: { custom: 'GitHub username' }, text: { value: 'one' } },
+        { key: 'gh_b', label: { custom: 'GitHub account' }, text: { value: 'two' } },
+      ] }),
+  ];
+  const { readState } = await runMain(dir, [
+    { match: 'api.stripe.com', res: () => jsonRes({ data: sessions, has_more: false }) },
+    { match: 'api.github.com', res: () => jsonRes({ message: 'should not be called' }, 500) },
+  ]);
+  const state = readState('fulfill-state.json');
+  const reason = (id) => (state.failures.find((f) => f.session === id) || {}).error || '';
+
+  // None of the three may reach GitHub, and all three settle for a human
+  // rather than retrying forever against a checkout that will not change.
+  for (const id of ['cs_typo', 'cs_nofield', 'cs_two']) {
+    assert.ok(state.processed.includes(id), `${id} must settle, not retry`);
+  }
+  assert.match(reason('cs_typo'), /invalid github username: "not a username!"/);
+  assert.match(reason('cs_nofield'), /no field that reads as a GitHub username/);
+  assert.match(reason('cs_nofield'), /GitHub username \(for repo access\)/);
+  // The collision names both fields, because "which one" is the whole question.
+  assert.match(reason('cs_two'), /more than one field/);
+  assert.match(reason('cs_two'), /"gh_a", "gh_b"/);
+  assert.doesNotMatch(reason('cs_two'), /null/);
+
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'ledger', 'ledger.json'), 'utf8'));
+  assert.equal(ledger.rows.filter((r) => r.needs_attention).length, 3,
+    'every order nobody could be invited for is flagged for a human');
+});
+
 test('transient retries are time-boxed: past the 6h window they convert to needs_attention', async () => {
   const dir = tmp();
   const s = paidSession('cs_cap_1', 1_700_000_000);

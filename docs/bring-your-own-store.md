@@ -58,20 +58,72 @@ and there is still no reason to publish your product mapping.
 ## The one change to your checkout
 
 Every module here ties a payment to a buyer through one fact: the GitHub
-username asked for at checkout. If your link does not ask for it yet, add it
-once, in the Stripe dashboard, under Payment Links, your link, Edit, Add custom
-field:
+username asked for at checkout. If your links already collect it, you are done,
+and the rest of this section is reference.
 
-- label: **GitHub username (for repo access)**
-- key: `github_username`
-- type: text, required
+What to add is a **required text field**, labelled
 
-The key is the load-bearing part. `github_username` is the exact string every
-module looks for (`reconcile/lib/reconcile-core.js`, `ops-bots/bots.js`), so a
-field with a different key reads as no field at all.
+> **GitHub username (for repo access)**
 
-That is the whole migration. Two minutes, and **the link URL does not change**,
-so nothing you have already published goes stale and no buyer sees a difference.
+Copy that label. Custom fields also carry a `key`, which is what an integration
+would normally match on, and on a link built in the dashboard the key is not
+yours: Stripe's API requires every custom field to have one, and the dashboard
+neither asks for a key nor shows you the one it stores. So the modules identify
+the field three ways, in order. The key `github_username` where you set it over
+the API. The same key through differences of case and punctuation. Otherwise the
+label, which is the only thing a dashboard-made field gives you to go on.
+
+Keep to one such field per link. Where two could each be the username, an order
+is resolved by the shape of what the buyer typed if that separates them, and
+stopped with both field keys named if it does not, because an invitation to a
+private repo cannot be taken back and a wrong one is worse than a late one.
+
+### Adding it to a link you already sell through
+
+**The dashboard cannot do this.** On a payment link that already exists, Edit is
+unavailable, so there is no clicking route to add a field to it. One API call
+does, and **the link URL is unchanged**, so nothing you have published goes
+stale and no buyer sees a difference:
+
+```bash
+curl https://api.stripe.com/v1/payment_links/plink_XXXXXXXXXXXXXXXXXXXXXX \
+  -u "$STRIPE_SECRET_KEY:" \
+  -d "custom_fields[0][key]=github_username" \
+  -d "custom_fields[0][type]=text" \
+  -d "custom_fields[0][label][type]=custom" \
+  -d "custom_fields[0][label][custom]=GitHub username (for repo access)"
+```
+
+Send every field the link should end up with, not only the new one: read what is
+already there with `GET /v1/payment_links/<id>` first.
+
+That call is a write, and it is the only write anywhere in this document. It
+needs a key with write access to Payment Links, which is not one of the scopes
+in the table further down, because no module here ever writes to Stripe. Do it
+once, then go back to the read-only key the tools run on.
+
+### Or start a new link
+
+Then the dashboard route works: Options, Add custom fields, Text, type the
+label, mark it required. It will not ask you for a key. What a new link does
+give you is a **new URL**, so anything already pointing at the old one has to be
+updated, which is the reason the API call above is the better move for a link
+already in use.
+
+### Knowing it worked, before a buyer tests it for you
+
+The doctor reads your links and says, per link, whether anything here could find
+a buyer on them and what it matched on:
+
+```
+[ OK ] stripe: plink_XXXXXXXXXXXXXXXXXXXXXX collects a GitHub username (matched on its label)
+```
+
+A link that collects nothing it can read is a `[FAIL]` with the fix attached,
+not a silent pass, and the audit makes the same judgement standing, across every
+active link in the account rather than only the ones your config names. That
+pairing is deliberate: a link nobody can deliver against is the one setup
+mistake that stays invisible until a stranger has already paid.
 
 ### The orders you took before the field existed
 
@@ -221,11 +273,11 @@ config  /tmp/acme-ops/store.config.json
          shipped defect: real bug, reproduced, no victim (2026-07-20)
          no force-push guard that misses the refspec form
 
-Live checks skipped (--static-only): payment-link coverage, forked-checkout
-detection, dead buy buttons, advertised-price drift, coupon exposure and
-invitation expiry all need read credentials. An entry above marked OK was
-judged on its static half only, and an entry with no live-checkable half
-is not listed at all.
+Live checks skipped (--static-only): payment-link coverage, unreadable
+checkouts, forked-checkout detection, dead buy buttons, advertised-price
+drift, coupon exposure and invitation expiry all need read credentials. An
+entry above marked OK was judged on its static half only, and an entry with
+no live-checkable half is not listed at all.
 
 10 entries checked: 0 exposed · 0 warn · 3 unchecked · 7 guarded
 
