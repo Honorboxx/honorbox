@@ -16,6 +16,11 @@ Pro ships its own quickstart for the day after you buy. This one is for the day
 before, so the parts that skip are listed by name rather than left for you to
 discover.
 
+{{buy:honorbox-pro}}
+
+30 days to change your mind, no questions asked, refunded through Stripe. Or
+read on: the rest of this page is what runs, what does not, and why.
+
 ## What Pro reads
 
 Nothing in the suite builds pages and nothing in it needs them. The modules that
@@ -209,6 +214,9 @@ your money rather than your markup.
 
 ### The audit
 
+The conformance suite, seventeen checks in all. Which of them run on a store you
+built yourself is the whole point of this page.
+
 ```
 HonorBox audit: the known ways this architecture loses money quietly
 
@@ -341,6 +349,13 @@ catches what has been catalogued. It cannot see a failure nobody has written
 down yet, and where it could not check something it says `UNKNOWN` and why,
 never `OK`.
 
+That is the whole of what steps aside, named rather than discovered later.
+
+{{buy:honorbox-pro}}
+
+30 days to change your mind, no questions asked, refunded through Stripe. What
+follows is the key scopes, which matters the day after you buy rather than now.
+
 ## The keys, on your own account
 
 Same discipline as
@@ -405,5 +420,5 @@ not answer is reported as a run the guard could not see, never as a green one.
 - [The license module's complete API surface](pro-evidence.md#the-license-module-api-surface),
   which is independent of all of the above and works the same whether you run
   the engine or not.
-- [Buy HonorBox Pro, $29](https://honorboxx.github.io/honorbox/honorbox-pro.html).
-  Thirty days to change your mind, refunded through Stripe.
+- [The HonorBox Pro page](https://honorboxx.github.io/honorbox/honorbox-pro.html),
+  for the licence tiers and everything Pro ships beyond the modules above.

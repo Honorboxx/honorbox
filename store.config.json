@@ -35,7 +35,7 @@
     },
     {
       "type": "note",
-      "text": "The one hard requirement: your buyers need GitHub accounts, because delivery is a repo invite. The second thing to check is your volume. At ten sales a month of a $29 product the fee you would save against a merchant of record is about $8, and for that $8 they do your VAT, which is the better trade; the first guide below has the arithmetic. This earns its keep at volume, or when owning the Stripe account and the customer relationship matters to you for its own sake."
+      "text": "The one hard requirement: your buyers need GitHub accounts, because delivery is a repo invite. The second thing to check is your price. The cheapest merchant of record takes 5% + 50¢ and does your VAT; on your own Stripe account you pay Stripe's 2.9% + 30¢ and the VAT is yours. At ten sales a month that difference is about $8 on a $29 product, about $23 at $99, and about $44 at $199, because the fee scales with your price and the VAT work does not. Under about $30 a sale, letting them handle it is the better trade and the first guide below shows why. Above it, you are paying a growing percentage for paperwork that costs the same either way."
     },
     {
       "type": "showcase",
@@ -71,7 +71,7 @@
     {
       "type": "compare",
       "title": "Side by side",
-      "note": "Fees as published on each vendor's own pricing page, checked July 2026. Polar is the closest comparison: it delivers private-repo access natively and instantly, and it handles your VAT. If you want a merchant of record, one of the first three is the better tool, and the guides below say when.",
+      "note": "Fees as published on each vendor's own pricing page, checked July 2026. Polar is the closest comparison: it delivers private-repo access natively and instantly, and it handles your VAT. What the first three sell you is the VAT and the compliance, priced as a share of every sale for as long as you sell. That is worth paying on a cheap product and worth owning on an expensive one, which is the trade the guides below work through.",
       "columns": [
         "",
         "Gumroad",
@@ -186,7 +186,7 @@
         },
         {
           "q": "I already sell through Stripe and GitHub. What does this add?",
-          "a": "The engine replaces the glue you wrote: polling Stripe, matching the order, sending the invite, keeping the ledger, and the storefront in front of it. It reads one config file naming the payment links and product repos you already have, so your checkout keeps working and your buyers notice nothing. Pro then answers what a hand-rolled setup almost never answers for itself: is every paid order delivered right now, and is any of the known silent failures live in your setup? It does not need the engine to answer that. Point Pro at the setup you already run: a minimal config naming your payment links and repos, plus one custom field on your payment link asking for the buyer's GitHub username, a two-minute edit that leaves the link URL unchanged. Reconcile, stats, the refund and dispute guards, the store doctor and the suite's money-path checks then run in full against your setup; the checks that only apply to the engine's layout skip and print why. Every line of that is checkable before you pay: the config, the checkout field, what runs in full, what steps aside with the lines it prints, and the limits.",
+          "a": "Keep it. Nothing here asks you to replace a setup that already works. Pro is the part worth adding, because it answers what a hand-rolled setup almost never answers for itself: is every paid order delivered right now, and is any of the known silent failures live in your store? Point it at what you already run. A minimal config naming your existing payment links and repos, plus one custom field on your payment link asking for the buyer's GitHub username, which is one API call and leaves the link URL unchanged. Reconcile, stats, the refund and dispute guards, the store doctor and the audit's money-path checks then run in full against your setup; the checks that only apply to the engine's layout skip and print why. The free engine is there if you ever want the storefront and the fulfillment glue too, and adopting it is a config file naming those same links and repos rather than a migration your buyers can see. Every line of this is checkable before you pay: the config, the checkout field, what runs in full, what steps aside with the lines it prints, and the limits.",
           "href": "./bring-your-own-store.html",
           "href_label": "What runs on a store you built yourself"
         },

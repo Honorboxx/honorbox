@@ -14,24 +14,18 @@ payment_link: https://buy.stripe.com/aFa9ATaRhaZp3PC1SYa7C00
 # it makes it a decision rather than a side effect of editing the gallery.
 og_image: ./assets/previews/stand.png
 features:
-  - "Bring your own store: runs against a hand-rolled Stripe + GitHub setup from a minimal config naming your existing payment links and repos, no engine adoption; engine-layout checks skip and print why"
-  - "Reconcile: cross-checks Stripe against GitHub to prove every paid order actually reached its buyer, and names the ones that didn't"
-  - "Conformance suite: 16 checks for the known ways this architecture loses money quietly, each proven able to fail, wired to a CI gate that goes red when your setup drifts"
-  - "Catches a dead buy button (a deactivated link still answers HTTP 200), a price on the page that differs from what the link charges, a pasted URL that makes every sale unmatchable, and a live 100%-off coupon"
-  - "Scheduled guard: a drop-in Actions workflow that runs the suite and reconcile four times a day and raises one self-closing GitHub issue in your ops repo naming exactly what went red. A run that could not reach Stripe alarms too; it never reads as healthy"
-  - "Store doctor: preflight your config, payment links, and fulfillment permissions before launch"
-  - "Ops bots: auto-acknowledge new support issues, auto-revoke repo access on a Stripe refund or a lost chargeback"
-  - "Stats: tracker-free sales analytics rendered from your Stripe data, one command"
-  - "The rail storefront theme, a fixed left navigation column, built to the same class contract as the free themes"
-  - "License-key module: ed25519 keys signed in CI, verified offline in your app (JS + Python)"
-  - "Commerce playbook: pricing, the first ten sales, EU VAT, multi-product catalogs (table of contents is public)"
-  - Priority support label on the issue tracker
+  - "Bring your own store: Pro runs on the Stripe payment links and private repos you already have. One config file, no migration, and your checkout URL never changes"
+  - "Reconcile: walks every paid Stripe order against live GitHub access and names the ones that never reached the buyer, with the amount attached"
+  - "The audit: a conformance suite of 17 checks for the known ways this architecture loses money quietly, each one proven able to fail and wired to a CI gate that goes red when your setup drifts"
+  - "The scheduled guard: runs the audit and reconcile four times a day and opens one self-closing issue in your own repo naming what went red. A run that could not reach Stripe alarms too, so it never reads as healthy"
+  - "Refund and dispute guards: repo access is revoked the moment Stripe says the money left, without waiting for you to run anything"
+  - "Also inside: the store doctor, tracker-free sales stats, the rail storefront theme, offline license keys, the commerce playbook, and the priority support label"
 ---
 
 30 days to change your mind, no questions asked, refunded through Stripe.
 [The refund policy in full](./refunds.html).
 
-Launch week: code `PRODUCTHUNT` takes 20% off at checkout, through August 20.
+Launch week: code `PRODUCTHUNT` takes 20% off at checkout, through 19 August.
 
 ## What Pro is
 
@@ -52,9 +46,9 @@ the one who cared enough to chase.
 session and asks GitHub whether that specific buyer holds access to that
 specific repo right now: one verdict per order with the amount attached, and a
 non-zero exit when anything is lost, so you can schedule it rather than remember
-it. Alongside it, a conformance suite of sixteen checks for the known ways a
-Stripe-plus-GitHub store loses money without telling you, run against your own
-account and wired to a CI gate.
+it. Alongside it, the audit: a conformance suite of seventeen checks for the
+known ways a Stripe-plus-GitHub store loses money without telling you, run
+against your own account and wired to a CI gate.
 
 And because the ways a store breaks do not arrive by push, the asking runs on
 a clock as well as a gate: a scheduled guard re-runs the suite and the
@@ -86,9 +80,9 @@ put Pro on it. Write a minimal config naming the payment links and product repos
 you already have, and add one custom field to your payment link asking for the
 buyer's GitHub username. On a link you already sell through that is one API
 call, not a dashboard edit, because Stripe offers no way to edit a payment link
-once it exists. It takes a minute, and **the link URL does not change**, so
-nothing you have already published goes stale and no buyer sees a difference. Reconcile, stats, the refund and dispute guards, the
-store doctor and the suite's money-path checks then run in full against your
+once it exists. **The link URL does not change**, so nothing you have already
+published goes stale. Reconcile, stats, the refund and dispute guards, the
+store doctor and the audit's money-path checks then run in full against your
 setup as it stands.
 
 Straight about the parts that do not. Checks written for the engine's own
@@ -150,9 +144,11 @@ real launch date for one. It is worth nothing as a substitute for having either.
 
 ## What's inside
 
-**The conformance suite.** The largest thing Pro ships. It reads your config and
-your sources, and with a read-only Stripe key it asks the API about the objects
-behind them. Some of what it catches:
+**The audit.** The conformance suite, and the largest thing Pro ships. It is
+called `audit` everywhere you will meet it: in the command you run, in the
+transcripts, and in the docs. It reads your config and your sources, and with a
+read-only Stripe key it asks the API about the objects behind them. Some of what
+it catches:
 
 - a **dead buy button**: a deactivated payment link answers HTTP 200, so nothing
   else you own will notice
@@ -183,10 +179,12 @@ not go red at all, because the code pattern it scanned for satisfied its own
 test, and running the mutation suite is what found it.
 
 [**The full failure catalogue is published free**](https://github.com/Honorboxx/honorbox/blob/main/docs/failure-catalogue.md):
-thirteen entries, each with the incident or defect that put it on the list, and
-the gaps we have not closed. Take it, post it, work through it by hand. What Pro
+fourteen entries, each one a way this architecture is known to lose money, with
+the incident or defect that put it on the list and the gaps we have not closed.
+The seventeen checks are what detect them, because a few of those failures take
+more than one check to catch. Take it, post it, work through it by hand. What Pro
 sells is the part that keeps working after you have stopped thinking about it.
-[See exactly what the suite prints](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md#audit-the-standing-guard-on-a-store-that-looks-fine),
+[See exactly what the audit prints](https://github.com/Honorboxx/honorbox/blob/main/docs/pro-evidence.md#audit-the-standing-guard-on-a-store-that-looks-fine),
 on a store with four ordinary mistakes in it.
 
 **The `rail` theme.** A fixed left navigation column instead of a centred page:

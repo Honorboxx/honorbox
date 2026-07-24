@@ -205,8 +205,8 @@ rather than a report: `audit/workflows/conformance.yml` drops into your
 storefront repo and fails the build on the day your config drifts into a failure
 you read about a year ago and forgot.
 
-The thirteen entries behind these checks, with the incident or defect that put
-each one there, are published in full and free at
+The fourteen entries behind these seventeen checks, with the incident or defect
+that put each one there, are published in full and free at
 [docs/failure-catalogue.md](failure-catalogue.md). Reading the catalogue once and
 having a gate that will not let you regress are different things, and only one of
 them keeps working after you have stopped thinking about it.

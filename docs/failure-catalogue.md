@@ -10,7 +10,7 @@
 > because knowledge stops being scarce the moment anyone prints it, and we would
 > rather be the ones who did.
 >
-> What Pro sells is the other half: sixteen checks that run these against your own
+> What Pro sells is the other half: seventeen checks that run these against your own
 > store on every push, each one proven able to fail, wired to a CI gate that goes
 > red the day your setup drifts into one of them. Reading a list once and having a
 > gate that will not let you regress are different things.
