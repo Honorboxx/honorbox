@@ -104,7 +104,7 @@ function inline(s) {
 // shared by the renderer's paragraph terminator and excerpt(), so the two
 // can never drift apart again (an image line after a paragraph used to be
 // swallowed because a hand-copied variant here lacked `!\[`).
-const STRUCTURAL = /^(#{1,4}\s|```|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
+const STRUCTURAL = /^(#{1,4}\s|```|<!--|[-*]\s|\d+\.\s|>|!\[|(-{3,}|\*{3,})\s*$)/;
 
 // GFM pipe tables. The delimiter row is what makes a table a table: a row of
 // only -, :, | and spaces, with at least one dash. Without this second-line
@@ -252,6 +252,19 @@ function renderMarkdown(src, opts = {}) {
 
     if (/^\s*$/.test(line)) { i++; continue; }
 
+    // An HTML comment is a note to whoever maintains the file, not content.
+    // Every other renderer drops it; this one used to escape it and print it,
+    // so docs/failure-catalogue.md opened its published page, its meta
+    // description and its card on the docs index with "<!-- Generated. The
+    // body below is the output of node audit/audit.js --catalogue". Consumed
+    // here rather than deleted from the file, because the note is worth
+    // keeping and the next file to carry one must not reproduce the bug.
+    if (/^\s*<!--/.test(line)) {
+      while (i < lines.length && !/-->/.test(lines[i])) i++;
+      i++; // the line the comment closes on
+      continue;
+    }
+
     // Any line starting ``` opens a fence; the info string ("js",
     // "objective-c", "c++") is free-form and unused here.
     if (/^```/.test(line)) {
@@ -345,6 +358,9 @@ function excerpt(src, max = 160) {
     if (/^\s*$/.test(lines[i])) { inBlock = false; i++; continue; }
     if (STRUCTURAL.test(lines[i].trim())) {
       if (/^```/.test(lines[i].trim())) { i++; while (i < lines.length && !/^```\s*$/.test(lines[i])) i++; }
+      // A comment runs to its close, which is not itself a structural line:
+      // without this the description became the closing "-->".
+      else if (/^<!--/.test(lines[i].trim())) { while (i < lines.length && !/-->/.test(lines[i])) i++; }
       inBlock = true; i++; continue;
     }
     // an indented line continues the list item above (same rule the renderer

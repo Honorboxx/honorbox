@@ -33,6 +33,17 @@
    primary button label 19.80, focus ring 19.80. Dark: ink 20.12 and 18.36,
    muted 8.33 and 7.60, primary button label 20.12, focus ring 20.12.
 
+   --shade is the one value here that is deliberately weak. It marks the edge
+   a sideways-scrolling box passes under, so it has to be seen against the
+   ground and must not bury the characters it covers: ink and paper at 26%,
+   landing on #bfbfbf by day (1.84:1 on the ground) and #414141 by night
+   (2.06:1). The cost, stated because a future reader will otherwise "fix" it:
+   muted text under the band measures 2.77:1 light and 4.05:1 dark, below the
+   4.5:1 body-text floor. It is accepted only because the band is 1.25rem, so
+   the roughly three characters it ever covers are the clipped ones at the
+   scroll boundary, and never text the reader is being asked to read. Widening
+   the band would break that argument. Do not widen the band.
+
    Display face: Schibsted Grotesk (OFL, self-hosted in assets/fonts/) at 400
    and 500. Body is the system sans. Both colour schemes are first class; the
    theme mirrors rather than dims. */
@@ -61,6 +72,7 @@
   --ink: #0a0a0a;
   --ink-soft: #6e6e6e;
   --on-ink: #ffffff;   /* the label on the primary action */
+  --shade: rgba(10, 10, 10, 0.26);  /* the edge a scrolling box passes under */
 
   --display: "Schibsted Grotesk", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -91,6 +103,7 @@
     --ink: #fafafa;
     --ink-soft: #a3a3a3;
     --on-ink: #000000;
+    --shade: rgba(250, 250, 250, 0.26);
   }
 }
 :root[data-theme="dark"] {
@@ -101,6 +114,7 @@
   --ink: #fafafa;
   --ink-soft: #a3a3a3;
   --on-ink: #000000;
+  --shade: rgba(250, 250, 250, 0.26);
 }
 
 /* Native widgets, scrollbars and form controls read `color-scheme`, not our
@@ -492,20 +506,56 @@ a:focus-visible, summary:focus-visible {
 .steps-list li:has(h3 a):hover::after, .doc-list li:hover::after { color: var(--ink); transform: translate(3px, -50%); }
 .steps-list li:has(h3 a):hover h3 a, .doc-list li:hover h3 a { color: var(--ink); }
 
-/* compare table: hairlines, and our column marked by ground rather than bold */
-/* The table is wider than a phone, so it scrolls. Row labels have to stay put
-   or a scrolled reader sees "0%" with no idea which row it is, and the overflow
-   has to be visible because macOS hides overlay scrollbars at rest. */
-.table-scroll {
-  overflow-x: auto; margin-top: 1.6rem;
-  background:
-    linear-gradient(to right, var(--ground) 30%, transparent) left / 3rem 100% no-repeat local,
-    linear-gradient(to left, var(--ground) 30%, transparent) right / 3rem 100% no-repeat local,
-    linear-gradient(to right, rgba(0,0,0,0.13), transparent) left / 1.1rem 100% no-repeat scroll,
-    linear-gradient(to left, rgba(0,0,0,0.13), transparent) right / 1.1rem 100% no-repeat scroll;
+/* ONE affordance for everything on this site that scrolls sideways: the
+   compare tables, every table the docs write in markdown, and every block of
+   code. They used to be treated differently, so a clipped table looked
+   scrollable and a clipped code block just looked broken, and a reader on a
+   phone had no way to tell that a sentence continued.
+
+   The edge that still has content behind it darkens; the shade rides away the
+   moment the reader reaches that end. Four layers is the floor for saying
+   that honestly: two shades pinned to the box, and two masks in the box's own
+   ground that ride the content and cover a shade once its end arrives. A
+   static two-layer fade is simpler and lies at the end of the scroll.
+
+   Why not the platform's scrollbar, which would be free and familiar: macOS
+   hides overlay scrollbars at rest, and `scrollbar-width`/`scrollbar-color`
+   do not bring them back. Measured here, not assumed: styled or unstyled, the
+   scroll gutter is 0px and nothing is painted until a finger is already
+   moving, which is exactly too late.
+
+   Two properties carry the whole thing. --scroll-ground is the surface the
+   box actually sits on, because a mask has to match its ground exactly.
+   --shade is the page's own ink, thinned, so it darkens paper and lifts ink
+   without either scheme being an afterthought; the old value was a hardcoded
+   black that measured 1.30:1 on the light ground and literally nothing on the
+   black one. */
+.table-scroll, .prose pre {
+  --scroll-ground: var(--ground);
+  overflow-x: auto;
+  background-image:
+    linear-gradient(to right, var(--scroll-ground) 55%, transparent),
+    linear-gradient(to left, var(--scroll-ground) 55%, transparent),
+    linear-gradient(to right, var(--shade), transparent),
+    linear-gradient(to left, var(--shade), transparent);
+  background-position: left, right, left, right;
+  background-size: 2.5rem 100%, 2.5rem 100%, 1.25rem 100%, 1.25rem 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
 }
-.table-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-.table-scroll table { min-width: 40rem; }
+/* Browsers put a scroll container in the tab order by themselves, and only
+   when it actually scrolls, which is better than a tabindex we would have to
+   put on every code block whether it needed one or not. This is what the
+   reader sees when that happens. */
+.table-scroll:focus-visible, .prose pre:focus-visible {
+  outline: 2px solid var(--ink); outline-offset: 3px;
+}
+.table-scroll { margin-top: 1.6rem; }
+/* No min-width. It used to force every table to 40rem, which on a phone meant
+   a table that would otherwise have fitted was cut mid-sentence instead. It
+   was there because inline code in a cell broke anywhere and collapsed the
+   label column to one character per line; that is fixed where it belongs, on
+   the wrap rule, and four of the eight doc tables now simply fit a phone. */
 .table-scroll th:first-child, .table-scroll td:first-child {
   position: sticky; left: 0; background: var(--ground);
 }
@@ -665,9 +715,15 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   justify-content: flex-start; margin: 2.75rem 0 0.5rem;
 }
 
+/* Code never wraps: the doctor and audit transcripts are columns, and a
+   wrapped column is a different document. So it scrolls, and it carries the
+   same edge shade every other scrolling box on the site carries. It sits on
+   the raised surface rather than the page, which is the one thing the shared
+   rule has to be told. */
 .prose pre {
-  background: var(--raised); border: 1px solid var(--line); border-radius: 6px;
-  padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.85rem; line-height: 1.6;
+  --scroll-ground: var(--raised);
+  background-color: var(--raised); border: 1px solid var(--line); border-radius: 6px;
+  padding: 1rem 1.1rem; font-size: 0.85rem; line-height: 1.6;
 }
 .prose code { font-family: var(--mono); font-size: 0.9em; }
 .prose p code, .prose li code, .prose td code {
@@ -676,8 +732,14 @@ tr.attn td { font-weight: 600; background: var(--raised); color: var(--ink); }
   /* A long unbroken identifier in inline code has no wrap opportunity and
      widens the whole page on a phone (the docs carry things like
      `checkout.session.async_payment_succeeded`, 374px at 390px wide). Block
-     code keeps its own horizontal scroll; only inline code breaks. */
-  overflow-wrap: anywhere;
+     code keeps its own horizontal scroll; only inline code breaks.
+
+     break-word, not anywhere. Both break a word that cannot fit its line, and
+     that is all this needs; anywhere additionally lets the BOX shrink below
+     its longest word, which in a table cell collapsed `reconcile/` to
+     "reconc" over "ile/" and was why the tables needed a min-width to look
+     sane. Measured after the change: no page scrolls sideways at 390px. */
+  overflow-wrap: break-word;
 }
 .prose blockquote {
   border-left: 2px solid var(--line); margin: 1.4rem 0; padding: 0.2rem 1.2rem;

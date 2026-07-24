@@ -32,7 +32,18 @@
    ground and 13.06:1 on raised; muted 7.16 and 6.74; buy label 9.25:1 on the
    accent; accent links and focus 9.42:1; control borders 3.25:1. Light: body
    14.78:1 and 13.79:1; muted 5.77 and 5.39; buy label 6.14:1 on the accent;
-   accent links and focus 6.14:1; control borders 3.35:1. */
+   accent links and focus 6.14:1; control borders 3.35:1.
+
+   --shade is the one value here that is deliberately weak. It marks the edge
+   a sideways-scrolling box passes under, so it has to be seen against the
+   ground and must not bury the characters it covers: the scheme's own ink at
+   26%, landing on #374737 in the dark (1.95:1 on the ground) and #b9c2b9 in
+   the light (1.71:1). The cost, stated so nobody "fixes" it later: muted text
+   under the band measures 3.67:1 dark and 3.38:1 light, below the 4.5:1
+   body-text floor. It is accepted only because the band is 1.25rem, so the
+   roughly three characters it ever covers are the clipped ones at the scroll
+   boundary, never text the reader is being asked to read. Widening the band
+   would break that argument. Do not widen the band. */
 
 :root {
   color-scheme: light dark;
@@ -44,6 +55,7 @@
   --ink-soft: #7da87d;
   --accent: #4ccc7a;
   --on-accent: #06130a; /* the label on the primary action */
+  --shade: rgba(184, 230, 184, 0.26);  /* the edge a scrolling box passes under */
 
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
@@ -69,6 +81,7 @@
     --ink-soft: #4c684c;
     --accent: #156b37;
     --on-accent: #f4f8f4;
+    --shade: rgba(18, 39, 18, 0.26);
   }
 }
 :root[data-theme="light"] {
@@ -80,6 +93,7 @@
   --ink-soft: #4c684c;
   --accent: #156b37;
   --on-accent: #f4f8f4;
+  --shade: rgba(18, 39, 18, 0.26);
 }
 
 /* Native widgets, scrollbars and form controls read `color-scheme`, not our
@@ -149,7 +163,8 @@ h2::before { content: "## "; color: var(--ink-soft); }
 
 a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
-a:focus-visible, summary:focus-visible, .table-scroll:focus-visible {
+a:focus-visible, summary:focus-visible,
+.table-scroll:focus-visible, .prose pre:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
 }
 ::selection { background: var(--accent); color: var(--on-accent); }
@@ -337,11 +352,37 @@ a:focus-visible, summary:focus-visible, .table-scroll:focus-visible {
 
 /* compare table: hairlines, and our column marked by ground rather than a
    second hue. The amber row is gone; weight and the raised ground carry it.
-   min-width is load-bearing: without it the table compresses to one word per
-   line on a phone and overflows anyway. Row labels stay put while the rest
-   scrolls, or a scrolled reader sees "0%" with no idea which row it is. */
-.table-scroll { overflow-x: auto; margin-top: 1.4rem; }
-.table-scroll table { min-width: 36rem; }
+   Row labels stay put while the rest scrolls, or a scrolled reader sees "0%"
+   with no idea which row it is.
+
+   ONE affordance for everything here that scrolls sideways, tables and code
+   alike: the edge that still has content behind it lifts, and the shade rides
+   away the moment the reader reaches that end. Two shades pinned to the box,
+   two masks in the box's own ground that ride the content and cover a shade
+   once its end arrives. The platform's scrollbar would be free and familiar
+   and is not an option: macOS hides overlay scrollbars at rest and
+   scrollbar-width/scrollbar-color do not bring them back, measured at 0px of
+   gutter with nothing painted until a finger is already moving.
+
+   The min-width that used to force every table to 36rem is gone. It made a
+   table that would have fitted a phone get cut mid-sentence instead, and it
+   was only there because inline code in a cell broke anywhere and collapsed
+   the label column to one character per line. That is fixed on the wrap rule,
+   where it belongs. */
+.table-scroll, .prose pre {
+  --scroll-ground: var(--ground);
+  overflow-x: auto;
+  background-image:
+    linear-gradient(to right, var(--scroll-ground) 55%, transparent),
+    linear-gradient(to left, var(--scroll-ground) 55%, transparent),
+    linear-gradient(to right, var(--shade), transparent),
+    linear-gradient(to left, var(--shade), transparent);
+  background-position: left, right, left, right;
+  background-size: 2.5rem 100%, 2.5rem 100%, 1.25rem 100%, 1.25rem 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+.table-scroll { margin-top: 1.4rem; }
 .table-scroll th:first-child, .table-scroll td:first-child {
   position: sticky; left: 0; background: var(--ground);
 }
@@ -412,17 +453,28 @@ tr.attn td { font-weight: 700; background: var(--raised); color: var(--ink); }
 .prose h3 { margin: 1.8em 0 0.4em; }
 .prose li { margin: 0.35rem 0; }
 .prose li::marker { color: var(--ink-soft); }
+/* Code never wraps: the doctor and audit transcripts are columns, and a
+   wrapped column is a different document. So it scrolls, and it carries the
+   same edge shade every other scrolling box carries. It sits on the raised
+   surface rather than the page, which is the one thing the shared rule above
+   has to be told. */
 .prose pre {
-  background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.85rem; line-height: 1.6;
+  --scroll-ground: var(--raised);
+  background-color: var(--raised); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; font-size: 0.85rem; line-height: 1.6;
 }
 /* overflow-wrap is load-bearing: a long unbroken identifier in inline code
    (the docs carry `checkout.session.async_payment_succeeded`) otherwise
-   widens the whole page on a phone. Block code keeps its own scroll. */
+   widens the whole page on a phone. Block code keeps its own scroll.
+
+   break-word, not anywhere. Both break a word that cannot fit its line, and
+   that is all this needs; anywhere additionally lets the BOX shrink below its
+   longest word, which in a table cell collapsed `reconcile/` to "reconc" over
+   "ile/" and was why the tables needed a min-width to look sane. */
 .prose p code, .prose li code, .prose td code {
   background: var(--raised); border: 1px solid var(--line);
   border-radius: 3px; padding: 0.05em 0.3em; color: var(--ink);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .prose blockquote {
   border-left: 2px solid var(--line-ctl); margin: 1.2rem 0; padding: 0.2rem 1.1rem;

@@ -987,6 +987,24 @@ test('excerpt: wrapped list continuations are not mistaken for the paragraph', (
   assert.equal(excerpt(ol), 'Actual prose.');
 });
 
+test('an HTML comment is a note to the maintainer, never content', () => {
+  // docs/failure-catalogue.md opens with one. It used to be escaped and
+  // printed, so the live page, its meta description and its card on the docs
+  // index all began "<!-- Generated. The body below is the output of node
+  // audit/audit.js --catalogue".
+  const md = '<!--\n  Generated. Do not edit by hand.\n-->\n\n# Title\n\nThe real opening line.';
+  assert.equal(renderMarkdown(md), '<h1 id="title">Title</h1>\n<p>The real opening line.</p>');
+  assert.equal(excerpt(md), 'The real opening line.');
+
+  // closed on its own line, mid-document, and never closed at all
+  assert.equal(renderMarkdown('<!-- one line -->\nProse.'), '<p>Prose.</p>');
+  assert.equal(renderMarkdown('One.\n\n<!-- x\ny -->\n\nTwo.'), '<p>One.</p>\n<p>Two.</p>');
+  assert.equal(renderMarkdown('<!-- never closed\nand so it swallows'), '');
+
+  // and prose that merely contains the characters is still prose
+  assert.equal(renderMarkdown('a < b and c-->d'), '<p>a &lt; b and c--&gt;d</p>');
+});
+
 test('excerpt: truncates long text at a word boundary with ellipsis', () => {
   const out = excerpt('word '.repeat(80).trim(), 160);
   assert.ok(out.length <= 161, String(out.length));
