@@ -83,10 +83,7 @@ guesses nor goes quiet about them. Each one surfaces as its own line, labelled
 HonorBox reconcile: last 90 days
 
 [WARN] 2026-04-02 Alpha CLI     29 USD     (no username)     PAID, NO USERNAME
-       this session carries no GitHub username, so there is nothing to check
-       the repo against: the checkout predates the custom field, or the
-       payment link is missing it. Add the field to the link, then find this
-       buyer on the session in Stripe and confirm delivery by hand
+       this session carries no GitHub username, so there is nothing to check the repo against: the checkout predates the custom field, or the payment link is missing it. Add the field to the link, then find this buyer on the session in Stripe and confirm delivery by hand
        cs_live_XXXXXXXXXXXX0002
 [ OK ] 2026-05-14 Alpha CLI     29 USD     @ada-example      delivered
        cs_live_XXXXXXXXXXXX0001
