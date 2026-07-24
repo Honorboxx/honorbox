@@ -30,11 +30,12 @@ for the internet:
 **Already selling through a private repo?** If you take the money on your own
 Stripe account and add each buyer as a collaborator by hand, or with glue you
 wrote, the fulfillment bullet above is the part you are doing manually, and it
-runs on its own: `scripts/fulfill.js` reads one config file mapping each payment
-link to the repo it grants, and needs no theme, no `products/` directory and no
-site. Your checkout and your storefront stay where they are.
-[docs/bring-your-own-store.md](docs/bring-your-own-store.md) is written for that
-setup and traces, module by module, what runs on a store you already have.
+runs without the rest: `scripts/fulfill.js` reads one config file mapping each
+payment link to the repo it grants, and needs no theme, no `products/`
+directory and no site. Your checkout and your storefront stay where they are.
+[docs/bring-your-own-store.md](docs/bring-your-own-store.md) traces that setup
+module by module, including which parts of the paid suite run on a store you
+already have and which step aside.
 
 **Live demo: [the HonorBox store](https://honorboxx.github.io/honorbox/).** This
 repo *is* a working store selling
