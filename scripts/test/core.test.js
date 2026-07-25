@@ -2381,50 +2381,49 @@ test('a named social card must be real and scraper-safe, or the build stops', { 
   // something to paper over. The whole point is to stop cards changing by
   // accident. Driven through the real builder in a child process, because the
   // check lives in the build's problem gate and exits the process.
-  // spawnSync, not execFileSync: execFileSync only surfaces stderr on the
-  // throw path, so a SUCCESSFUL build's warnings would be invisible, and the
-  // whole point of case (c) is that a green build still speaks up.
-  const { spawnSync } = require('node:child_process');
+  // The fixture spawns it with spawnSync rather than execFileSync for this
+  // test's sake: execFileSync only surfaces stderr on the throw path, so a
+  // SUCCESSFUL build's warnings would be invisible, and the whole point of
+  // case (c) is that a green build still speaks up.
+  //
+  // On a copy of this store, because the cases below need the Pro product to be
+  // broken on disk for the length of a build. Doing that in the repository put
+  // a corrupt product in front of every test file running in parallel, and left
+  // the tree dirty for about a fifth of the run, restored by a finally that a
+  // crash would skip.
   const fs = require('node:fs');
-  const path = require('node:path');
-  const ROOT = path.join(__dirname, '..', '..');
-  const src = path.join(ROOT, 'products', 'honorbox-pro.md');
+  const { storeFixture } = require('./fixtures/built-store.js');
+  const store = storeFixture();
+  const src = store.at('products', 'honorbox-pro.md');
   const original = fs.readFileSync(src, 'utf8');
   assert.match(original, /^og_image:/m, 'the Pro product must name its card explicitly');
-
-  const build = () => {
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build.js')], {
-      cwd: ROOT, encoding: 'utf8',
-    });
-    return { code: r.status, err: String(r.stderr || '') };
-  };
 
   try {
     // (a) points at nothing
     fs.writeFileSync(src, original.replace(/^og_image: .*$/m, 'og_image: ./assets/previews/nope.png'));
-    let r = build();
+    let r = store.build();
     assert.equal(r.code, 2, 'a missing card file must fail the build');
     assert.match(r.err, /og_image .*does not exist/);
 
     // (b) a format scrapers do not reliably render
     fs.writeFileSync(src, original.replace(/^og_image: .*$/m, 'og_image: ./assets/previews/terminal.webp'));
-    r = build();
+    r = store.build();
     assert.equal(r.code, 2, 'a WebP card must fail the build, not ship a blank preview');
     assert.match(r.err, /og_image must be \.png/);
 
     // (c) no card named at all, and a body of WebP: builds, but says so
     fs.writeFileSync(src, original.replace(/^og_image: .*$/m, ''));
-    r = build();
+    r = store.build();
     assert.equal(r.code, 0, 'a store with no card named must still build');
     assert.match(r.err, /WARN .*fell back to/, 'the fallback must be loud, never silent');
 
     // (d) as shipped
     fs.writeFileSync(src, original);
-    r = build();
+    r = store.build();
     assert.equal(r.code, 0, `the real product must build clean:\n${r.err}`);
     assert.doesNotMatch(r.err, /WARN/, 'the shipped store must not be warning about its own card');
   } finally {
-    fs.writeFileSync(src, original);
+    store.cleanup();
   }
 });
 
@@ -2528,18 +2527,35 @@ test('build: a url the gate refuses is a warning that names the file and the url
   }
 });
 
+test('the store fixture copies every input the builder reads', () => {
+  // Several checks judge the built store from a copy of it, so an input added
+  // to build.js and not to the fixture would leave them judging a store with a
+  // piece missing, and passing. Read off build.js rather than trusted to
+  // memory, so the two cannot drift apart quietly.
+  //
+  // Only the literal roots are checkable this way. build.js also resolves paths
+  // an author wrote, an og_image or an <img> src, which are relative references
+  // landing inside the directories already copied. Nothing static can prove
+  // that, so it is said here rather than left to look proven.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { INPUTS } = require('./fixtures/built-store.js');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'build.js'), 'utf8');
+  const roots = new Set([...src.matchAll(/path\.join\(ROOT, '([^']+)'/g)].map((m) => m[1]));
+  assert.ok(roots.size > 1, 'the reader found nothing, so it is checking nothing');
+  const missing = [...roots].filter((n) => n !== 'dist' && !INPUTS.includes(n));
+  assert.deepEqual(missing, [],
+    `build.js reads these from the repository root and the fixture does not copy them:\n  ${missing.join('\n  ')}`);
+});
+
 test('a social card never shows a theme the store has stopped selling', { skip: !upstreamStore && "pins the upstream store's own showcase" }, () => {
   // Link unfurlers cache og:image for days, so a card may only ever show what
   // the store currently sells: a theme-preview card must name a theme the home
   // showcase still carries. Non-theme cards are not this test's business.
-  const { spawnSync } = require('node:child_process');
   const fs = require('node:fs');
   const path = require('node:path');
+  const { builtPages } = require('./fixtures/built-store.js');
   const ROOT = path.join(__dirname, '..', '..');
-  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build.js')], {
-    cwd: ROOT, encoding: 'utf8',
-  });
-  assert.equal(r.status, 0, `build must pass before cards can be judged:\n${r.stderr}`);
 
   const cfg = fs.readFileSync(path.join(ROOT, 'store.config.json'), 'utf8');
   const showcased = new Set(
@@ -2547,9 +2563,7 @@ test('a social card never shows a theme the store has stopped selling', { skip: 
   );
   assert.ok(showcased.size > 0, 'the showcase must name at least one theme preview');
 
-  const dist = path.join(ROOT, 'dist');
-  for (const file of fs.readdirSync(dist).filter((f) => f.endsWith('.html'))) {
-    const html = fs.readFileSync(path.join(dist, file), 'utf8');
+  for (const [file, html] of builtPages()) {
     const card = html.match(/property="og:image" content="([^"]+)"/);
     if (!card) continue;
     const theme = card[1].match(/previews\/([a-z]+)\.png$/);
@@ -2790,32 +2804,31 @@ test('buy token: the real builder resolves it in pages/ and stops on a bad id', 
   // that matter are wiring claims: that a pages/ file gets the token at all,
   // and that a bad id reaches the problem gate that exits the process. A unit
   // test on buyToken cannot see either.
-  const { spawnSync } = require('node:child_process');
+  //
+  // On a copy of this store, so the probe page exists only where nothing else
+  // can see it. Written into the repository's own pages/ it was a real page for
+  // the length of two builds: scanned by whatever else was reading pages/, and
+  // one crash away from being left behind and deployed.
   const fs = require('node:fs');
-  const path = require('node:path');
-  const ROOT = path.join(__dirname, '..', '..');
-  const fixture = path.join(ROOT, 'pages', 'buy-token-fixture.md');
-  const build = () => {
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build.js')], { cwd: ROOT, encoding: 'utf8' });
-    return { code: r.status, err: String(r.stderr || '') };
-  };
+  const { storeFixture } = require('./fixtures/built-store.js');
+  const store = storeFixture();
+  const fixture = store.at('pages', 'buy-token-fixture.md');
   const page = (token) => `---\ntitle: Fixture\n---\n\nProse above.\n\n${token}\n`;
 
   try {
     fs.writeFileSync(fixture, page('{{buy:honorbox-prow}}'));
-    let r = build();
+    let r = store.build();
     assert.equal(r.code, 2, 'an unknown product id must stop the build');
     assert.match(r.err, /pages\/buy-token-fixture\.md: \{\{buy:honorbox-prow\}\} does not name a product/);
 
     fs.writeFileSync(fixture, page('{{buy:honorbox-pro}}'));
-    r = build();
+    r = store.build();
     assert.equal(r.code, 0, `a real id must build clean:\n${r.err}`);
-    const html = fs.readFileSync(path.join(ROOT, 'dist', 'buy-token-fixture.html'), 'utf8');
+    const html = fs.readFileSync(store.at('dist', 'buy-token-fixture.html'), 'utf8');
     assert.match(html, /<div class="pc-buy standalone"><a class="btn btn-buy btn-big" href="https:\/\/buy\.stripe\.com\//);
     assert.ok(!html.includes('{{buy'), 'no token reaches a built page');
     assert.ok(!/\{\{[a-z_]+\}\}/.test(html), 'and no layout placeholder is left unfilled');
   } finally {
-    fs.rmSync(fixture, { force: true });
-    fs.rmSync(path.join(ROOT, 'dist', 'buy-token-fixture.html'), { force: true });
+    store.cleanup();
   }
 });
