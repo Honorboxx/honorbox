@@ -13,6 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { builtPages } = require('./fixtures/built-store.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 
@@ -196,14 +197,13 @@ test('public copy does not explain our own commercial reasoning', () => {
 
 // The sources can be clean while the built page is not: a section type, a
 // theme layout or a config string can put text on the page that never appears
-// in products/ or pages/. Check what actually ships, when it exists.
-test('the built store carries neither, if it has been built', () => {
-  const dist = path.join(ROOT, 'dist');
-  if (!fs.existsSync(dist)) return; // build not run in this environment
+// in products/ or pages/. So this scans what actually ships, from a build this
+// file owns. It used to read the repository's own dist/ and skip itself when
+// there was none, which meant it ran or did not run depending on whether some
+// other test file had happened to build first.
+test('the built store carries neither', () => {
   const hits = [];
-  for (const f of fs.readdirSync(dist)) {
-    if (!f.endsWith('.html')) continue;
-    const body = fs.readFileSync(path.join(dist, f), 'utf8');
+  for (const [f, body] of builtPages()) {
     for (const re of [...SALES_STATE, ...INTERNAL_REASONING, ...OUR_OWN_DATA]) {
       const m = body.match(re);
       if (m) hits.push(`dist/${f}  ${m[0]}`);
@@ -312,13 +312,10 @@ test('the long dash quarantine lists only files that still need cleaning', () =>
   assert.deepEqual(stale, [], `clean already, so delete these entries from LONG_DASH_QUARANTINE:\n  ${stale.join('\n  ')}`);
 });
 
-test('the built store carries no long dashes, if it has been built', () => {
-  const dist = path.join(ROOT, 'dist');
-  if (!fs.existsSync(dist)) return; // build not run in this environment
+test('the built store carries no long dashes', () => {
   const hits = [];
-  for (const f of fs.readdirSync(dist)) {
-    if (!f.endsWith('.html')) continue;
-    fs.readFileSync(path.join(dist, f), 'utf8').split('\n').forEach((line, i) => {
+  for (const [f, body] of builtPages()) {
+    body.split('\n').forEach((line, i) => {
       if (hasLongDash(line)) hits.push(`dist/${f}:${i + 1}`);
     });
   }
