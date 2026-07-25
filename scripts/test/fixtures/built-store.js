@@ -77,6 +77,12 @@ function storeFixture() {
 // the readers here are sequential and nothing else can see this directory. Only
 // the pages come back, never the directory or the builder, so a caller has
 // nothing to list, edit or delete.
+//
+// Each call still gets its own array, because the one in-place sort or splice
+// it would take to make one test's reading depend on another's is exactly the
+// mistake the rest of this file exists to stop. Freezing instead would be worse
+// than useless: these callers are not in strict mode, so the mutation would be
+// dropped in silence rather than refused.
 let pages = null;
 
 function builtPages() {
@@ -100,7 +106,7 @@ function builtPages() {
       try { fixture.cleanup(); } catch { /* left for the OS to reap */ }
     });
   }
-  return pages;
+  return pages.map(([name, body]) => [name, body]);
 }
 
 module.exports = { INPUTS, storeFixture, builtPages };
