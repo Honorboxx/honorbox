@@ -47,8 +47,15 @@ function listMd(dir) {
 // md.js's, so the renderer and the builder cannot disagree about what a safe
 // URL is. EVERY url we put in an href/src goes through here. Escaping alone is
 // not enough: it happily preserves a javascript: value.
+//
+// null when the url is refused, never "#". "#" was the fallback and it is the
+// most expensive habit in this repo: an <a href="#"> is underlined, clickable,
+// and jumps to the top of its own page, so a refused url shipped a link that
+// looked alive. Returning null makes every call site state what a refused url
+// means there, and leaves no spelling of the dangerous default to copy.
 function safeHref(url) {
-  return escapeHtml(safeUrl(url, { anchor: true }) || '#');
+  const u = safeUrl(url, { anchor: true });
+  return u == null ? null : escapeHtml(u);
 }
 
 // The same funnel for a src attribute, which is the gate WITHOUT the anchor
@@ -58,7 +65,8 @@ function safeHref(url) {
 // stops an image sink from silently widening the next time links gain a
 // scheme, which is exactly how mailto arrived.
 function safeSrc(url) {
-  return escapeHtml(safeUrl(url) || '#');
+  const u = safeUrl(url);
+  return u == null ? null : escapeHtml(u);
 }
 
 // ---------- SEO / social plumbing (pure helpers, covered by core.test.js) ----------
@@ -72,9 +80,12 @@ function usdPrice(price) {
 }
 
 // Absolute site URL for a markdown/config-relative reference ("./assets/x.png").
+// Case-insensitive, because a url is absolute whatever case its scheme is
+// written in: "HTTPS://cdn.example/x.png" read as relative would be pasted onto
+// our own origin and ship an og:image pointing at a file that does not exist.
 function absUrl(site, ref) {
   const u = String(ref == null ? '' : ref);
-  return /^https?:\/\//.test(u) ? u : `${site}/${u.replace(/^\.?\//, '')}`;
+  return /^https?:\/\//i.test(u) ? u : `${site}/${u.replace(/^\.?\//, '')}`;
 }
 
 // The replacement is a FUNCTION, not a string: in a string replacement "$&"
@@ -305,6 +316,12 @@ function productProblems(p) {
 // the file nor the field.
 const SECTION_TYPES = ['steps', 'compare', 'faq', 'note', 'showcase'];
 
+// One sentence per attribute kind, shared by every "that url is not usable"
+// message, so a seller who trips two of them reads one rule twice instead of
+// guessing whether they are two different rules.
+const LINK_SHAPES = 'an http(s), root-relative "/path", "./relative", mailto: or "#" url';
+const SRC_SHAPES = 'an http(s), root-relative "/path" or "./relative" url';
+
 function configProblems(c) {
   const out = [];
   for (const key of ['name', 'tagline', 'url']) {
@@ -322,16 +339,33 @@ function configProblems(c) {
   // A subline_href the gate rejects still renders, as plain text. Say so,
   // rather than let a typo quietly cost the seller the link they asked for.
   if (c.subline_href != null && !safeUrl(c.subline_href, { anchor: true })) {
-    out.push(`"subline_href" is not a usable link (${JSON.stringify(c.subline_href)}); use an http(s), root-relative, mailto: or "#" url`);
+    out.push(`"subline_href" is not a usable link (${JSON.stringify(c.subline_href)}); use ${LINK_SHAPES}`);
   }
   if (c.sections != null && !Array.isArray(c.sections)) out.push('"sections" must be a list');
   (Array.isArray(c.sections) ? c.sections : []).forEach((s, i) => {
     // An unrecognized type used to render as '', so a seller's typo
     // silently deleted a whole band of the storefront with a green build.
-    if (!s || typeof s !== 'object') out.push(`sections[${i}] must be an object`);
-    else if (!SECTION_TYPES.includes(s.type)) {
+    if (!s || typeof s !== 'object') { out.push(`sections[${i}] must be an object`); return; }
+    if (!SECTION_TYPES.includes(s.type)) {
       out.push(`sections[${i}] has unknown type ${JSON.stringify(s.type)} (expected one of: ${SECTION_TYPES.join(', ')})`);
     }
+    // Every url a section item can carry, held to the same rule as
+    // subline_href and for the same reason: the renderer's answer to a url it
+    // cannot use is to drop the link, or the whole figure, which is right for a
+    // reader and completely silent for the seller. store.config.json is one
+    // small hand-edited file, so a url in it that nothing can render is a
+    // config error like any other here, not prose to warn about. The common
+    // case is a missing "./": "assets/shot.png" is not a relative reference the
+    // gate accepts, and it used to ship as a broken image on a green build.
+    (Array.isArray(s.items) ? s.items : []).forEach((it, n) => {
+      if (!it || typeof it !== 'object') return;
+      if (it.href != null && !safeUrl(it.href, { anchor: true })) {
+        out.push(`sections[${i}].items[${n}].href is not a usable link (${JSON.stringify(it.href)}); use ${LINK_SHAPES}`);
+      }
+      if (it.img != null && !safeUrl(it.img)) {
+        out.push(`sections[${i}].items[${n}].img is not a usable image (${JSON.stringify(it.img)}); use ${SRC_SHAPES}`);
+      }
+    });
   });
   return out;
 }
@@ -502,10 +536,12 @@ function slugProblems(productIds, pageSlugs, { dir = 'pages', what = 'product id
 // "/pricing" leaves the site's own store, and a mailto: (a link scheme since
 // md.js gained one) opens a mail client. So the money path gets its own gate
 // instead of inheriting whatever links are allowed to be this month.
-// Case-sensitive on purpose: the href is emitted through safeHref, whose gate
-// is, and a validator that accepted "HTTPS://" would pass the emitter a url it
-// then degrades to "#", which is the failure this whole check exists to stop.
-const CHECKOUT_URL = /^https?:\/\//;
+// Case-insensitive, in step with the gate in md.js. These two must agree in
+// both directions: a validator stricter than the emitter turns a working
+// "HTTPS://" checkout into "Checkout coming soon", and one looser than the
+// emitter hands it a url the emitter then refuses. Same reason RFC 3986 makes a
+// scheme case-insensitive in the first place.
+const CHECKOUT_URL = /^https?:\/\//i;
 
 function buyButton(p, big = false) {
   // No usable checkout link: missing, or a URL the gate rejects. Gating a bad
@@ -579,18 +615,16 @@ function productCard(p, variant = '') {
 // make neither of them the primary one.
 //
 // subline_href gets the scheme gate, not just attribute escaping, which alone
-// would keep a javascript: value intact. safeUrl decides whether the link is
-// usable at all; safeHref emits it, so this href stays visible to a grep for
-// the funnel every other url in this file goes through. A rejected scheme
-// degrades to plain text, the way md.js degrades a rejected image: the
-// sentence still reads, and the scheme never reaches the page. A dead
-// href="#" would instead leave a link that looks alive and goes nowhere.
+// would keep a javascript: value intact. safeHref returns null for a url the
+// gate refuses, so a rejected scheme degrades to plain text, the way md.js
+// degrades a rejected link: the sentence still reads, and the scheme never
+// reaches the page. A dead href="#" would instead leave a link that looks alive
+// and goes nowhere.
 function hero(config, products) {
+  const href = safeHref(config.subline_href);
   const subline = config.subline
     ? `<p class="hero-sub">${
-        safeUrl(config.subline_href, { anchor: true })
-          ? `<a href="${safeHref(config.subline_href)}">${escapeHtml(config.subline)}</a>`
-          : escapeHtml(config.subline)
+        href ? `<a href="${href}">${escapeHtml(config.subline)}</a>` : escapeHtml(config.subline)
       }</p>`
     : '';
   return `<section class="hero">
@@ -612,9 +646,13 @@ function section(s, sizeOf = sizeOfLocal) {
     // and is not.
     return `<section class="steps"><h2>${escapeHtml(s.title)}</h2>${s.note ? `<p class="muted">${escapeHtml(s.note)}</p>` : ''}<ol class="steps-list">${s.items
       .map((it) => {
-        const h = it.href
-          ? `<a href="${safeHref(it.href)}">${escapeHtml(it.title)}</a>`
-          : escapeHtml(it.title);
+        // A refused href degrades to the step's own title as plain text, the
+        // way the hero's subline and a refused markdown link already do.
+        // configProblems refuses to build a store with one of these in it, so
+        // this is the shape a unit-tested section falls back to, not a state a
+        // reader is meant to meet.
+        const href = safeHref(it.href);
+        const h = href ? `<a href="${href}">${escapeHtml(it.title)}</a>` : escapeHtml(it.title);
         return `<li><h3>${h}</h3><p>${escapeHtml(it.text)}</p></li>`;
       })
       .join('')}</ol></section>`;
@@ -632,8 +670,9 @@ function section(s, sizeOf = sizeOfLocal) {
     // the link is appended rather than embedded, same discipline as `steps`.
     return `<section class="faq"><h2>${escapeHtml(s.title)}</h2>${s.items
       .map((it) => {
-        const more = it.href
-          ? ` <a class="faq-more" href="${safeHref(it.href)}">${escapeHtml(it.href_label || 'Read the guide')}</a>`
+        const href = safeHref(it.href);
+        const more = href
+          ? ` <a class="faq-more" href="${href}">${escapeHtml(it.href_label || 'Read the guide')}</a>`
           : '';
         return `<details><summary>${escapeHtml(it.q)}</summary><p>${escapeHtml(it.a)}${more}</p></details>`;
       })
@@ -648,6 +687,13 @@ function section(s, sizeOf = sizeOfLocal) {
     // are numeric attributes so layout is reserved before the lazy image loads.
     const figs = (s.items || [])
       .map((it) => {
+        // A showcase item IS its picture, so a refused src drops the whole
+        // figure rather than shipping <img src="#">, which renders as a broken
+        // image icon inside a band whose only job is to look like proof.
+        // configProblems already refuses to build the store, so this is the
+        // honest floor rather than something a reader should ever see.
+        const src = safeSrc(it.img);
+        if (!src) return '';
         // The FILE is the truth, the config is the fallback. These items
         // carried width="1360" height="900" for images that are actually
         // 1200x630. That aspect ratio is 26% wrong, reserving a box the
@@ -660,9 +706,10 @@ function section(s, sizeOf = sizeOfLocal) {
           Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0
             ? ` width="${w}" height="${h}"`
             : '';
-        const img = `<img src="${safeSrc(it.img)}" alt="${escapeHtml(it.alt || '')}" loading="lazy" decoding="async"${dims}>`;
+        const img = `<img src="${src}" alt="${escapeHtml(it.alt || '')}" loading="lazy" decoding="async"${dims}>`;
         const fig = `<figure>${img}${it.caption ? `<figcaption>${escapeHtml(it.caption)}</figcaption>` : ''}</figure>`;
-        return it.href ? `<a class="showcase-link" href="${safeHref(it.href)}">${fig}</a>` : fig;
+        const href = safeHref(it.href);
+        return href ? `<a class="showcase-link" href="${href}">${fig}</a>` : fig;
       })
       .join('');
     return `<section class="showcase"><h2>${escapeHtml(s.title)}</h2>${s.note ? `<p class="muted">${escapeHtml(s.note)}</p>` : ''}<div class="showcase-grid">${figs}</div></section>`;
@@ -701,6 +748,18 @@ function main() {
     // so a broken one is a build error, not something to paper over. Checked
     // HERE rather than where the card is emitted, because that happens after
     // the problem gate has already run.
+    // A payment_link that is present but unusable is a typo on the money path.
+    // The page's honest answer is the same disabled button as no link at all
+    // (see buyButton), which is right for the buyer and silent for the seller,
+    // so the build says it. Absent is not a mistake: a product without a
+    // checkout yet is what that button is for.
+    if (data.payment_link != null && String(data.payment_link) !== ''
+        && !CHECKOUT_URL.test(safeUrl(data.payment_link, { anchor: true }) || '')) {
+      warnings.push(
+        `products/${f}: payment_link ${JSON.stringify(data.payment_link)} is not an absolute http(s) checkout url, ` +
+          `so the page shows "Checkout coming soon" instead of a Buy button`
+      );
+    }
     if (data.og_image) {
       const bare = String(data.og_image).split(/[?#]/)[0];
       if (!/\.(png|jpe?g|gif)$/i.test(bare)) {
@@ -722,7 +781,21 @@ function main() {
   // map still building that list. Every body goes through the same options, so
   // the token means one thing everywhere instead of working in the directories
   // somebody remembered to wire.
-  const mdOpts = (where) => ({ ...MD_OPTS, buy: buyToken(products, problems, where) });
+  // onRejectedUrl: the renderer drops a url the gate refuses down to plain
+  // text, which is honest to a reader and says nothing to whoever wrote the
+  // file. A warning rather than a build failure, and the same call the dead
+  // internal link check already makes: prose is where typos live, this repo is
+  // forked and run by strangers on their own writing, and refusing to deploy
+  // somebody's whole store over one bad link in one paragraph costs them more
+  // than it saves. The store still ships; the build says exactly which file and
+  // which url, every time, so it cannot go unnoticed the way href="#" did.
+  const mdOpts = (where) => ({
+    ...MD_OPTS,
+    buy: buyToken(products, problems, where),
+    onRejectedUrl: (url, kind) => warnings.push(
+      `${where}: ${kind} url ${JSON.stringify(url)} is not usable, so it renders as plain text; use ${kind === 'image' ? SRC_SHAPES : LINK_SHAPES}`
+    ),
+  });
   for (const p of products) p.html = renderMarkdown(p.body, mdOpts(p.file));
 
   const pages = listMd(path.join(ROOT, 'pages')).map((f) => {
