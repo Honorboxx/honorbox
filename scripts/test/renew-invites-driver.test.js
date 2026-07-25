@@ -27,6 +27,16 @@ const { scratchDir } = require('../test-support/scratch-dir.js');
 // Renewal defaults --state to state/bots-state.json, which in a real ops repo is
 // LIVE entitlement data. A harness bug that forgets to redirect it would write
 // test revocations into it. Assert the repository's own state/ is untouched.
+//
+// Deliberately blunt, and worth keeping that way. Two things it does NOT do,
+// said here so the next reader does not tidy them into a guard that catches
+// less. It compares each file's LENGTH and not its content, so a rewrite that
+// lands on the same size passes. And it is not alone: the other driver suite
+// runs the same check, in its own process, against this one shared directory,
+// so a stray write fails both and the file that reports it need not be the file
+// that caused it. Both are the price of measuring the real directory, which is
+// the one thing a harness bug cannot route around. A narrower check that
+// watched only its own writes would miss exactly the bug this exists to catch.
 const REPO_STATE = path.join(__dirname, '..', '..', 'state');
 function repoStateFingerprint() {
   if (!fs.existsSync(REPO_STATE)) return 'absent';

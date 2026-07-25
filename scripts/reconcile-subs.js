@@ -85,9 +85,8 @@ function writeJson(file, obj) {
 // wedge enforcement shut: a lock is evidence of a live pass only while it is
 // young enough to be one.
 //
-// A kernel lock (flock, as run-fulfill.sh takes via lockf) would be stronger,
-// because the kernel drops it when the process dies and no staleness rule is
-// needed at all. Node's standard library does not expose one and this engine
+// A kernel lock (flock, as lockf(1) takes) would be stronger, because the
+// kernel drops it when the process dies and no staleness rule is needed at all. Node's standard library does not expose one and this engine
 // takes no dependencies, so the staleness window below is the price of that.
 // It is set well above any plausible pass: the slowest thing here is one
 // GitHub call per invitation, and a pass long enough to exceed this would have
@@ -104,8 +103,8 @@ const LOCK_MAX_AGE_MS = 30 * 60 * 1000;
 // current time, and the staleness rule that is supposed to break it instead
 // reads it as a pass that started seconds ago. Enforcement would then be wedged
 // on that machine for the full window, on the strength of a lock nobody holds.
-// run-fulfill.sh already learned this and gitignores its own lock; both repos
-// ignore `state/*.lock` for this one.
+// The ops side learned this the hard way and gitignores its locks for exactly
+// this reason; both repos ignore `state/*.lock` for this one.
 function lockPathFor(statePath) {
   return path.join(path.dirname(statePath), `.${path.basename(statePath)}.lock`);
 }
