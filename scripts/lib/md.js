@@ -12,19 +12,24 @@ function escapeHtml(s) {
 }
 
 // Which URLs may reach an href/src attribute: explicit http(s), or a reference
-// that stays on this origin. A leading "//" or "/\" is an *authority*, not a
-// path — the WHATWG url parser treats a backslash as a slash for special
-// schemes — so "//evil.example/x" reads like a local path but resolves to
-// somebody else's origin under our scheme. Root-relative "/path" still works.
-// One definition, shared with build.js's safeHref, so the gates guarding
-// links, images, and the checkout button cannot drift apart (that drift is how
-// the buy button ended up with no scheme gate at all).
-// anchor: links may target "#section" or a mailto: (see MAILTO below); an
-// image src has no use for either.
-// See URL_STRIP below: the string is normalized the way the url parser
-// normalizes it before either gate gets to look at it.
-const URL_GATE = /^(?:https?:\/\/|\/(?![/\\])|\.)/;
-const URL_GATE_ANCHOR = /^(?:https?:\/\/|\/(?![/\\])|#|\.)/;
+// that stays on this origin. One definition, shared with build.js's safeHref,
+// so the gates guarding links, images, and the checkout button cannot drift
+// apart (that drift is how the buy button ended up with no scheme gate at all).
+//
+// One rule per line rather than one alternation, because a scheme and a path do
+// not share a case rule. A scheme is case-insensitive per RFC 3986 and browsers
+// honour "HTTPS://"; a path is bytes. Both used to live in a single regex with
+// no /i, so "HTTPS://example.com" failed the gate and the link degraded to
+// href="#" — clickable, underlined, and dead. Splitting them is what lets the
+// scheme rules carry /i while the path rules cannot inherit it.
+//
+// A leading "//" or "/\" is an *authority*, not a path — the WHATWG url parser
+// treats a backslash as a slash for special schemes — so "//evil.example/x"
+// reads like a local path but resolves to somebody else's origin under our
+// scheme. Root-relative "/path" still works.
+const HTTP_URL = /^https?:\/\//i;
+const HAS_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+const ORIGIN_RELATIVE = /^(?:\/(?![/\\])|\.)/;
 
 // The gate must read the url the BROWSER will parse, not the one we were
 // handed. The WHATWG parser removes every ascii tab/LF/CR from a url before
@@ -41,20 +46,27 @@ const URL_STRIP = /[\t\n\r]/g;
 // the gate that address degraded to href="#", so the page shipped a link that
 // looked alive and jumped to the top of itself instead of opening a mail
 // client. Anchor-only, because an <img src="mailto:..."> is never anything but
-// a broken image; every image sink stays on URL_GATE.
-// Case-insensitive, and its own regex rather than an /i on the gates, so only
-// this scheme gets that: schemes are case-insensitive per RFC 3986 and
-// browsers honour "MailTo:", so rejecting it would reproduce the same silent
-// dead link, while an /i on URL_GATE would quietly move what http(s) accepts.
-// Stripping first is what keeps this narrow. A scheme is whatever precedes the
-// first colon, so "mailto:javascript:x" is an address and not script, and
-// "java<TAB>script:" still strips to "javascript:", which matches nothing here.
+// a broken image; every image sink refuses it.
 const MAILTO = /^mailto:/i;
 
+// The order below is the policy, and the deny rule is what makes it a policy
+// rather than a coincidence. http(s) is allowed anywhere; mailto on links only;
+// ANY OTHER SCHEME IS REFUSED BY NAME before the relative rules get a look, so
+// javascript:, data: and vbscript: are turned away for having a scheme we do
+// not emit, not for failing to resemble a path. What is left is same-origin.
+//
+// Stripping first is what keeps the scheme rules narrow. A scheme is whatever
+// precedes the first colon, so "mailto:javascript:x" is an address and not
+// script, and "java<TAB>script:" strips back to "javascript:" and is refused.
+// A scheme broken by anything the parser does NOT strip ("java script:",
+// "javascript<NUL>:") stops being a scheme for us and for the browser alike:
+// it matches no rule here and fails closed.
 function safeUrl(url, { anchor = false } = {}) {
   const u = String(url == null ? '' : url).replace(URL_STRIP, '');
-  if (anchor && MAILTO.test(u)) return u;
-  return (anchor ? URL_GATE_ANCHOR : URL_GATE).test(u) ? u : null;
+  if (HTTP_URL.test(u)) return u;
+  if (HAS_SCHEME.test(u)) return anchor && MAILTO.test(u) ? u : null;
+  if (u.startsWith('#')) return anchor ? u : null;
+  return ORIGIN_RELATIVE.test(u) ? u : null;
 }
 
 // Links and images share one shape: an optional `!`, the text, the target, and
@@ -75,9 +87,16 @@ const MARKERS = /[\u0000-\u0002]/g;
 // result, so markdown characters inside a code span were treated as markup:
 // `^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$` published on the live store as
 // `^<a href="#">a-zA-Z0-9</a>{0,38}$`, with the middle of the regex eaten.
-function inline(s) {
+//
+// `rejects`, when given, collects every link or image target the gate refused,
+// for a caller that wants to say so out loud. Optional and trailing so the
+// signature stays a string in, a string out, and omitted deliberately by the
+// table lookahead (see renderMarkdown), which renders a candidate table only to
+// decide whether it is one and would otherwise report every cell twice.
+function inline(s, rejects) {
   const spans = [];
   const links = [];
+  const refuse = (url, kind) => { if (rejects) rejects.push({ url, kind }); };
   let out = String(s == null ? '' : s).replace(MARKERS, '');
 
   // 1. code spans come out first: nothing may look inside them. A run of
@@ -92,11 +111,20 @@ function inline(s) {
     if (bang) {
       // A rejected scheme degrades to the alt text: still visible, but the
       // scheme itself never reaches the page, not even as inert prose.
-      if (!safeUrl(href)) return text;
+      if (!safeUrl(href)) { refuse(href, 'image'); return text; }
       return `${OPEN}${links.push({ img: true, href, title, alt: text }) - 1}${OPEN}`;
     }
     if (!text) return m; // [](url): a link with no accessible name is not a link
-    const i = links.push({ href: safeUrl(href, { anchor: true }) || '#', title }) - 1;
+    // A rejected target degrades to the link TEXT, on the image's rule and for
+    // the image's reason. It used to become href="#", which is the most
+    // expensive line this renderer ever shipped: an <a href="#"> is underlined,
+    // clickable, and jumps to the top of its own page, so a refused url left a
+    // link that looked alive. A mailto: address rendered that way was the only
+    // route to two purchase tiers and nobody noticed until someone clicked it.
+    // Words a reader can see and not click are honest; a dead link is not.
+    const safe = safeUrl(href, { anchor: true });
+    if (!safe) { refuse(href, 'link'); return text; }
+    const i = links.push({ href: safe, title }) - 1;
     return `${OPEN}${i}${OPEN}${text}${CLOSE}${i}${CLOSE}`;
   });
 
@@ -184,7 +212,7 @@ function alignOf(spec) {
 // A table starts here when line i has a pipe and line i+1 is a delimiter row
 // with the same cell count (GFM's own rule; it keeps a stray pipe in prose
 // from swallowing the next line).
-function tableAt(lines, start) {
+function tableAt(lines, start, rejects) {
   if (start + 1 >= lines.length) return null;
   if (!lines[start].includes('|')) return null;
   if (!TABLE_DELIM.test(lines[start + 1]) || !lines[start + 1].includes('-')) return null;
@@ -195,9 +223,9 @@ function tableAt(lines, start) {
   let i = start + 2;
   const rows = [];
   while (i < lines.length && !/^\s*$/.test(lines[i]) && lines[i].includes('|')) rows.push(splitRow(lines[i++]));
-  const th = head.map((c, n) => `<th scope="col"${a[n]}>${inline(c)}</th>`).join('');
+  const th = head.map((c, n) => `<th scope="col"${a[n]}>${inline(c, rejects)}</th>`).join('');
   const body = rows
-    .map((r) => `<tr>${head.map((_, n) => `<td${a[n]}>${inline(r[n] == null ? '' : r[n])}</td>`).join('')}</tr>`)
+    .map((r) => `<tr>${head.map((_, n) => `<td${a[n]}>${inline(r[n] == null ? '' : r[n], rejects)}</td>`).join('')}</tr>`)
     .join('');
   // Same wrapper the builder's compare/ledger tables use, so a wide table
   // scrolls inside itself on a phone instead of widening the page.
@@ -212,7 +240,7 @@ function tableAt(lines, start) {
 const BULLET = /^(\s*)[-*]\s+(.*)$/;
 const NUMBER = /^(\s*)\d+\.\s+(.*)$/;
 
-function listAt(lines, start, base) {
+function listAt(lines, start, base, rejects) {
   const ordered = !BULLET.test(lines[start]);
   const items = [];
   let i = start;
@@ -223,7 +251,7 @@ function listAt(lines, start, base) {
       if (indent < base) break;
       if (indent > base) {
         if (!items.length) break;
-        const sub = listAt(lines, i, indent);
+        const sub = listAt(lines, i, indent, rejects);
         items[items.length - 1].sub += sub.html;
         i = sub.next;
         continue;
@@ -245,7 +273,7 @@ function listAt(lines, start, base) {
   }
   const tag = ordered ? 'ol' : 'ul';
   return {
-    html: `<${tag}>${items.map((it) => `<li>${inline(it.text)}${it.sub}</li>`).join('')}</${tag}>`,
+    html: `<${tag}>${items.map((it) => `<li>${inline(it.text, rejects)}${it.sub}</li>`).join('')}</${tag}>`,
     next: i,
   };
 }
@@ -286,8 +314,16 @@ function uniqueSlug(base, seen) {
   return n ? `${base}-${n}` : base;
 }
 
+// opts.onRejectedUrl(url, kind) -> void. Optional. Called once per distinct
+// target the gate refused, with kind 'link' or 'image'. The renderer's own
+// answer to a refused url is to drop it to plain text, which is right for a
+// reader and invisible to whoever wrote the file, so the caller that knows
+// which file this is gets told and can print it. Collected during the render
+// and drained here, rather than reported from inline(), because the same
+// markdown is rendered more than once on the way to a page.
 function renderMarkdown(src, opts = {}) {
   const slugs = new Map();
+  const rejects = [];
   const lines = src.split(/\r?\n/);
   const out = [];
   let i = 0;
@@ -360,8 +396,10 @@ function renderMarkdown(src, opts = {}) {
           // escape the URL for the attribute — same discipline as link hrefs
           imgs.push(`<img src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy"${dims}>`);
         } else {
-          // rejected scheme: keep the line visible instead of vanishing silently
-          rejected.push(`<p>${inline(m[0])}</p>`);
+          // rejected scheme: keep the line visible instead of vanishing
+          // silently. inline() re-reads it and reports it; nothing is reported
+          // here, so one bad image line is one warning and not two.
+          rejected.push(`<p>${inline(m[0], rejects)}</p>`);
         }
       }
       if (imgs.length > 1) out.push(`<div class="gallery">${imgs.join('')}</div>`);
@@ -374,7 +412,7 @@ function renderMarkdown(src, opts = {}) {
     if (heading) {
       const level = heading[1].length;
       const id = uniqueSlug(headingSlug(heading[2]), slugs);
-      out.push(`<h${level}${id ? ` id="${id}"` : ''}>${inline(heading[2])}</h${level}>`);
+      out.push(`<h${level}${id ? ` id="${id}"` : ''}>${inline(heading[2], rejects)}</h${level}>`);
       i++;
       continue;
     }
@@ -384,18 +422,20 @@ function renderMarkdown(src, opts = {}) {
     if (/^>\s?/.test(line)) {
       const buf = [];
       while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ''));
-      out.push(`<blockquote><p>${buf.map(inline).join('<br>')}</p></blockquote>`);
+      // an explicit arrow, not `buf.map(inline)`: map passes the index as the
+      // second argument, which is not a rejects array
+      out.push(`<blockquote><p>${buf.map((l) => inline(l, rejects)).join('<br>')}</p></blockquote>`);
       continue;
     }
 
     if (/^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line)) {
-      const list = listAt(lines, i, 0);
+      const list = listAt(lines, i, 0, rejects);
       out.push(list.html);
       i = list.next;
       continue;
     }
 
-    const table = tableAt(lines, i);
+    const table = tableAt(lines, i, rejects);
     if (table) {
       out.push(table.html);
       i = table.next;
@@ -405,12 +445,27 @@ function renderMarkdown(src, opts = {}) {
     // paragraph: consume consecutive non-empty, non-structural lines
     // A table needs no blank line above it: stop the paragraph at one, or the
     // header row gets swallowed as prose and the table never renders.
+    // tableAt here is a question, not a render: it is asked on every prose line
+    // and its html is thrown away, so it gets no rejects array. Passing one
+    // would report every url in a table once per line of the paragraph above it.
     const buf = [line];
     i++;
     while (i < lines.length && !/^\s*$/.test(lines[i]) && !STRUCTURAL.test(lines[i]) && !tableAt(lines, i)) {
       buf.push(lines[i++]);
     }
-    out.push(`<p>${inline(buf.join(' '))}</p>`);
+    out.push(`<p>${inline(buf.join(' '), rejects)}</p>`);
+  }
+  // One line per distinct target: the author's fix is the same however many
+  // times they wrote it, and a warning nobody reads is a warning that does not
+  // work.
+  if (typeof opts.onRejectedUrl === 'function') {
+    const seen = new Set();
+    for (const r of rejects) {
+      const key = `${r.kind} ${r.url}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      opts.onRejectedUrl(r.url, r.kind);
+    }
   }
   return out.join('\n');
 }

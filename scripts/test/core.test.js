@@ -892,7 +892,11 @@ test('build: hrefs cannot leave the origin via a protocol-relative url', () => {
       type: 'steps', title: 'G',
       items: [{ title: 'g', text: 't', href: bad }],
     });
-    assert.ok(steps.includes('href="#"'), `steps ${JSON.stringify(bad)}: ${steps}`);
+    // The step's title survives as plain text; there is no anchor at all. It
+    // used to be href="#", a link that looks alive and goes nowhere.
+    assert.ok(!steps.includes('<a '), `steps ${JSON.stringify(bad)}: ${steps}`);
+    assert.ok(!steps.includes('href='), `steps ${JSON.stringify(bad)}: ${steps}`);
+    assert.ok(steps.includes('<h3>g</h3>'), `steps ${JSON.stringify(bad)}: ${steps}`);
     assert.ok(!steps.includes('evil.example'), `steps ${JSON.stringify(bad)}: ${steps}`);
     const show = section({
       type: 'showcase', title: 'S',
@@ -937,7 +941,7 @@ test('url gate: a tab or newline cannot smuggle an authority past the path check
     assert.equal(safeUrl(bad, { anchor: true }), null, `safeUrl anchor ${JSON.stringify(bad)}`);
 
     const steps = section({ type: 'steps', title: 'G', items: [{ title: 'g', text: 't', href: bad }] });
-    assert.ok(steps.includes('href="#"'), `steps ${JSON.stringify(bad)}: ${steps}`);
+    assert.ok(!steps.includes('<a '), `steps ${JSON.stringify(bad)}: ${steps}`);
     assert.ok(!steps.includes('evil.example'), `steps ${JSON.stringify(bad)}: ${steps}`);
 
     // the checkout button is the one that costs money if it points off-origin
@@ -978,9 +982,6 @@ test('url gate: mailto is a link scheme, and only a link scheme', () => {
   for (const ok of ['MAILTO:a@b.com', 'MailTo:a@b.com', 'mailTO:a@b.com']) {
     assert.equal(safeUrl(ok, { anchor: true }), ok, ok);
   }
-  // ...but only for mailto. http(s) keeps matching exactly the case it did
-  // before, so this stays a link-scheme exception and not a loosening.
-  assert.equal(safeUrl('HTTPS://ok.example/x', { anchor: true }), null);
 
   // Not a src. An <img src="mailto:..."> is a broken image at best, so every
   // image sink keeps the gate that has no mailto in it.
@@ -996,7 +997,10 @@ test('url gate: mailto is a link scheme, and only a link scheme', () => {
     items: [{ img: 'mailto:a@b.com', alt: 'a' }],
   }, () => null);
   assert.ok(!show.includes('src="mailto:'), show);
-  assert.ok(show.includes('src="#"'), show);
+  // The figure is dropped whole rather than emitted as <img src="#">, which is
+  // a broken-image icon in the one band whose job is to look like proof.
+  assert.ok(!show.includes('<img'), show);
+  assert.ok(!show.includes('src='), show);
 
   // config-authored links are the same gate, so a seller can publish a contact
   // address anywhere a link is allowed
@@ -1051,6 +1055,193 @@ test('url gate: the mailto exception does not widen anything else', () => {
   // A control character inside the scheme is reassembled and then accepted, so
   // what we approve is byte-for-byte what we emit, matching the browser.
   assert.equal(safeUrl('mail\tto:a@b.com', { anchor: true }), 'mailto:a@b.com');
+});
+
+test('url gate: a scheme is case-insensitive, everywhere a url is emitted', () => {
+  // The gate was one regex with no /i, so "HTTPS://example.com" failed it and
+  // the link degraded to href="#": underlined, clickable, dead. Nothing in the
+  // repo was written that way, which made it a trap rather than a bug, and the
+  // identical trap in mailto's spelling had already cost a purchase route.
+  const upper = [
+    'HTTPS://ok.example/x', 'Https://ok.example/x', 'hTtPs://ok.example/x',
+    'HTTP://ok.example/x', 'Http://ok.example/x',
+  ];
+  for (const ok of upper) {
+    assert.equal(safeUrl(ok, { anchor: true }), ok, `anchor ${ok}`);
+    assert.equal(safeUrl(ok), ok, `src ${ok}`);
+    assert.ok(renderMarkdown(`[x](${ok})`).includes(`href="${ok}"`), `link ${ok}`);
+    assert.ok(section({ type: 'steps', title: 'G', items: [{ title: 'g', text: 't', href: ok }] })
+      .includes(`href="${ok}"`), `steps ${ok}`);
+    assert.ok(section({ type: 'faq', title: 'F', items: [{ q: 'q', a: 'a', href: ok }] })
+      .includes(`href="${ok}"`), `faq ${ok}`);
+    assert.ok(hero({ name: 'S', tagline: 't', subline: 'Ask', subline_href: ok }, [])
+      .includes(`href="${ok}"`), `hero ${ok}`);
+    // absUrl must read it as absolute too, or an og:image gets pasted onto our
+    // own origin and cards a file that does not exist
+    assert.equal(absUrl('https://store.example', ok), ok, `absUrl ${ok}`);
+    assert.deepEqual(configProblems({
+      name: 'S', tagline: 't', url: 'https://s.example',
+      sections: [{ type: 'steps', items: [{ href: ok }] }],
+    }), [], `configProblems ${ok}`);
+  }
+  // images and their card selection, on the src gate that has no mailto in it
+  assert.ok(renderMarkdown('![a](HTTPS://cdn.example/a.png)').includes('src="HTTPS://cdn.example/a.png"'));
+  assert.equal(firstRasterImage('![a](HTTPS://cdn.example/a.png)'), 'HTTPS://cdn.example/a.png');
+  assert.ok(section({ type: 'showcase', title: 'S', items: [{ img: 'HTTPS://cdn.example/a.png', alt: 'a' }] }, () => null)
+    .includes('src="HTTPS://cdn.example/a.png"'));
+
+  // The checkout validator is the one that must agree with the gate in BOTH
+  // directions: stricter than the emitter and a working uppercase link becomes
+  // "Checkout coming soon"; looser and it hands the emitter a url it refuses.
+  const btn = buyButton({ payment_link: 'HTTPS://buy.stripe.com/x', name: 'P', price: '$1' });
+  assert.ok(btn.includes('href="HTTPS://buy.stripe.com/x"'), btn);
+  assert.ok(!btn.includes('btn-disabled'), btn);
+
+  // ...and only the scheme. The path is bytes: a host and a path are not
+  // rewritten, and the gate's own path rules must not have inherited an /i.
+  assert.equal(safeUrl('HTTPS://OK.example/Case'), 'HTTPS://OK.example/Case');
+  assert.equal(safeUrl('/Guides/A.html'), '/Guides/A.html');
+});
+
+test('url gate: no case, whitespace or control character gets a dangerous scheme through', () => {
+  // The rejection set gets re-proven whenever the gate moves, not assumed. This
+  // is the list that must never shrink: browsers have historically tolerated
+  // mixed case, embedded tabs and stray control characters inside a scheme, so
+  // each of those spellings is a separate thing to refuse.
+  const hostile = [
+    'javascript:alert(1)', 'JavaScript:alert(1)', 'JAVASCRIPT:alert(1)', 'jAvAsCrIpT:alert(1)',
+    'data:text/html,<script>alert(1)</script>', 'Data:text/html;base64,PHN2Zz4=', 'DATA:text/html,x',
+    'vbscript:msgbox(1)', 'VBScript:msgbox(1)', 'VBSCRIPT:msgbox(1)',
+    'file:///etc/passwd', 'FILE:///etc/passwd',
+    'about:blank', 'ABOUT:blank',
+    // not an http(s) url however much of one it contains
+    'blob:https://ok.example/uuid', 'BLOB:HTTPS://ok.example/uuid',
+    // tab/LF/CR anywhere: the WHATWG parser removes them before parsing, so the
+    // gate strips first and judges the scheme the browser will actually see
+    'java\tscript:alert(1)', 'JAVA\nSCRIPT:alert(1)', 'ja\rvascript:alert(1)',
+    'da\tta:text/html,x', 'v\tbscript:msgbox(1)', 'J\tA\tV\tA\tS\tC\tR\tI\tP\tT:alert(1)',
+    // whitespace the parser does NOT remove. It stops being a scheme for the
+    // browser too, so the gate must fail closed rather than try to normalize it
+    'java script:alert(1)', ' javascript:alert(1)', 'javascript :alert(1)',
+    // written as escapes, never as literal bytes: a raw NUL or vertical tab
+    // in the source makes this file binary to grep and diff, and is the kind of
+    // thing an editor or a checkout on another platform silently rewrites
+    '\x0bjavascript:alert(1)', 'javascript\x00:alert(1)', '\x00javascript:alert(1)',
+    // entities are decoded by the html parser, never here: the gate sees the
+    // literal characters, and escapeHtml would neuter the ampersand regardless
+    'javascript&#58;alert(1)', '&#106;avascript:alert(1)', 'javascript&colon;alert(1)',
+    // protocol-relative, in every spelling the url parser accepts
+    '//evil.example/x', '/\\evil.example/x', '/\t/evil.example', '/\n\\evil.example',
+  ];
+  for (const bad of hostile) {
+    const j = JSON.stringify(bad);
+    assert.equal(safeUrl(bad), null, `safeUrl ${j}`);
+    assert.equal(safeUrl(bad, { anchor: true }), null, `safeUrl anchor ${j}`);
+
+    // Every sink, asserted on the property rather than on a substring: a
+    // refused url produces NO href and NO src at all. Some of these break the
+    // markdown link syntax outright and stay inert prose, which satisfies the
+    // same property without the test having to know which is which.
+    for (const [what, out] of [
+      ['md link', renderMarkdown(`[x](${bad})`)],
+      ['md image', renderMarkdown(`![x](${bad})`)],
+      ['md image line', renderMarkdown(`![x](${bad})\n`)],
+      ['steps', section({ type: 'steps', title: 'G', items: [{ title: 'g', text: 't', href: bad }] })],
+      ['faq', section({ type: 'faq', title: 'F', items: [{ q: 'q', a: 'a', href: bad }] })],
+      ['showcase', section({ type: 'showcase', title: 'S', items: [{ img: bad, alt: 'a', href: bad }] }, () => null)],
+      ['hero', hero({ name: 'S', tagline: 't', subline: 'Free engine', subline_href: bad }, [])],
+      ['buy button', buyButton({ payment_link: bad, name: 'P', price: '$1' })],
+    ]) {
+      // No attribute at all is the property, rather than the absence of a
+      // substring: a url that breaks the link syntax stays escaped prose, so
+      // its text legitimately survives on the page while nothing is clickable.
+      assert.ok(!out.includes('href='), `${what} ${j} emitted an href: ${out}`);
+      assert.ok(!out.includes('src='), `${what} ${j} emitted a src: ${out}`);
+    }
+    // and the config gate refuses to build a store carrying one
+    assert.equal(configProblems({
+      name: 'S', tagline: 't', url: 'https://s.example',
+      sections: [{ type: 'steps', items: [{ href: bad }] }],
+    }).length, 1, `configProblems href ${j}`);
+    assert.equal(configProblems({
+      name: 'S', tagline: 't', url: 'https://s.example',
+      sections: [{ type: 'showcase', items: [{ img: bad }] }],
+    }).length, 1, `configProblems img ${j}`);
+  }
+});
+
+test('a refused url is the words it was written as, never href="#"', () => {
+  // The class, not the instance. A gate that turns unexpected input into
+  // href="#" ships a link that LOOKS alive: underlined, clickable, and jumping
+  // to the top of its own page. That is how a mailto: address stayed the only
+  // route to two purchase tiers for as long as it did, and case was simply the
+  // next input the gate did not expect. So "#" stops being a fallback anywhere.
+  const link = renderMarkdown('Read [the terms](javascript:alert(1)) first.');
+  assert.ok(!link.includes('<a '), link);
+  assert.ok(!link.includes('href='), link);
+  assert.ok(link.includes('the terms'), 'the words survive, unclickable');
+  assert.ok(!link.includes('javascript'), 'and the scheme never reaches the page, not even as prose');
+
+  // a real link beside a refused one still works: this degrades one url, not
+  // the paragraph it lives in
+  const mixed = renderMarkdown('[good](/a.html) and [bad](//evil.example/x)');
+  assert.ok(mixed.includes('href="/a.html"'), mixed);
+  assert.equal((mixed.match(/href=/g) || []).length, 1, mixed);
+
+  // the renderer tells its caller, once per distinct url, so a green build can
+  // name the file and the url instead of shipping in silence
+  const seen = [];
+  renderMarkdown(
+    '[a](javascript:alert(1)) [b](javascript:alert(1))\n\n![c](vbscript:x)\n\n' +
+      '`[d](javascript:alert(1))` stays a code span\n\n```\n[e](javascript:alert(1))\n```\n',
+    { onRejectedUrl: (url, kind) => seen.push(`${kind} ${url}`) }
+  );
+  assert.deepEqual(seen, ['link javascript:alert(1)', 'image vbscript:x'],
+    'one line per distinct url, and nothing from a code span or a fence');
+
+  // a url inside a table cell is reported once, not once per line of the prose
+  // above it (the paragraph rule asks tableAt on every line and discards it)
+  const tableSeen = [];
+  renderMarkdown('one\ntwo\nthree\n\n| a | b |\n| --- | --- |\n| [x](javascript:alert(1)) | y |\n',
+    { onRejectedUrl: (url, kind) => tableSeen.push(`${kind} ${url}`) });
+  assert.deepEqual(tableSeen, ['link javascript:alert(1)']);
+
+  // no callback is not an error: the renderer stays a string in, string out
+  assert.ok(renderMarkdown('[a](javascript:x)').includes('<p>a</p>'));
+});
+
+test('build: a url store.config.json cannot render stops the build and names the key', () => {
+  // Same call the store already makes for subline_href, extended to the urls a
+  // section carries. store.config.json is one small hand-edited file, so a url
+  // in it that nothing can render is a config error like the nine others here,
+  // not prose to warn about. The common case is a missing "./".
+  const base = { name: 'S', tagline: 't', url: 'https://s.example' };
+  const bad = (sections) => configProblems({ ...base, sections });
+
+  const [rel] = bad([{ type: 'showcase', items: [{ img: 'assets/shot.png', alt: 'a' }] }]);
+  assert.match(rel, /sections\[0\]\.items\[0\]\.img/, rel);
+  assert.match(rel, /assets\/shot\.png/, 'quote what they wrote');
+  assert.match(rel, /"\.\/relative"/, 'and say what to write instead');
+
+  const [href] = bad([{ type: 'faq', items: [{ q: 'q', a: 'a', href: 'javascript:alert(1)' }] }]);
+  assert.match(href, /sections\[0\]\.items\[0\]\.href/, href);
+  assert.match(href, /mailto:/, 'the link message lists the link shapes');
+
+  // index arithmetic has to survive more than one of each
+  assert.equal(bad([
+    { type: 'steps', items: [{ href: './ok.html' }, { href: '//evil.example' }] },
+    { type: 'showcase', items: [{ img: 'x.png' }] },
+  ]).length, 2);
+
+  // everything legitimate still passes, including an absent url
+  assert.deepEqual(bad([
+    { type: 'steps', items: [{ href: './a.html' }, { href: '/b.html' }, { title: 'no href' }] },
+    { type: 'faq', items: [{ q: 'q', a: 'a', href: 'mailto:a@b.com' }] },
+    { type: 'showcase', items: [{ img: './assets/a.png', href: 'https://ok.example' }] },
+    { type: 'note', text: 'no items at all' },
+  ]), []);
+  // a malformed item is still the malformed-item message, not a url message
+  assert.deepEqual(bad([{ type: 'note', items: [null, 'nope'] }]), []);
 });
 
 test('build: a buy button only ever points at an absolute http(s) checkout', () => {
@@ -2124,6 +2315,106 @@ test('a named social card must be real and scraper-safe, or the build stops', { 
     assert.doesNotMatch(r.err, /WARN/, 'the shipped store must not be warning about its own card');
   } finally {
     fs.writeFileSync(src, original);
+  }
+});
+
+test('build: a url the gate refuses is a warning that names the file and the url', () => {
+  // The renderer's answer to a refused url is to drop it to plain text, which
+  // is right for a reader and completely silent for whoever wrote the file, so
+  // the only thing worth proving here is the WIRING: that a green build says
+  // which file and which url. A warning and not a failure, on the same call the
+  // dead-link check already makes, because this repo is forked and run by
+  // strangers on their own writing and refusing to deploy a whole store over
+  // one bad link in one paragraph costs them more than it saves.
+  //
+  // Built in a throwaway fork rather than this repo, so the probe cannot leave
+  // a page in dist/ for the tests that scan the built store to trip over, and
+  // cannot race them: test FILES run in parallel and dist/ is shared. It also
+  // puts the builder in the position it is actually being judged on, a store
+  // that is not ours.
+  const { spawnSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { PUBLISHED_DOCS: docs } = require('../build.js');
+  const ROOT = path.join(__dirname, '..', '..');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'honorbox-urlgate-'));
+  const at = (...p) => path.join(tmp, ...p);
+  const put = (rel, body) => {
+    fs.mkdirSync(path.dirname(at(rel)), { recursive: true });
+    fs.writeFileSync(at(rel), body.join('\n'));
+  };
+  const build = () => {
+    const r = spawnSync(process.execPath, [at('scripts', 'build.js')], { cwd: tmp, encoding: 'utf8' });
+    return { code: r.status, err: String(r.stderr || '') };
+  };
+
+  try {
+    // the engine, the theme it names, and the docs it insists on publishing
+    fs.mkdirSync(at('scripts', 'lib'), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'scripts', 'build.js'), at('scripts', 'build.js'));
+    for (const f of ['fm.js', 'md.js', 'imgsize.js']) {
+      fs.copyFileSync(path.join(ROOT, 'scripts', 'lib', f), at('scripts', 'lib', f));
+    }
+    fs.cpSync(path.join(ROOT, 'themes', 'stand'), at('themes', 'stand'), { recursive: true });
+    // ...with our buy tokens taken out: they name our products, this fork does
+    // not have them, and an id naming no product is correctly fatal. The docs
+    // are scenery here, not the subject.
+    fs.mkdirSync(at('docs'), { recursive: true });
+    for (const slug of docs) {
+      const body = fs.readFileSync(path.join(ROOT, 'docs', `${slug}.md`), 'utf8');
+      fs.writeFileSync(at('docs', `${slug}.md`), body.split('\n').filter((l) => !l.startsWith('{{buy:')).join('\n'));
+    }
+    put('store.config.json', [JSON.stringify({
+      name: 'Probe Store', tagline: 'A store', url: 'https://probe.example',
+      repo: 'probe/store', seller: 'Probe', theme: 'stand',
+    }, null, 2)]);
+    put('products/thing.md', [
+      '---', 'id: thing', 'name: Thing', 'price: $1',
+      'payment_link: https://buy.stripe.com/probe', 'features:', '  - one', '---', '', 'A thing.', '',
+    ]);
+
+    // (a) a refused link in prose: builds, and says which file and which url
+    put('pages/note.md', [
+      '---', 'title: Note', '---', '',
+      'Write to [us](mailto:a@b.com) or read [the terms](javascript:alert(1)).', '',
+      'An uppercase scheme is a real link: [docs](HTTPS://ok.example/docs).', '',
+    ]);
+    let r = build();
+    assert.equal(r.code, 0, `a bad link in prose must not block a deploy:\n${r.err}`);
+    assert.match(r.err, /pages\/note\.md: link url "javascript:alert\(1\)"/, r.err);
+    assert.match(r.err, /renders as plain text/, r.err);
+    assert.equal((r.err.match(/note\.md: link url/g) || []).length, 1,
+      `the mailto and the uppercase https are real links, not warnings:\n${r.err}`);
+    const html = fs.readFileSync(at('dist', 'note.html'), 'utf8');
+    assert.ok(html.includes('href="mailto:a@b.com"'), 'the mailto still works');
+    assert.ok(html.includes('href="HTTPS://ok.example/docs"'), 'and so does the uppercase scheme');
+    assert.ok(!html.includes('href="#"'), 'and nothing degraded to a dead link');
+    assert.ok(html.includes('the terms'), 'the refused link kept its words');
+    fs.rmSync(at('pages', 'note.md'));
+
+    // (b) a typo'd checkout: the page shows the disabled button, the build says so
+    put('products/thing.md', [
+      '---', 'id: thing', 'name: Thing', 'price: $1',
+      'payment_link: buy.stripe.com/probe', 'features:', '  - one', '---', '', 'A thing.', '',
+    ]);
+    r = build();
+    assert.equal(r.code, 0, `a typo'd checkout must not block a deploy:\n${r.err}`);
+    assert.match(r.err, /products\/thing\.md: payment_link "buy\.stripe\.com\/probe"/, r.err);
+    assert.match(r.err, /Checkout coming soon/, r.err);
+    assert.ok(fs.readFileSync(at('dist', 'thing.html'), 'utf8').includes('btn-disabled'));
+
+    // (c) a url store.config.json cannot render: this one does stop the build
+    put('store.config.json', [JSON.stringify({
+      name: 'Probe Store', tagline: 'A store', url: 'https://probe.example',
+      repo: 'probe/store', seller: 'Probe', theme: 'stand',
+      sections: [{ type: 'steps', title: 'How', items: [{ title: 'One', text: 't', href: 'javascript:alert(1)' }] }],
+    }, null, 2)]);
+    r = build();
+    assert.equal(r.code, 2, 'a config url nothing can render is a config error');
+    assert.match(r.err, /sections\[0\]\.items\[0\]\.href is not a usable link/, r.err);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
