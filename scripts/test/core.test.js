@@ -1170,6 +1170,116 @@ test('url gate: no case, whitespace or control character gets a dangerous scheme
   }
 });
 
+test('url gate: an http(s) url with no host is a dead link, and is refused', () => {
+  // Found by fuzzing the gate rather than by reading it: "https://" satisfies
+  // every prefix regex and has no host, so it passed the scheme rule and
+  // shipped as an underlined, clickable link that navigates nowhere. That is
+  // the same dead link the "#" fallback used to produce, arriving through the
+  // ACCEPT path instead of the reject path, which is why removing "#" alone did
+  // not close the class. store.config.json's "url" has demanded a host since
+  // before the gate did; this is the two agreeing.
+  for (const dead of ['http://', 'https://', 'HTTP://', 'HTTPS://', 'https:////',
+    'http://\\', 'https://?q=1', 'https://#frag', 'https://:80', 'https://:']) {
+    const j = JSON.stringify(dead);
+    assert.equal(safeUrl(dead), null, `safeUrl ${j}`);
+    assert.equal(safeUrl(dead, { anchor: true }), null, `safeUrl anchor ${j}`);
+    assert.ok(!renderMarkdown(`[x](${dead})`).includes('href='), `md link ${j}`);
+    assert.ok(!section({ type: 'steps', title: 'G', items: [{ title: 'g', text: 't', href: dead }] })
+      .includes('href='), `steps ${j}`);
+    // and the money path shows the honest disabled button rather than a Buy
+    // button pointing at nothing
+    assert.ok(buyButton({ payment_link: dead, name: 'P', price: '$1' }).includes('btn-disabled'), `buy ${j}`);
+  }
+  // A bare fragment is a link target and never an image one. <img src="#">
+  // re-requests the page the reader is already on, which is the same shape of
+  // dead thing as href="#": it looks like a picture and is not one. Anchor-only
+  // was already the rule; nothing was holding it, so a mutation that dropped
+  // the anchor check here went unnoticed by the whole suite.
+  for (const frag of ['#', '#frag', '#section-2']) {
+    assert.equal(safeUrl(frag), null, `src ${frag}`);
+    assert.equal(safeUrl(frag, { anchor: true }), frag, `anchor ${frag}`);
+    assert.ok(!renderMarkdown(`![a](${frag})`).includes('<img'), `md image ${frag}`);
+    const show = section({ type: 'showcase', title: 'S', items: [{ img: frag, alt: 'a' }] }, () => null);
+    assert.ok(!show.includes('<img'), `showcase ${frag}: ${show}`);
+    assert.equal(configProblems({
+      name: 'S', tagline: 't', url: 'https://s.example',
+      sections: [{ type: 'showcase', items: [{ img: frag }] }],
+    }).length, 1, `configProblems img ${frag}`);
+  }
+
+  // a host is the only thing being demanded: every shape of real url still
+  // passes, including the ones a stranger's store is most likely to carry
+  for (const ok of ['https://ok.example', 'https://ok.example/', 'http://ok.example/x?a=1#f',
+    'https://ok.example:8443/x', 'https://user:pass@ok.example/x', 'https://127.0.0.1:3000/x',
+    'https://[::1]:8080/x', 'https://xn--80ak6aa92e.com/x', 'https://例え.jp/x',
+    'HTTPS://OK.example/Case', 'https://ok.example/a%20b']) {
+    assert.equal(safeUrl(ok), ok, `safeUrl ${ok}`);
+  }
+});
+
+test('url gate: nothing the gate accepts can leave this origin', () => {
+  // The property, checked against the WHATWG url parser Node ships (the same
+  // one browsers implement) instead of against substrings of our own output.
+  // A gate tested only by "does the html contain href=#" can be loosened by
+  // anyone who also edits the substring; this cannot. If a future change lets
+  // through a url that resolves somewhere else, the resolution says so.
+  const BASE = 'https://store.example/dir/page.html';
+  const ORIGIN = 'https://store.example';
+  const SCHEMES = ['http', 'https', 'javascript', 'data', 'vbscript', 'file', 'about',
+    'blob', 'mailto', 'filesystem', 'view-source', 'jar', 'intent', 'livescript', 'tel'];
+  const SEPS = [':', '://', ':/', ':\\', ':/\\', ':\\/', '://\\', ':////'];
+  const TAILS = ['alert(1)', '//evil.example/x', 'evil.example', 'text/html,x', 'a@b.com', ''];
+  const PREFIX = ['', ' ', '\t', '\n', '\r', '\x00', '\x0b', '/', '//', '/\\', '\\', '\\\\',
+    '.', './', '../', './/', '#', '?', '/\t', '\t/'];
+  const cased = (s) => [s, s.toUpperCase(), s[0].toUpperCase() + s.slice(1),
+    [...s].map((c, i) => (i % 2 ? c.toUpperCase() : c)).join('')];
+
+  const inputs = new Set();
+  for (const s of SCHEMES) {
+    for (const c of cased(s)) {
+      for (const sep of SEPS) {
+        for (const t of TAILS) {
+          inputs.add(c + sep + t);
+          for (const p of PREFIX) inputs.add(p + c + sep + t);
+        }
+      }
+      // tab/LF/CR inside the scheme: the parser removes them, so the gate must
+      // judge the scheme the browser will actually see
+      for (const w of ['\t', '\n', '\r']) {
+        for (let k = 1; k < c.length; k++) inputs.add(c.slice(0, k) + w + c.slice(k) + ':alert(1)');
+      }
+    }
+  }
+  for (const p of PREFIX) for (const t of ['', 'path', 'a.png', 'x:y', '#f']) inputs.add(p + t);
+
+  // a scheme we never emit must never be what the gate approved, whether or not
+  // the result parses; leading C0/space is stripped first because a browser
+  // strips it before deciding what the scheme is
+  const NEVER = /^(?:javascript|data|vbscript|file|blob|about|filesystem|view-source|jar|intent|livescript|tcl|jscript|ecmascript|mocha)\s*:/i;
+  let accepted = 0;
+  for (const anchor of [false, true]) {
+    for (const input of inputs) {
+      const out = safeUrl(input, { anchor });
+      if (out === null) continue;
+      accepted++;
+      const j = `${JSON.stringify(input)} (anchor=${anchor}) -> ${JSON.stringify(out)}`;
+      assert.ok(!NEVER.test(out.replace(/^[\x00-\x20]+/, '')), `approved a scheme we never emit: ${j}`);
+      let resolved = null;
+      try { resolved = new URL(out, BASE); } catch { /* unparseable: a browser cannot navigate it */ }
+      if (!resolved) continue;
+      const p = resolved.protocol;
+      assert.ok(
+        resolved.origin === ORIGIN || p === 'http:' || p === 'https:' || (anchor && p === 'mailto:'),
+        `resolves off-origin as ${p}: ${j} -> ${resolved.href}`
+      );
+    }
+  }
+  // the corpus must actually exercise the gate: a change that refused
+  // everything would satisfy every assertion above and protect nothing
+  assert.ok(inputs.size > 2000, `corpus too small: ${inputs.size}`);
+  assert.ok(accepted > 200, `gate accepted almost nothing (${accepted}); the test would pass vacuously`);
+});
+
 test('a refused url is the words it was written as, never href="#"', () => {
   // The class, not the instance. A gate that turns unexpected input into
   // href="#" ships a link that LOOKS alive: underlined, clickable, and jumping

@@ -31,6 +31,24 @@ const HTTP_URL = /^https?:\/\//i;
 const HAS_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
 const ORIGIN_RELATIVE = /^(?:\/(?![/\\])|\.)/;
 
+// http(s) is the only scheme here that carries an authority, so it is confirmed
+// with the url parser rather than by its prefix alone. "https://" with no host
+// satisfies every prefix regex ever written and navigates nowhere, so it shipped
+// the same underlined, clickable, dead link this gate exists to stop, arriving
+// through the accept path instead of the reject path. store.config.json's own
+// "url" check has demanded a host since before this gate did; agreeing with it
+// is what stops the two from drifting again.
+// The ORIGINAL string is what gets returned, never the parser's normalization:
+// URL lowercases the host and can append a path, and a gate that rewrites what
+// it approves is a gate that emits something nobody wrote.
+function hasHost(u) {
+  try {
+    return new URL(u).host !== '';
+  } catch {
+    return false;
+  }
+}
+
 // The gate must read the url the BROWSER will parse, not the one we were
 // handed. The WHATWG parser removes every ascii tab/LF/CR from a url before
 // parsing it, so "/<TAB>/evil.example" reads here as a root-relative path — a
@@ -55,6 +73,15 @@ const MAILTO = /^mailto:/i;
 // javascript:, data: and vbscript: are turned away for having a scheme we do
 // not emit, not for failing to resemble a path. What is left is same-origin.
 //
+// HAS_SCHEME is deliberately redundant TODAY and is kept anyway: a scheme
+// starts with a letter and ORIGIN_RELATIVE demands "/" or ".", so nothing can
+// satisfy both and deleting the line changes no answer. It earns its place the
+// moment the relative rule widens, which is a live prospect because "./" is
+// the thing forkers most often leave off. Measured, not assumed: widening
+// ORIGIN_RELATIVE to accept bare relatives fails 3 tests with this line kept
+// and 17 with it deleted, and those 14 are javascript:, data: and vbscript:
+// walking through the front door as if they were paths.
+//
 // Stripping first is what keeps the scheme rules narrow. A scheme is whatever
 // precedes the first colon, so "mailto:javascript:x" is an address and not
 // script, and "java<TAB>script:" strips back to "javascript:" and is refused.
@@ -63,7 +90,7 @@ const MAILTO = /^mailto:/i;
 // it matches no rule here and fails closed.
 function safeUrl(url, { anchor = false } = {}) {
   const u = String(url == null ? '' : url).replace(URL_STRIP, '');
-  if (HTTP_URL.test(u)) return u;
+  if (HTTP_URL.test(u)) return hasHost(u) ? u : null;
   if (HAS_SCHEME.test(u)) return anchor && MAILTO.test(u) ? u : null;
   if (u.startsWith('#')) return anchor ? u : null;
   return ORIGIN_RELATIVE.test(u) ? u : null;
@@ -111,8 +138,13 @@ function inline(s, rejects) {
     if (bang) {
       // A rejected scheme degrades to the alt text: still visible, but the
       // scheme itself never reaches the page, not even as inert prose.
-      if (!safeUrl(href)) { refuse(href, 'image'); return text; }
-      return `${OPEN}${links.push({ img: true, href, title, alt: text }) - 1}${OPEN}`;
+      // What gets stored is what safeUrl APPROVED, not what we were handed:
+      // the two differ by whatever the url parser strips, and emitting the
+      // unapproved spelling is how a gate ends up guarding a different string
+      // from the one that reaches the browser.
+      const src = safeUrl(href);
+      if (!src) { refuse(href, 'image'); return text; }
+      return `${OPEN}${links.push({ img: true, href: src, title, alt: text }) - 1}${OPEN}`;
     }
     if (!text) return m; // [](url): a link with no accessible name is not a link
     // A rejected target degrades to the link TEXT, on the image's rule and for
@@ -386,15 +418,17 @@ function renderMarkdown(src, opts = {}) {
       const rejected = [];
       while (i < lines.length && /^!\[[^\]]*\]\([^)\s]+\)\s*$/.test(lines[i])) {
         const m = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(lines[i++]);
-        if (safeUrl(m[2])) {
+        // the approved spelling, measured and emitted; see inline()
+        const src = safeUrl(m[2]);
+        if (src) {
           // Reserve the box before the lazy image arrives. Markdown has no
           // syntax for dimensions, so without this the gallery on
           // honorbox-pro.html shifted the page under the reader on a slow
           // connection (measured CLS 0.14-0.28, over the 0.1 threshold).
-          const d = typeof opts.sizeOf === 'function' ? opts.sizeOf(m[2]) : null;
+          const d = typeof opts.sizeOf === 'function' ? opts.sizeOf(src) : null;
           const dims = d && d.width > 0 && d.height > 0 ? ` width="${d.width}" height="${d.height}"` : '';
           // escape the URL for the attribute — same discipline as link hrefs
-          imgs.push(`<img src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy"${dims}>`);
+          imgs.push(`<img src="${escapeHtml(src)}" alt="${escapeHtml(m[1])}" loading="lazy"${dims}>`);
         } else {
           // rejected scheme: keep the line visible instead of vanishing
           // silently. inline() re-reads it and reports it; nothing is reported
@@ -524,8 +558,11 @@ function firstRasterImage(src, opts = {}) {
   let m;
   while ((m = re.exec(String(src == null ? '' : src)))) {
     const [, bang, , href] = m;
-    const bare = href.split(/[?#]/)[0];
-    if (bang && safeUrl(href) && ext.test(bare)) return href;
+    if (!bang) continue;
+    // the approved spelling again: this one becomes an og:image, which is the
+    // url a scraper fetches rather than one a reader clicks
+    const approved = safeUrl(href);
+    if (approved && ext.test(approved.split(/[?#]/)[0])) return approved;
   }
   return null;
 }
