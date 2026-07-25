@@ -9,13 +9,13 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const { lookupKeyFor, reusablePrice, mergeGrants, tierLinkParams } = require('../lib/tiers-core.js');
+const { scratchDir } = require('../test-support/scratch-dir.js');
 
 const ADD_TIER = path.join(__dirname, '..', 'add-tier.js');
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-tier-'));
+const tmp = () => scratchDir('hb-tier-');
 
 // --- lookup keys ------------------------------------------------------------
 

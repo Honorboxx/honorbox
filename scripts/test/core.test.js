@@ -2443,11 +2443,11 @@ test('build: a url the gate refuses is a warning that names the file and the url
   // that is not ours.
   const { spawnSync } = require('node:child_process');
   const fs = require('node:fs');
-  const os = require('node:os');
   const path = require('node:path');
   const { PUBLISHED_DOCS: docs } = require('../build.js');
+  const { scratchDir } = require('../test-support/scratch-dir.js');
   const ROOT = path.join(__dirname, '..', '..');
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'honorbox-urlgate-'));
+  const tmp = scratchDir('honorbox-urlgate-');
   const at = (...p) => path.join(tmp, ...p);
   const put = (rel, body) => {
     fs.mkdirSync(path.dirname(at(rel)), { recursive: true });

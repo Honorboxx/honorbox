@@ -7,8 +7,9 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+
+const { scratchDir } = require('../test-support/scratch-dir.js');
 
 const INIT = path.join(__dirname, '..', 'init.js');
 
@@ -19,7 +20,7 @@ function runInit(args, env = {}) {
   });
 }
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-init-'));
+const tmp = () => scratchDir('hb-init-');
 
 test('init: missing or corrupt config dies BEFORE anything would be created', () => {
   // The config is written AFTER the Stripe objects exist. If it cannot be

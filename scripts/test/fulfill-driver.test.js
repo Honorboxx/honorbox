@@ -13,6 +13,7 @@ const path = require('node:path');
 // Requiring the driver must not run main(); build.js sets the precedent
 // (module.exports + require.main guard).
 const driver = require('../fulfill.js');
+const { scratchDir } = require('../test-support/scratch-dir.js');
 
 function stubFetch(routes) {
   const calls = [];
@@ -101,7 +102,7 @@ function captureErr() {
   return { lines, restore: () => { console.error = orig; } };
 }
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-fulfill-'));
+const tmp = () => scratchDir('hb-fulfill-');
 
 test('stripe requests pin Stripe-Version 2024-06-20', async () => {
   // The account default is a broken preview API version; init.js pins every

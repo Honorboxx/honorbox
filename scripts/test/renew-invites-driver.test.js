@@ -15,7 +15,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const driver = require('../renew-invites.js');
@@ -23,6 +22,7 @@ const reconciler = require('../reconcile-subs.js');
 const { REINVITE_AFTER_HOURS, MAX_REINVITES, EXPIRY_FIELD } = require('../lib/invite-core.js');
 const { inviteKey, revocationSource } = require('../lib/access-record.js');
 const { INVITE_CAP_PER_REPO_PER_DAY } = require('../lib/fulfill-core.js');
+const { scratchDir } = require('../test-support/scratch-dir.js');
 
 // Renewal defaults --state to state/bots-state.json, which in a real ops repo is
 // LIVE entitlement data. A harness bug that forgets to redirect it would write
@@ -40,7 +40,7 @@ test.after(() => {
   assert.equal(repoStateFingerprint(), STATE_BEFORE, 'a test wrote into the repository state/ directory');
 });
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-renew-'));
+const tmp = () => scratchDir('hb-renew-');
 const REPO = 'o/r';
 const stale = () => new Date(Date.now() - (REINVITE_AFTER_HOURS + 1) * 3_600_000).toISOString();
 

@@ -192,6 +192,12 @@ node scripts/build.js                   # build storefront -> dist/
 No dependencies. Node ≥ 20. CI runs the suite on Linux, Windows and macOS,
 across Node 20, 22 and 24.
 
+A test that needs a directory to write in calls `scratchDir()` from
+`scripts/test-support/scratch-dir.js` instead of `fs.mkdtempSync`, so the
+directory is removed even when the test throws. `npm test` fails the run if the
+suite leaves any behind, which is why it is the suite's entry point rather than
+`node --test` on its own.
+
 ## Support
 
 honorbox@proton.me · [issues](https://github.com/Honorboxx/honorbox/issues)

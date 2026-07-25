@@ -9,10 +9,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const driver = require('../reconcile-subs.js');
+const { scratchDir } = require('../test-support/scratch-dir.js');
 
 // The lock lives beside the state file as a dotfile so ops runners that commit
 // state/ wholesale cannot sweep it into git. Tests derive it the same way.
@@ -67,7 +67,7 @@ function session(id, subId, user) {
 }
 
 function tmpdir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'hb-subs-'));
+  return scratchDir('hb-subs-');
 }
 
 async function runMain(dir, routes, config, stateSeed, extraArgs = []) {

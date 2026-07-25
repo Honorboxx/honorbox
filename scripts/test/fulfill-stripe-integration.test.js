@@ -53,13 +53,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
 // Requiring the driver must not run main(); the driver's require.main guard is
 // what makes this possible, and this test is the reason it has to keep working.
 const driver = require('../fulfill.js');
+const { scratchDir } = require('../test-support/scratch-dir.js');
 
 const KEY = process.env.HONORBOX_STRIPE_TEST_KEY;
 const PUB = process.env.HONORBOX_STRIPE_TEST_PUB_KEY;
@@ -246,7 +246,7 @@ test('the rehearsal key is a test-mode key', () => {
 
 test('a paid test-mode checkout becomes a real GitHub invite, once', { skip: SKIP, timeout: TEST_TIMEOUT_MS }, async (t) => {
   const tag = crypto.randomBytes(4).toString('hex');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'honorbox-rehearsal-'));
+  const dir = scratchDir('honorbox-rehearsal-');
   const created = { product: null, price: null, session: null, repo: null, repoIsOurs: false };
 
   try {

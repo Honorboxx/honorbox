@@ -23,9 +23,9 @@
 'use strict';
 
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { scratchDir } = require('../../test-support/scratch-dir.js');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 
@@ -43,11 +43,13 @@ const ROOT = path.join(__dirname, '..', '..', '..');
 const INPUTS = ['store.config.json', 'products', 'pages', 'docs', 'themes', 'assets', 'static', 'ledger'];
 
 // A throwaway store, for a test that needs to change a source file and watch
-// what the builder does about it. The caller owns it and calls cleanup(), which
-// is the whole of the cleanup: nothing outside the temporary directory was
-// touched, so there is no restore step to get wrong or to skip on a crash.
+// what the builder does about it. The caller owns it and calls cleanup(), and
+// that is the whole of the cleanup: nothing outside the temporary directory was
+// touched, so there is no restore step to get wrong or to skip on a crash. A
+// caller that never reaches its cleanup() is covered anyway, because the
+// directory came from scratch-dir.js, which removes it when the process ends.
 function storeFixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'honorbox-store-'));
+  const root = scratchDir('honorbox-store-');
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
   fs.copyFileSync(path.join(ROOT, 'scripts', 'build.js'), path.join(root, 'scripts', 'build.js'));
   fs.cpSync(path.join(ROOT, 'scripts', 'lib'), path.join(root, 'scripts', 'lib'), { recursive: true });
@@ -98,13 +100,10 @@ function builtPages() {
       .filter((f) => f.endsWith('.html'))
       .sort()
       .map((f) => [f, fs.readFileSync(path.join(dist, f), 'utf8')]);
-    // Best effort, and deliberately not fatal: a temporary directory that
-    // outlives the run costs a forker nothing and the OS reaps it, whereas a
-    // cleanup that can fail a green suite is a new flake in place of the old
-    // one. Windows is the case in mind, where a directory can still be busy.
-    process.on('exit', () => {
-      try { fixture.cleanup(); } catch { /* left for the OS to reap */ }
-    });
+    // No cleanup call here on purpose. This fixture has no owner to put one in
+    // a finally, and scratch-dir.js already removes every directory it made
+    // when the process ends, which is the same guarantee in one place instead
+    // of two.
   }
   return pages.map(([name, body]) => [name, body]);
 }
