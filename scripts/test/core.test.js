@@ -585,6 +585,47 @@ test('cursor holds for deferred sessions so they stay inside the scan window', (
   assert.equal(nextCursor([stuck, sale], t0, []), t0 + 26 * 3600);
 });
 
+test('a delayed-settlement payment still inside its window holds the cursor', () => {
+  // SEPA Direct Debit, ACH, Bacs and boleto do not settle at checkout. Stripe
+  // completes the session immediately with payment_status "unpaid" and only
+  // flips it to "paid" days later, when the funds actually arrive. The session's
+  // `created` never moves, and the scan is created > cursor - OVERLAP, so 25h
+  // after checkout the session leaves the window forever. When it settles on
+  // day three there is no poll left that can see it: the buyer paid, the money
+  // is in the account, and access is never granted. Nothing logs a failure,
+  // because from the poll's point of view the session simply stopped existing.
+  const { asyncPendingSessions, ASYNC_SETTLE_SECONDS, OVERLAP_SECONDS } = require('../lib/fulfill-core.js');
+  const t0 = 1_700_000_000;
+  const settling = session({ id: 'cs_sepa', created: t0, payment_status: 'unpaid' });
+  const sale = session({ id: 'cs_new', created: t0 + 26 * 3600 });
+
+  // It is complete, grant-matched and merely waiting on funds, so it is neither
+  // deliverable yet nor droppable.
+  const pending = asyncPendingSessions([settling, sale], [], GRANTS, t0 + 26 * 3600);
+  assert.deepEqual(pending.map((s) => s.id), ['cs_sepa']);
+
+  // An open (abandoned) checkout is NOT an async payment: it never completed,
+  // and holding the cursor for every abandoned cart would freeze it forever.
+  const abandoned = session({ id: 'cs_open', created: t0, status: 'open', payment_status: 'unpaid' });
+  assert.deepEqual(asyncPendingSessions([abandoned], [], GRANTS, t0).map((s) => s.id), []);
+
+  // Already-delivered sessions must not re-hold the cursor.
+  assert.deepEqual(asyncPendingSessions([settling], ['cs_sepa'], GRANTS, t0).map((s) => s.id), []);
+
+  // The hold keeps it visible: without it the newer sale pushes it out.
+  assert.ok(nextCursor([settling, sale], t0) - OVERLAP_SECONDS > settling.created,
+    'precondition: this scenario really does drop the settling session');
+  const held = nextCursor([settling, sale], t0, pending.map((s) => s.created));
+  assert.ok(held - OVERLAP_SECONDS <= settling.created,
+    `cursor ${held} pushes a settling payment out of the scan window`);
+
+  // The hold is bounded. A payment that never arrives must not freeze the
+  // cursor for the life of the store, so past the settle window it stops being
+  // held, and by then it is a stale row an operator can see, not a silent drop.
+  const stale = asyncPendingSessions([settling], [], GRANTS, t0 + ASYNC_SETTLE_SECONDS + 1);
+  assert.deepEqual(stale.map((s) => s.id), [], 'an unsettled payment cannot hold the cursor forever');
+});
+
 test('grant matching is by payment link', () => {
   assert.equal(matchGrant(session(), GRANTS).repo, 'o/r');
   assert.equal(matchGrant(session({ payment_link: null }), GRANTS), null);

@@ -1018,3 +1018,57 @@ test('a deferred session holds the cursor so the next poll can still see it', as
     `cursor ${state.cursor} pushes the deferred session out of the created > cursor - ${OVERLAP_SECONDS} scan window`
   );
 });
+
+test('a SEPA-style payment that settles days later is still delivered', async () => {
+  // The end-to-end version of the async-settlement hole. A delayed-notification
+  // method (SEPA Direct Debit, ACH, Bacs, boleto) completes the checkout at
+  // once but reports payment_status "unpaid" until the funds arrive, commonly
+  // several business days later. `created` never moves, and the scan is
+  // created > cursor - OVERLAP, so once a newer sale advanced the cursor the
+  // settling session left the window for good: when the money finally landed
+  // there was no poll left that could see it. Buyer paid, access never granted,
+  // and nothing in the log said so.
+  const { OVERLAP_SECONDS } = require('../lib/fulfill-core.js');
+  const dir = tmp();
+  // A payment genuinely in flight is a RECENT one: the settle window is
+  // measured against the wall clock, exactly as it is in production — so this
+  // fixture is anchored to now rather than to a fixed epoch. Two days back:
+  // comfortably past the 25h scan window that loses it, comfortably inside the
+  // 14-day window in which a direct debit can still arrive.
+  const t0 = Math.floor(Date.now() / 1000) - 2 * 24 * 3600;
+  const settling = paidSession('cs_sepa', t0, {
+    payment_status: 'unpaid',
+    custom_fields: [{ key: 'github_username', text: { value: 'sepabuyer' } }],
+  });
+  const laterSale = paidSession('cs_card', t0 + 26 * 3600, {
+    custom_fields: [{ key: 'github_username', text: { value: 'cardbuyer' } }],
+  });
+
+  // Poll one: the card sale delivers, the direct debit cannot yet.
+  const first = await runMain(dir, [
+    { match: 'collaborators/cardbuyer', res: () => jsonRes({}, 201) },
+    { match: 'api.stripe.com', res: () => jsonRes({ data: [settling, laterSale], has_more: false }) },
+  ]);
+  assert.ok(
+    !first.calls.some((c) => c.url.includes('sepabuyer')),
+    'an unfunded checkout must not be granted access before the money arrives'
+  );
+  const held = first.readState('fulfill-state.json');
+  assert.deepEqual(held.processed, ['cs_card']);
+  assert.ok(
+    held.cursor - OVERLAP_SECONDS <= t0,
+    `cursor ${held.cursor} pushes a settling payment out of the scan window; it can never be delivered`
+  );
+
+  // Poll two, days later: the bank confirms and Stripe flips it to paid. The
+  // held cursor is what makes the session visible to this poll at all.
+  const funded = { ...settling, payment_status: 'paid' };
+  const second = await runMain(dir, [
+    { match: 'collaborators/sepabuyer', res: () => jsonRes({}, 201) },
+    { match: 'api.stripe.com', res: () => jsonRes({ data: [funded, laterSale], has_more: false }) },
+  ]);
+  const invite = second.calls.find((c) => c.url.includes('sepabuyer'));
+  assert.ok(invite, 'once the funds land the buyer must be invited');
+  assert.equal(invite.init.method, 'PUT');
+  assert.deepEqual(second.readState('fulfill-state.json').processed.sort(), ['cs_card', 'cs_sepa']);
+});

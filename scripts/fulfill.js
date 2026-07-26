@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   OVERLAP_SECONDS, // re-scan window: outlives a session's 24h lifetime
+  asyncPendingSessions, // completed checkouts whose funds have not settled yet
   shouldRetryInvite,
   inviteAttempts,
   pickNewPaidSessions,
@@ -266,6 +267,20 @@ async function main(sleep = defaultSleep) {
     state.unmatched.push(s.id);
   }
   if (state.unmatched.length > 5000) state.unmatched = state.unmatched.slice(-5000);
+
+  // Money on its way that has not landed yet. A SEPA/ACH/Bacs/boleto checkout
+  // completes immediately but stays payment_status "unpaid" for days, so it is
+  // not deliverable now and must not be forgotten either: hold the cursor so
+  // the poll can still see it on the day the funds arrive. Without this the
+  // session ages out of the scan window and the sale is lost in silence.
+  const settling = asyncPendingSessions(sessions, state.processed, config.fulfillment);
+  for (const s of settling) deferred.push(s.created);
+  if (settling.length) {
+    console.log(
+      `awaiting_settlement=${settling.length} (delayed payment methods; cursor held so they still ` +
+        `deliver when the funds arrive)`
+    );
+  }
 
   // Ledger dedup key: two runners (local 2-min + Actions safety net) can overlap;
   // the processed-set stops sequential re-processing, but a same-window collision

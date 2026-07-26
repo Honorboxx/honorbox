@@ -442,6 +442,56 @@ function unmatchedPaidSessions(sessions, warnedIds, grants) {
   );
 }
 
+// How long a completed-but-unfunded checkout stays worth waiting for.
+//
+// Delayed-notification payment methods do not settle at checkout. SEPA Direct
+// Debit, ACH debits, Bacs and boleto all complete the session immediately with
+// payment_status "unpaid" and only flip to "paid" once the funds actually
+// arrive, which for ACH and SEPA is commonly several business days. Stripe's
+// own ceiling for these is measured in days, not hours, so 14 days is chosen to
+// sit past every one of them plus a bank holiday weekend.
+//
+// It is a ceiling, not a schedule: nearly all settle far sooner, and the cost
+// of the window is only that the cursor stops advancing while one is in flight.
+// Re-scanning is free (the processed-id set dedups); a missed sale is not.
+const ASYNC_SETTLE_SECONDS = 14 * 24 * 3600;
+
+// Checkouts that completed but whose money has not landed yet.
+//
+// This is the third state, and the engine used to have no name for it. A card
+// session is complete-and-paid, an abandoned one is open-and-unpaid, but a SEPA
+// or ACH session sits complete-and-unpaid for days. isPaidComplete rightly
+// refuses to deliver it, so it is never marked processed — and nothing else
+// held it either, so the cursor advanced past its `created` time and 25h later
+// the scan query (created > cursor - OVERLAP) stopped returning it. When the
+// funds finally arrived there was no poll left that could see the session.
+// The buyer paid, the money was in the account, and access was never granted,
+// with nothing in the log to say so: the session simply stopped existing.
+//
+// So these are handed to the caller to defer, which holds the cursor and keeps
+// them inside the scan window until they flip to paid and fulfill normally.
+//
+// The hold is bounded on purpose. A direct debit that is never going to arrive
+// must not freeze the cursor for the life of the store, so past the settle
+// window it stops being held. That is the one honest trade here: after 14 days
+// the row is stale and visible to an operator rather than pinning the poll.
+//
+// `status === 'complete'` is what separates this from an abandoned cart. An
+// open session is unpaid because nobody finished paying, and holding the cursor
+// for every abandoned checkout would freeze it permanently.
+function asyncPendingSessions(sessions, processedIds, grants, now = Math.floor(Date.now() / 1000)) {
+  const seen = new Set(processedIds);
+  return sessions.filter(
+    (s) =>
+      s.status === 'complete' &&
+      s.payment_status === 'unpaid' &&
+      !seen.has(s.id) &&
+      matchGrant(s, grants) !== null &&
+      Number.isFinite(s.created) &&
+      now - s.created <= ASYNC_SETTLE_SECONDS
+  );
+}
+
 // Public-safe ledger row: no names, no emails, no session ids in the clear.
 function ledgerRow(session, grant) {
   return {
@@ -557,6 +607,8 @@ function inviteStatusHint(status, body = '') {
 
 module.exports = {
   OVERLAP_SECONDS,
+  ASYNC_SETTLE_SECONDS,
+  asyncPendingSessions,
   REQUEST_TIMEOUT_MS,
   stripeMode,
   redactKeys,
