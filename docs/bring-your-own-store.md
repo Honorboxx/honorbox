@@ -318,6 +318,51 @@ comparing a page to a link needs a page. If your storefront is a site you
 maintain elsewhere, the number printed on it against the number the link charges
 stays your job.
 
+## If your money does not move through Stripe
+
+Everything above assumes you hold the Stripe account. Plenty of sellers do not.
+On Gumroad, Lemon Squeezy, Paddle and Polar the platform is the merchant of
+record, the money never touches a key you hold, and the only thing you can get
+out is an order export. Reconcile takes that file in place of the key:
+
+```
+reconcile --orders sales.csv --repo you/product
+```
+
+Everything after the file is the same code path: the same GitHub read, the same
+verdicts, the same report.
+
+**The headline needs nothing from you but the export.** Paid orders on one side,
+accounts that can actually open the repo plus invitations still outstanding on
+the other, and the difference. That number is the one neither system can produce
+alone, because the platform has never heard of your repository and GitHub has
+never heard of your orders.
+
+**Whether you also get a verdict per buyer depends on your platform, and the
+difference is not ours to fix.** An export carries a buyer email, and GitHub
+keeps account emails private by default, so an email cannot be turned into an
+account.
+
+- **Gumroad and Polar** let you ask the buyer for their GitHub username at
+  checkout as a custom field, and Gumroad carries the answers into the export.
+  Name that column with `--username-column` and every order gets its own
+  verdict, with no mapping for you to keep.
+- **Lemon Squeezy and Paddle** have no buyer-facing custom field. Their custom
+  data is metadata you inject, not something the buyer types, so a username
+  cannot arrive with the order. You get the count, and per-order verdicts only
+  if you hand over a mapping you maintain yourself with `--map`.
+
+**Refund and chargeback cover differs by export, and a check that cannot run
+says so.** Gumroad's export states both that a chargeback happened and whether
+you won it, so a lost chargeback that still holds access is reported. Lemon
+Squeezy's documented export carries no refund column at all, so that check is
+printed as SKIPPED on every run. It is never counted as passed.
+
+**Closed marketplaces are out of scope, and that is worth saying before you
+pay.** Fab, for instance, gives sellers no buyer data at all: order IDs validate
+and nothing else is exposed. If your platform will not tell you who bought, no
+tool can tell you which of them is missing, this one included.
+
 ## The limits, stated plainly
 
 **No ledger means the history checks step aside.** Dedup and delivery history
